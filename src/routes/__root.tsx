@@ -3,10 +3,8 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
-
-import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
+import { lazy, Suspense } from 'react'
+import { RouteError, RouteNotFound, RoutePending } from '../components/oddweb'
 
 import appCss from '../styles.css?url'
 
@@ -16,7 +14,65 @@ interface MyRouterContext {
   queryClient: QueryClient
 }
 
+const DevelopmentDevtools = import.meta.env.DEV
+  ? lazy(async () => {
+      const [{ TanStackDevtools }, { TanStackRouterDevtoolsPanel }, query] =
+        await Promise.all([
+          import('@tanstack/react-devtools'),
+          import('@tanstack/react-router-devtools'),
+          import('../integrations/tanstack-query/devtools'),
+        ])
+
+      return {
+        default: function Devtools() {
+          return (
+            <TanStackDevtools
+              config={{ position: 'bottom-right' }}
+              plugins={[
+                {
+                  name: 'Tanstack Router',
+                  render: <TanStackRouterDevtoolsPanel />,
+                },
+                query.default,
+              ]}
+            />
+          )
+        },
+      }
+    })
+  : null
+
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "connect-src 'self'",
+  "font-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "img-src 'self' blob: data:",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  'upgrade-insecure-requests',
+].join('; ')
+
 export const Route = createRootRouteWithContext<MyRouterContext>()({
+  headers: ({ matches }) => ({
+    'Cache-Control': matches.some((match) =>
+      /^\/admin(?:\/|$)/.test(match.pathname),
+    )
+      ? 'no-store'
+      : 'no-cache',
+    'Content-Security-Policy': contentSecurityPolicy,
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy':
+      'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+  }),
   head: () => ({
     meta: [
       {
@@ -27,10 +83,24 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: "Oddweb - The web's odd corners",
+      },
+      {
+        name: 'description',
+        content:
+          'A hand-filed directory of unique, playful, and unexpected websites.',
+      },
+      {
+        name: 'theme-color',
+        content: '#2a1810',
       },
     ],
     links: [
+      {
+        rel: 'icon',
+        href: '/favicon.svg',
+        type: 'image/svg+xml',
+      },
       {
         rel: 'stylesheet',
         href: appCss,
@@ -38,6 +108,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
     ],
   }),
   shellComponent: RootDocument,
+  pendingComponent: RoutePending,
+  errorComponent: RouteError,
+  notFoundComponent: RouteNotFound,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
@@ -48,18 +121,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-            TanStackQueryDevtools,
-          ]}
-        />
+        <Suspense>{DevelopmentDevtools && <DevelopmentDevtools />}</Suspense>
         <Scripts />
       </body>
     </html>

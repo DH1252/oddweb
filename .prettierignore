@@ -1,3 +1,18 @@
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+
+# Generated output and local Worker state
+.cta.json
+.output/
+.wrangler/
+dist/
+drizzle/meta/
+src/routeTree.gen.ts
+worker-configuration.d.ts
+staging.env.example
+
+# External design references and tool state
+.commandcode/
+.playwright-mcp/
+open-design/

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `guestbook_entry_unique` ON `guestbook` (`name`,`message`);

@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786296101398,
+      "tag": "0000_cold_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786296731169,
+      "tag": "0001_yellow_stardust",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786298365658,
+      "tag": "0002_clean_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786321502788,
+      "tag": "0003_melodic_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786443294929,
+      "tag": "0004_striped_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786446156480,
+      "tag": "0005_melodic_lily_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786540500000,
+      "tag": "0006_backend_integrity",
+      "breakpoints": true
+    }
+  ]
+}

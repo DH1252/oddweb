@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Browse every tag in the Oddweb directory."><title>Tags / Oddweb</title><link rel="stylesheet" href="oddweb-detail.css"><style>
+  .tag-toolbar { margin-bottom: 10px; }
+  .tag-search { position: relative; }
+  .tag-search input { width: 100%; min-height: 44px; padding: 5px 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); box-shadow: inset 1px 1px 0 var(--border); font: 15px/1.4 var(--font-body); }
+  .tag-countline { margin: 0 0 8px; color: var(--muted); font: 12px/1.4 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+  .tag-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tag-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 6px 9px; background: var(--bg); border: 1px solid var(--border); text-decoration: none; }
+  .tag-item:hover { color: var(--surface); background: var(--fg-2); border-color: var(--fg-2); }
+  .tag-item .name { font: 600 13px/1.3 var(--font-display); overflow-wrap: anywhere; }
+  .tag-item .count { flex: 0 0 auto; color: var(--muted); font: 12px/1.3 var(--font-display); }
+  .tag-item:hover .count { color: var(--surface-warm); }
+  .tag-empty { display: none; padding: 22px; color: var(--fg-2); background: var(--bg); border: 1px dashed var(--border); text-align: center; font-size: 14px; }
+  @media (max-width: 720px) { .tag-list { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 430px) { .tag-list { grid-template-columns: 1fr; } }
+</style></head>
+<body><header class="masthead" data-od-id="site-header"><nav class="nav shell" aria-label="Main navigation"><a class="brand" href="odd-web-directory.html#top" data-od-id="brand-link"><span class="brand-mark" aria-hidden="true">!</span><span>ODDWEB</span></a><div class="nav-links"><a href="odd-web-directory.html#top" data-od-id="directory-link">&larr; Directory</a></div></nav></header>
+<main class="shell" data-od-id="tag-index">
+  <section class="intro" style="color:var(--accent-on);background:var(--accent-ink);padding:18px 22px;border:1px solid var(--fg)">
+    <p class="kicker">Browse by tag</p>
+    <h1 style="margin:0 0 6px;font:600 clamp(28px,5vw,44px)/1 var(--font-display);letter-spacing:-.03em">Find your flavor of weird</h1>
+    <p style="max-width:56ch;margin:0;font-size:15px;line-height:1.55">Every tag that appears anywhere in the directory, in one index. Pick one to jump straight to the matching sites.</p>
+  </section>
+  <div class="tag-toolbar">
+    <div class="tag-search">
+      <label class="sr-only" for="tag-search">Search tags</label>
+      <input id="tag-search" type="search" autocomplete="off" placeholder="Search tags, e.g. sound, wander, useless...">
+    </div>
+  </div>
+  <p class="tag-countline" id="tag-countline" aria-live="polite"></p>
+  <div class="tag-list" id="tag-list" data-od-id="tag-list"></div>
+  <div class="tag-empty" id="tag-empty">No tags match that search.</div>
+</main>
+<footer data-od-id="site-footer"><div class="shell"><span>ODDWEB / AN INDEX OF THE WEB'S ODD CORNERS</span></div></footer>
+<script>
+  const tagList = document.querySelector('#tag-list');
+  const tagCountline = document.querySelector('#tag-countline');
+  const tagEmpty = document.querySelector('#tag-empty');
+  const tagSearch = document.querySelector('#tag-search');
+  const store = 'oddweb:tags';
+
+  function normalize(t) { return t.trim().toLowerCase(); }
+
+  const cards = [
+    { name: 'Radio Garden', tags: 'listen music radio world map wander' },
+    { name: 'Neal.fun', tags: 'play experiments games interactive educational fun' },
+    { name: 'Window Swap', tags: 'wander windows travel calm views world video' },
+    { name: 'Patatap', tags: 'play listen sound music keyboard visual art interactive' },
+    { name: 'MapCrunch', tags: 'wander maps travel random street view world' },
+    { name: 'Zoomquilt', tags: 'odd art infinite zoom surreal visual calm' },
+    { name: 'Pointer Pointer', tags: 'odd useless funny cursor photo weird' },
+    { name: 'A Soft Murmur', tags: 'listen sound ambient calm focus rain noise' },
+    { name: 'The Useless Web', tags: 'odd useless random funny weird surprise' }
+  ];
+
+  const counts = {};
+  cards.forEach((c) => (c.tags.split(/\s+/).filter(Boolean).forEach((t) => { const tag = normalize(t); counts[tag] = (counts[tag] || 0) + 1; })));
+  try {
+    const stored = JSON.parse(localStorage.getItem(store) || '[]').map(normalize);
+    stored.forEach((t) => { if (!(t in counts)) counts[t] = 0; });
+  } catch (_) {}
+
+  const allTags = Object.keys(counts).sort();
+
+  function render() {
+    const q = tagSearch.value.trim().toLowerCase();
+    const visible = allTags.filter((t) => !q || t.includes(q));
+    tagList.replaceChildren();
+    visible.forEach((tag) => {
+      const a = document.createElement('a');
+      a.className = 'tag-item';
+      a.href = `odd-web-directory.html?tag=${encodeURIComponent(tag)}#top`;
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = tag;
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = `${counts[tag]} site${counts[tag] === 1 ? '' : 's'}`;
+      a.append(name, count);
+      tagList.append(a);
+    });
+    tagCountline.textContent = `${visible.length} tag${visible.length === 1 ? '' : 's'}`;
+    tagEmpty.style.display = visible.length ? 'none' : 'block';
+  }
+
+  tagSearch.addEventListener('input', render);
+  render();
+</script></body></html>

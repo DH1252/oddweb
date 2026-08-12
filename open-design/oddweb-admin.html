@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local administration for reviewing, filing, and maintaining the Oddweb directory.">
+  <title>Oddweb Admin - Directory management</title>
+  <style>
+    :root {
+      --bg: #fff4cf;
+      --surface: #fffaf0;
+      --surface-warm: #ffdca8;
+      --fg: #2a1810;
+      --fg-2: #593625;
+      --muted: #8a6652;
+      --meta: #d24b1f;
+      --border: #d9aa7a;
+      --border-soft: #efd0ab;
+      --accent: #d24b1f;
+      --accent-on: #ffffff;
+      --accent-ink: color-mix(in oklab, var(--accent), black 12%);
+      --accent-hover: color-mix(in oklab, var(--accent), black 24%);
+      --success: #3d8f4f;
+      --success-ink: color-mix(in oklab, var(--success), black 34%);
+      --danger: #b83a2f;
+      --danger-ink: color-mix(in oklab, var(--danger), black 22%);
+      --font-display: "Courier New", ui-monospace, monospace;
+      --font-body: Tahoma, Verdana, sans-serif;
+      --focus-ring: 0 0 0 4px rgba(210, 75, 31, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body {
+      min-width: 0;
+      margin: 0;
+      color: var(--fg);
+      background-color: var(--surface-warm);
+      background-image:
+        linear-gradient(135deg, color-mix(in oklab, var(--border), transparent 22%) 25%, transparent 25%),
+        linear-gradient(225deg, color-mix(in oklab, var(--border), transparent 22%) 25%, transparent 25%),
+        linear-gradient(45deg, color-mix(in oklab, var(--surface), transparent 26%) 25%, transparent 25%),
+        linear-gradient(315deg, color-mix(in oklab, var(--surface), transparent 26%) 25%, var(--bg) 25%);
+      background-position: 10px 0, 10px 0, 0 0, 0 0;
+      background-size: 20px 20px;
+      font: 15px/1.55 var(--font-body);
+    }
+    button, input, select, textarea { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    .shell { width: min(100% - 32px, 900px); margin-inline: auto; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    :where(a, button, input, select, textarea):focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; box-shadow: var(--focus-ring); }
+
+    .masthead { background: var(--fg); }
+    .nav { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--surface); }
+    .brand { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; font: 600 18px/1 var(--font-display); letter-spacing: -.02em; text-decoration: none; }
+    .brand-mark { width: 19px; height: 19px; display: grid; place-items: center; color: var(--fg); background: var(--surface); border: 1px solid var(--border); font-size: 12px; }
+    .nav-links { display: flex; align-items: center; gap: 4px; font: 12px/1 var(--font-display); }
+    .nav-links a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; color: var(--fg); background: var(--surface); border: 1px solid var(--border); text-decoration: none; }
+    .nav-links a:hover { color: var(--surface); background: var(--fg-2); }
+
+    main { margin-block: 12px 16px; padding: 10px; background: var(--surface); border: 1px solid var(--fg); }
+    .admin-head { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(220px, .6fr); border: 1px solid var(--fg); }
+    .admin-intro { min-width: 0; padding: 18px; color: var(--accent-on); background: var(--accent-ink); }
+    .eyebrow { margin: 0 0 4px; font: 600 12px/1.4 var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3 { font-family: var(--font-display); }
+    h1 { margin-bottom: 6px; font-size: clamp(30px, 5vw, 44px); line-height: 1.05; letter-spacing: -.03em; }
+    .admin-intro p:last-child { max-width: 62ch; margin-bottom: 0; }
+    .admin-note { padding: 16px; background: var(--bg); border-left: 1px solid var(--fg); }
+    .admin-note strong { display: block; margin-bottom: 5px; font: 600 13px/1.3 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+    .admin-note p { margin: 0; color: var(--fg-2); font-size: 14px; }
+
+    .status-banner { margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); background: var(--bg); color: var(--fg-2); font: 13px/1.45 var(--font-display); }
+    .status-banner[data-state="error"] { color: var(--danger-ink); border-color: var(--danger); background: color-mix(in oklab, var(--surface), var(--danger) 8%); }
+    .status-banner[data-state="success"] { color: var(--success-ink); border-color: var(--success); background: color-mix(in oklab, var(--surface), var(--success) 8%); }
+
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .stat { min-width: 0; padding: 11px; border: 1px solid var(--border); background: var(--bg); }
+    .stat dt { margin-bottom: 4px; font: 600 12px/1.35 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+    .stat dd { margin: 0; font: 600 clamp(24px, 4vw, 34px)/1 var(--font-display); letter-spacing: -.03em; overflow-wrap: anywhere; }
+    .stat small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+    .admin-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 10px; margin-top: 10px; align-items: start; }
+    .panel { min-width: 0; border: 1px solid var(--fg); background: var(--surface); }
+    .panel-wide { grid-column: 1 / -1; }
+    .panel-head { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; color: var(--surface); background: var(--fg-2); }
+    .panel-head h2 { margin: 0; font-size: 14px; line-height: 1.25; letter-spacing: .08em; text-transform: uppercase; }
+    .panel-head span { color: var(--surface-warm); font: 12px/1.3 var(--font-display); }
+    .panel-body { padding: 10px; }
+    .panel-tools { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+
+    label { display: block; }
+    .field-label, label > span:first-child { display: block; margin-bottom: 5px; font: 600 12px/1.4 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+    input, select, textarea { width: 100%; min-height: 44px; padding: 7px 8px; color: var(--fg); background: var(--surface); border: 1px solid var(--fg-2); border-radius: 0; box-shadow: inset 1px 1px 0 var(--border); }
+    textarea { min-height: 86px; resize: vertical; }
+    input::placeholder, textarea::placeholder { color: var(--muted); }
+    input:user-invalid, textarea:user-invalid { border-color: var(--danger); }
+    .field { margin-bottom: 10px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .field-hint { margin: -4px 0 10px; color: var(--muted); font-size: 13px; }
+    .image-field { padding: 8px; background: var(--bg); border: 1px dotted var(--fg-2); }
+    .image-field input[type="file"] { padding: 5px; box-shadow: none; }
+    .image-field input[type="file"]::file-selector-button { min-height: 36px; margin-right: 8px; padding: 0 8px; color: var(--fg); background: var(--surface); border: 1px solid var(--fg-2); cursor: pointer; font: 600 12px/1 var(--font-body); }
+    .image-preview { position: relative; margin: 7px 0 0; border: 1px solid var(--fg-2); background: var(--surface); }
+    .image-preview img { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: cover; }
+    .image-preview figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 6px; color: var(--muted); font: 12px/1.4 var(--font-display); }
+    .image-remove { min-height: 36px; padding: 0 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); cursor: pointer; }
+    .image-remove:hover { color: var(--surface); background: var(--danger-ink); }
+
+    .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; color: var(--fg); background: var(--surface); border: 1px solid var(--fg-2); box-shadow: 1px 1px 0 var(--border); cursor: pointer; font: 600 13px/1.2 var(--font-body); letter-spacing: .02em; text-decoration: none; }
+    .btn:hover { background: var(--surface-warm); }
+    .btn:active { transform: translate(1px, 1px); box-shadow: none; }
+    .btn-primary { color: var(--accent-on); background: var(--accent-ink); }
+    .btn-primary:hover { color: var(--accent-on); background: var(--accent-hover); }
+    .btn-approve { color: var(--surface); background: var(--success-ink); }
+    .btn-approve:hover { color: var(--surface); background: color-mix(in oklab, var(--success-ink), black 12%); }
+    .btn-danger { color: var(--surface); background: var(--danger-ink); }
+    .btn-danger:hover { color: var(--surface); background: color-mix(in oklab, var(--danger-ink), black 12%); }
+    .btn[disabled] { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .queue { display: grid; gap: 8px; }
+    .submission { padding: 10px; border: 1px solid var(--border); background: var(--bg); }
+    .submission-layout { display: grid; grid-template-columns: 126px minmax(0, 1fr); gap: 10px; }
+    .record-image { position: relative; overflow: hidden; background-color: var(--surface-warm); border: 1px solid var(--fg-2); }
+    .record-image img { position: absolute; display: block; max-width: none; }
+    .record-image-file { inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .record-image-atlas { width: 300%; height: 300%; object-fit: fill; }
+    .submission-image { width: 100%; aspect-ratio: 4 / 3; }
+    .submission-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .submission h3 { margin: 0; font-size: 16px; line-height: 1.4; }
+    .submission-url { margin: 2px 0 6px; color: var(--muted); font: 12px/1.45 var(--font-display); overflow-wrap: anywhere; }
+    .submission-desc { margin: 0 0 8px; color: var(--fg-2); }
+    .submission-meta { margin: 0 0 9px; color: var(--muted); font: 12px/1.4 var(--font-display); }
+    .state-chip { flex: 0 0 auto; padding: 4px 6px; border: 1px solid currentColor; font: 600 11px/1.2 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+    .state-chip[data-state="approved"] { color: var(--success-ink); }
+    .state-chip[data-state="rejected"] { color: var(--danger-ink); }
+
+    .empty { padding: 22px 12px; text-align: center; border: 1px dashed var(--border); background: var(--bg); }
+    .empty h3 { margin-bottom: 3px; font-size: 16px; }
+    .empty p { margin: 0; color: var(--muted); }
+    .loading { padding: 18px; color: var(--muted); text-align: center; font: 13px/1.5 var(--font-display); }
+
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); }
+    table { width: 100%; min-width: 700px; border-collapse: collapse; }
+    th, td { padding: 9px 8px; border-bottom: 1px dotted var(--border); text-align: left; vertical-align: top; }
+    th { color: var(--surface); background: var(--fg-2); font: 600 12px/1.3 var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+    td { font-size: 14px; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: var(--bg); }
+    .managed-identity { min-width: 230px; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; align-items: center; }
+    .managed-image { width: 64px; aspect-ratio: 4 / 3; }
+    .site-name { display: block; font-weight: 600; }
+    .site-address { display: block; max-width: 34ch; margin-top: 2px; color: var(--muted); font: 12px/1.4 var(--font-display); overflow-wrap: anywhere; }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 3px; }
+    .tag { padding: 3px 5px; background: var(--bg); border: 1px solid var(--border); font: 11px/1.3 var(--font-display); }
+    .table-action { min-height: 36px; }
+    .source-label { font: 12px/1.4 var(--font-display); }
+
+    footer { width: min(100% - 32px, 900px); margin: 0 auto 16px; padding: 8px; background: var(--surface); border: 1px solid var(--fg); font: 12px/1.5 var(--font-display); letter-spacing: .06em; }
+    footer .shell { width: 100%; }
+
+    @media (max-width: 760px) {
+      .shell, footer { width: min(100% - 16px, 900px); }
+      .admin-head, .admin-grid { grid-template-columns: 1fr; }
+      .admin-note { border-left: 0; border-top: 1px solid var(--fg); }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .panel-wide { grid-column: auto; }
+    }
+    @media (max-width: 480px) {
+      .nav-links a { padding-inline: 6px; }
+      main { padding: 7px; }
+      .admin-intro, .admin-note { padding: 13px; }
+      .stats, .field-row { grid-template-columns: 1fr; }
+      .panel-tools, .submission-top { align-items: stretch; flex-direction: column; }
+      .submission-layout { grid-template-columns: 1fr; }
+      .submission-image { aspect-ratio: 16 / 8; }
+      .panel-tools label { width: 100%; }
+      .button-row .btn { flex: 1 1 auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead" data-od-id="site-header">
+    <nav class="nav shell" aria-label="Main navigation">
+      <a class="brand" href="odd-web-directory.html#top" data-od-id="brand-link"><span class="brand-mark" aria-hidden="true">!</span><span>ODDWEB</span></a>
+      <div class="nav-links"><a href="odd-web-directory.html#top" data-od-id="directory-link">&larr; Directory</a></div>
+    </nav>
+  </header>
+
+  <main class="shell" data-od-id="admin-page">
+    <header class="admin-head" data-od-id="admin-header">
+      <div class="admin-intro">
+        <p class="eyebrow">Local operations desk</p>
+        <h1 data-od-id="admin-heading">Directory management</h1>
+        <p>Review incoming sites, publish additions, maintain records, and see how the directory is being used.</p>
+      </div>
+      <aside class="admin-note" aria-label="Storage notice">
+        <strong>This browser only</strong>
+        <p>Changes use the same local records as the public directory. Export a backup before clearing browser data.</p>
+      </aside>
+    </header>
+
+    <div class="status-banner" id="status-banner" data-od-id="admin-status" aria-live="polite">Reading local records…</div>
+
+    <dl class="stats" data-od-id="statistics-overview" aria-label="Directory statistics">
+      <div class="stat" data-od-id="stat-published"><dt>Published sites</dt><dd id="stat-published-value">—</dd><small>Active directory records</small></div>
+      <div class="stat" data-od-id="stat-review"><dt>Waiting review</dt><dd id="stat-review-value">—</dd><small>Unresolved submissions</small></div>
+      <div class="stat" data-od-id="stat-opens"><dt>Recorded opens</dt><dd id="stat-opens-value">—</dd><small>Visits saved locally</small></div>
+      <div class="stat" data-od-id="stat-tags"><dt>Tags in use</dt><dd id="stat-tags-value">—</dd><small>Across active records</small></div>
+    </dl>
+
+    <div class="admin-grid">
+      <section class="panel" data-od-id="submission-review" aria-labelledby="review-heading">
+        <div class="panel-head"><h2 id="review-heading" data-od-id="review-heading">Submission review</h2><span id="queue-summary">CHECKING QUEUE</span></div>
+        <div class="panel-body">
+          <div class="panel-tools">
+            <label for="review-filter"><span>Show status</span><select id="review-filter" data-od-id="review-filter"><option value="pending">Waiting review</option><option value="all">All submissions</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
+            <button class="btn" id="export-data" type="button" data-od-id="export-data">Export records</button>
+          </div>
+          <div class="loading" id="queue-loading">Reading submission records…</div>
+          <div class="queue" id="submission-queue" data-od-id="submission-queue" aria-live="polite"></div>
+          <div class="empty" id="queue-empty" hidden><h3>Nothing in this view.</h3><p>Choose another status or wait for a new filing.</p></div>
+        </div>
+      </section>
+
+      <section class="panel" data-od-id="manual-entry" aria-labelledby="manual-heading">
+        <div class="panel-head"><h2 id="manual-heading" data-od-id="manual-heading">Add an entry</h2><span>MANUAL FILE</span></div>
+        <div class="panel-body">
+          <form id="entry-form" data-od-id="manual-entry-form">
+            <label class="field" for="entry-name"><span>Site name</span><input id="entry-name" data-od-id="entry-name" type="text" maxlength="60" required placeholder="Name as it should appear"></label>
+            <label class="field" for="entry-url"><span>Website address</span><input id="entry-url" data-od-id="entry-url" type="url" required placeholder="https://" aria-describedby="entry-form-note"></label>
+            <div class="field image-field"><label for="entry-image"><span>Site preview image</span></label><input id="entry-image" data-od-id="entry-image" type="file" accept="image/png,image/jpeg,image/webp" required aria-describedby="entry-image-hint"><small class="field-hint" id="entry-image-hint">PNG, JPEG, or WebP. The image is resized before local storage.</small><figure class="image-preview" id="entry-image-preview" hidden><img id="entry-image-preview-img" alt="Selected site preview"><figcaption><span>Entry preview</span><button class="image-remove" id="entry-image-remove" type="button">Remove image</button></figcaption></figure></div>
+            <label class="field" for="entry-description"><span>Directory description</span><textarea id="entry-description" data-od-id="entry-description" maxlength="220" required placeholder="Describe what happens when someone visits"></textarea></label>
+            <div class="field-row">
+              <label class="field" for="entry-tags"><span>Tags</span><input id="entry-tags" data-od-id="entry-tags" type="text" placeholder="audio, playful, tool" aria-describedby="entry-tags-hint"></label>
+              <label class="field" for="entry-status"><span>Initial status</span><select id="entry-status" data-od-id="entry-status"><option value="active">Published</option><option value="archived">Archived</option></select></label>
+            </div>
+            <p class="field-hint" id="entry-tags-hint">Separate tags with commas. Duplicate tags are merged.</p>
+            <p class="field-hint" id="entry-form-note" aria-live="polite">Manual records are saved to this browser.</p>
+            <button class="btn btn-primary" type="submit" data-od-id="entry-submit">Add entry</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel panel-wide" data-od-id="site-management" aria-labelledby="sites-heading">
+        <div class="panel-head"><h2 id="sites-heading" data-od-id="sites-heading">Site management</h2><span id="site-summary">ACTIVE RECORDS</span></div>
+        <div class="panel-body">
+          <div class="panel-tools">
+            <label for="site-search"><span>Find a record</span><input id="site-search" data-od-id="site-search" type="search" autocomplete="off" placeholder="Search name, address, or tag"></label>
+            <label for="site-filter"><span>Show records</span><select id="site-filter" data-od-id="site-filter"><option value="active">Published</option><option value="all">All records</option><option value="archived">Archived</option></select></label>
+          </div>
+          <div class="table-wrap">
+            <table data-od-id="managed-sites-table">
+              <caption class="sr-only">Oddweb directory records</caption>
+              <thead><tr><th scope="col">Site</th><th scope="col">Tags</th><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <tbody id="site-table-body"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="sites-empty" hidden><h3>No records match.</h3><p>Change the status filter or search with fewer words.</p></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer data-od-id="site-footer"><div class="shell"><span>ODDWEB / AN INDEX OF THE WEB'S ODD CORNERS</span></div></footer>
+
+  <script>
+    (() => {
+      const SUBMISSION_STORE = 'oddweb:submissions';
+      const MODERATION_STORE = 'oddweb:moderation';
+      const ENTRY_STORE = 'oddweb:managed-entries';
+      const VISIT_STORE = 'oddweb:visits';
+      const TAG_STORE = 'oddweb:tags';
+
+      const BUILTIN_SITES = [
+        { id: 'the-useless-web', name: 'The Useless Web', url: 'the-useless-web.html', tags: ['odd', 'useless', 'random', 'funny'], source: 'Directory', status: 'active', imagePosition: '100% 100%' },
+        { id: 'a-soft-murmur', name: 'A Soft Murmur', url: 'a-soft-murmur.html', tags: ['audio', 'ambient', 'focus'], source: 'Directory', status: 'active', imagePosition: '50% 100%' },
+        { id: 'pointer-pointer', name: 'Pointer Pointer', url: 'pointer-pointer.html', tags: ['odd', 'camera', 'cursor'], source: 'Directory', status: 'active', imagePosition: '0 100%' },
+        { id: 'zoomquilt', name: 'Zoomquilt', url: 'zoomquilt.html', tags: ['art', 'infinite', 'visual'], source: 'Directory', status: 'active', imagePosition: '100% 50%' },
+        { id: 'mapcrunch', name: 'MapCrunch', url: 'mapcrunch.html', tags: ['travel', 'random', 'maps'], source: 'Directory', status: 'active', imagePosition: '50% 50%' },
+        { id: 'patatap', name: 'Patatap', url: 'patatap.html', tags: ['audio', 'playful', 'keyboard'], source: 'Directory', status: 'active', imagePosition: '0 50%' },
+        { id: 'window-swap', name: 'Window Swap', url: 'window-swap.html', tags: ['travel', 'ambient', 'video'], source: 'Directory', status: 'active', imagePosition: '100% 0' },
+        { id: 'neal-fun', name: 'Neal.fun', url: 'neal-fun.html', tags: ['interactive', 'playful', 'learning'], source: 'Directory', status: 'active', imagePosition: '50% 0' },
+        { id: 'radio-garden', name: 'Radio Garden', url: 'radio-garden.html', tags: ['audio', 'radio', 'travel'], source: 'Directory', status: 'active', imagePosition: '0 0' }
+      ];
+      const BUILTIN_SUBMISSIONS = [
+        { name: 'The Museum of Anything', url: 'https://museumofanything.com/', description: "A strange museum full of things that don't fit together.", tags: ['museum', 'odd'], submittedAt: '2026-08-06T10:00:00', imagePosition: '100% 100%' },
+        { name: 'Neonflames', url: 'https://www.neonflames.com/', description: 'Paint with glowing colors on a black canvas.', tags: ['art', 'drawing'], submittedAt: '2026-08-04T10:00:00', imagePosition: '50% 0' },
+        { name: 'Windows 93', url: 'https://www.windows93.net/', description: 'A ridiculous fake operating system.', tags: ['odd', 'interactive'], submittedAt: '2026-08-01T10:00:00', imagePosition: '0 50%' }
+      ];
+      const BASE_VISITS = {
+        'radio-garden.html': 187, 'neal-fun.html': 154, 'window-swap.html': 122,
+        'patatap.html': 96, 'mapcrunch.html': 81, 'zoomquilt.html': 73,
+        'pointer-pointer.html': 61, 'a-soft-murmur.html': 48, 'the-useless-web.html': 39
+      };
+
+      const statusBanner = document.querySelector('#status-banner');
+      const queue = document.querySelector('#submission-queue');
+      const queueEmpty = document.querySelector('#queue-empty');
+      const queueLoading = document.querySelector('#queue-loading');
+      const reviewFilter = document.querySelector('#review-filter');
+      const queueSummary = document.querySelector('#queue-summary');
+      const entryForm = document.querySelector('#entry-form');
+      const entryUrl = document.querySelector('#entry-url');
+      const entryImage = document.querySelector('#entry-image');
+      const entryImagePreview = document.querySelector('#entry-image-preview');
+      const entryImagePreviewImg = document.querySelector('#entry-image-preview-img');
+      const entryFormNote = document.querySelector('#entry-form-note');
+      const siteSearch = document.querySelector('#site-search');
+      const siteFilter = document.querySelector('#site-filter');
+      const tableBody = document.querySelector('#site-table-body');
+      const sitesEmpty = document.querySelector('#sites-empty');
+      const siteSummary = document.querySelector('#site-summary');
+
+      let submissions = [];
+      let moderation = {};
+      let managedEntries = [];
+      let visitCounts = {};
+      let storedTags = [];
+      let storageReady = true;
+      let entryImageData = '';
+
+      function normalize(value) { return String(value || '').trim().toLowerCase(); }
+      function safeId(value) { return normalize(value).replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `site-${Date.now()}`; }
+      function uniqueTags(value) {
+        const list = Array.isArray(value) ? value : String(value || '').split(',');
+        return [...new Set(list.map(normalize).filter(Boolean))];
+      }
+      function compressImage(file, maxEdge = 720) {
+        return new Promise((resolve, reject) => {
+          if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+            reject(new Error('Choose a PNG, JPEG, or WebP image.'));
+            return;
+          }
+          if (file.size > 8 * 1024 * 1024) {
+            reject(new Error('Choose an image smaller than 8 MB.'));
+            return;
+          }
+          const objectUrl = URL.createObjectURL(file);
+          const image = new Image();
+          image.onload = () => {
+            const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(objectUrl);
+            resolve(canvas.toDataURL('image/webp', .82));
+          };
+          image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('That image could not be read.')); };
+          image.src = objectUrl;
+        });
+      }
+      function clearEntryImage() {
+        entryImageData = '';
+        entryImage.value = '';
+        entryImage.setCustomValidity('');
+        entryImagePreviewImg.removeAttribute('src');
+        entryImagePreview.hidden = true;
+      }
+      function applyRecordImage(element, item) {
+        const image = document.createElement('img');
+        image.alt = `Preview image for ${item.name}`;
+        if (item.image) {
+          image.className = 'record-image-file';
+          image.src = item.image;
+        } else {
+          const offsets = {
+            '0 0': ['0', '0'], '50% 0': ['-100%', '0'], '100% 0': ['-200%', '0'],
+            '0 50%': ['0', '-100%'], '50% 50%': ['-100%', '-100%'], '100% 50%': ['-200%', '-100%'],
+            '0 100%': ['0', '-200%'], '50% 100%': ['-100%', '-200%'], '100% 100%': ['-200%', '-200%']
+          };
+          const [left, top] = offsets[item.imagePosition] || offsets['100% 100%'];
+          image.className = 'record-image-atlas';
+          image.src = 'oddweb-site-thumbnails.png';
+          image.style.left = left;
+          image.style.top = top;
+        }
+        element.replaceChildren(image);
+      }
+      function readStore(key, fallback) {
+        try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+        catch (_) { storageReady = false; return fallback; }
+      }
+      function writeStore(key, value) {
+        try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+        catch (_) { storageReady = false; showStatus('Browser storage is unavailable. This change could not be saved.', 'error'); return false; }
+      }
+      function showStatus(message, state = '') {
+        statusBanner.textContent = message;
+        if (state) statusBanner.dataset.state = state;
+        else delete statusBanner.dataset.state;
+      }
+      function submissionKey(item) { return normalize(item.url); }
+      function statusOf(item) { return moderation[submissionKey(item)] || 'pending'; }
+      function formatDate(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? 'Date unavailable' : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+      }
+      function mergeSubmissions(stored) {
+        const all = [...stored.filter(Boolean), ...BUILTIN_SUBMISSIONS];
+        return [...new Map(all.filter((item) => item && item.url && item.name).map((item) => [submissionKey(item), { ...item, tags: uniqueTags(item.tags) }])).values()];
+      }
+      function activeSites() { return [...BUILTIN_SITES, ...managedEntries].filter((item) => item.status === 'active'); }
+
+      function renderStats() {
+        const active = activeSites();
+        const pending = submissions.filter((item) => statusOf(item) === 'pending').length;
+        const visitTotal = Object.values({ ...BASE_VISITS, ...visitCounts }).reduce((sum, count) => sum + Math.max(0, Number(count) || 0), 0);
+        const tags = new Set([...storedTags, ...active.flatMap((item) => uniqueTags(item.tags))]);
+        document.querySelector('#stat-published-value').textContent = String(active.length);
+        document.querySelector('#stat-review-value').textContent = String(pending);
+        document.querySelector('#stat-opens-value').textContent = new Intl.NumberFormat('en').format(visitTotal);
+        document.querySelector('#stat-tags-value').textContent = String(tags.size);
+      }
+
+      function makeButton(label, className, action, item) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `btn ${className}`.trim();
+        button.textContent = label;
+        button.dataset.action = action;
+        button.dataset.key = submissionKey(item);
+        return button;
+      }
+
+      function renderQueue() {
+        const filter = reviewFilter.value;
+        const visible = submissions
+          .filter((item) => filter === 'all' || statusOf(item) === filter)
+          .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+        queue.replaceChildren();
+        visible.forEach((item) => {
+          const state = statusOf(item);
+          const card = document.createElement('article');
+          card.className = 'submission';
+          card.dataset.odId = `submission-${safeId(item.name)}`;
+          const layout = document.createElement('div');
+          layout.className = 'submission-layout';
+          const preview = document.createElement('div');
+          preview.className = 'record-image submission-image';
+          applyRecordImage(preview, item);
+          const content = document.createElement('div');
+          const top = document.createElement('div');
+          top.className = 'submission-top';
+          const titleWrap = document.createElement('div');
+          const title = document.createElement('h3');
+          title.textContent = item.name;
+          const address = document.createElement('p');
+          address.className = 'submission-url';
+          address.textContent = item.url;
+          titleWrap.append(title, address);
+          const stateChip = document.createElement('span');
+          stateChip.className = 'state-chip';
+          stateChip.dataset.state = state;
+          stateChip.textContent = state === 'pending' ? 'Waiting' : state;
+          top.append(titleWrap, stateChip);
+          const desc = document.createElement('p');
+          desc.className = 'submission-desc';
+          desc.textContent = item.description || 'No description was supplied.';
+          const meta = document.createElement('p');
+          meta.className = 'submission-meta';
+          meta.textContent = `${formatDate(item.submittedAt)}${item.tags?.length ? ` / ${uniqueTags(item.tags).join(', ')}` : ''}`;
+          const actions = document.createElement('div');
+          actions.className = 'button-row';
+          if (state !== 'approved') actions.append(makeButton('Approve', 'btn-approve', 'approve', item));
+          if (state !== 'rejected') actions.append(makeButton('Reject', 'btn-danger', 'reject', item));
+          if (state !== 'pending') actions.append(makeButton('Return to review', '', 'pending', item));
+          content.append(top, desc, meta, actions);
+          layout.append(preview, content);
+          card.append(layout);
+          queue.append(card);
+        });
+        queueLoading.hidden = true;
+        queue.hidden = visible.length === 0;
+        queueEmpty.hidden = visible.length !== 0;
+        queueSummary.textContent = `${visible.length} ${visible.length === 1 ? 'RECORD' : 'RECORDS'}`;
+      }
+
+      function approveSubmission(item) {
+        const key = submissionKey(item);
+        const existing = managedEntries.find((entry) => normalize(entry.url) === key);
+        if (!existing) {
+          managedEntries.unshift({ id: safeId(item.name), name: item.name, url: item.url, description: item.description || '', tags: uniqueTags(item.tags), image: item.image || '', imagePosition: item.imagePosition || '', source: 'Submission', status: 'active', addedAt: Date.now() });
+          writeStore(ENTRY_STORE, managedEntries);
+        } else if (existing.status !== 'active') {
+          existing.status = 'active';
+          writeStore(ENTRY_STORE, managedEntries);
+        }
+        moderation[key] = 'approved';
+        writeStore(MODERATION_STORE, moderation);
+        showStatus(`Approved “${item.name}” and added it to published records.`, 'success');
+      }
+
+      function updateModeration(key, state) {
+        const item = submissions.find((submission) => submissionKey(submission) === key);
+        if (!item) return;
+        if (state === 'approve') approveSubmission(item);
+        else {
+          moderation[key] = state;
+          if (state !== 'approved') {
+            const managedEntry = managedEntries.find((entry) => normalize(entry.url) === key);
+            if (managedEntry) {
+              managedEntry.status = 'archived';
+              writeStore(ENTRY_STORE, managedEntries);
+            }
+          }
+          writeStore(MODERATION_STORE, moderation);
+          if (state === 'rejected') showStatus(`Rejected “${item.name}”.`);
+          else showStatus(`Returned “${item.name}” to the review queue.`, 'success');
+        }
+        renderAll();
+      }
+
+      function allSites() { return [...BUILTIN_SITES, ...managedEntries]; }
+      function renderSites() {
+        const query = normalize(siteSearch.value);
+        const filter = siteFilter.value;
+        const visible = allSites().filter((site) => {
+          const matchesStatus = filter === 'all' || site.status === filter;
+          const haystack = normalize(`${site.name} ${site.url} ${uniqueTags(site.tags).join(' ')}`);
+          return matchesStatus && (!query || haystack.includes(query));
+        });
+        tableBody.replaceChildren();
+        visible.forEach((site) => {
+          const row = document.createElement('tr');
+          row.dataset.odId = `managed-site-${safeId(site.id || site.name)}`;
+          const identity = document.createElement('td');
+          const identityLayout = document.createElement('div');
+          identityLayout.className = 'managed-identity';
+          const preview = document.createElement('div');
+          preview.className = 'record-image managed-image';
+          applyRecordImage(preview, site);
+          const identityText = document.createElement('div');
+          const name = document.createElement('span');
+          name.className = 'site-name';
+          name.textContent = site.name;
+          const address = document.createElement('span');
+          address.className = 'site-address';
+          address.textContent = site.url;
+          identityText.append(name, address);
+          identityLayout.append(preview, identityText);
+          identity.append(identityLayout);
+          const tagCell = document.createElement('td');
+          const tags = document.createElement('div');
+          tags.className = 'tag-list';
+          uniqueTags(site.tags).forEach((tagName) => {
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.textContent = tagName;
+            tags.append(tag);
+          });
+          if (!tags.children.length) tags.textContent = '—';
+          tagCell.append(tags);
+          const source = document.createElement('td');
+          source.className = 'source-label';
+          source.textContent = site.source || 'Manual';
+          const status = document.createElement('td');
+          status.textContent = site.status === 'active' ? 'Published' : 'Archived';
+          const action = document.createElement('td');
+          if (site.source === 'Directory') action.textContent = 'Built in';
+          else {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'btn table-action';
+            toggle.dataset.action = 'toggle-site';
+            toggle.dataset.id = site.id;
+            toggle.textContent = site.status === 'active' ? 'Archive' : 'Restore';
+            action.append(toggle);
+          }
+          row.append(identity, tagCell, source, status, action);
+          tableBody.append(row);
+        });
+        document.querySelector('.table-wrap').hidden = visible.length === 0;
+        sitesEmpty.hidden = visible.length !== 0;
+        siteSummary.textContent = `${visible.length} ${visible.length === 1 ? 'RECORD' : 'RECORDS'}`;
+      }
+
+      function renderAll() { renderQueue(); renderSites(); renderStats(); }
+
+      queue.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (button) updateModeration(button.dataset.key, button.dataset.action);
+      });
+      reviewFilter.addEventListener('change', renderQueue);
+      siteSearch.addEventListener('input', renderSites);
+      siteFilter.addEventListener('change', renderSites);
+      tableBody.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action="toggle-site"]');
+        if (!button) return;
+        const site = managedEntries.find((entry) => entry.id === button.dataset.id);
+        if (!site) return;
+        site.status = site.status === 'active' ? 'archived' : 'active';
+        if (writeStore(ENTRY_STORE, managedEntries)) showStatus(`${site.name} is now ${site.status === 'active' ? 'published' : 'archived'}.`, 'success');
+        renderAll();
+      });
+
+      entryUrl.addEventListener('input', () => {
+        entryUrl.setCustomValidity('');
+        entryUrl.removeAttribute('aria-invalid');
+        entryFormNote.textContent = 'Manual records are saved to this browser.';
+      });
+      document.querySelector('#entry-image-remove').addEventListener('click', clearEntryImage);
+      entryImage.addEventListener('change', async () => {
+        const file = entryImage.files[0];
+        if (!file) { clearEntryImage(); return; }
+        entryImage.setCustomValidity('');
+        entryFormNote.textContent = 'Preparing the preview image…';
+        try {
+          entryImageData = await compressImage(file);
+          entryImagePreviewImg.src = entryImageData;
+          entryImagePreview.hidden = false;
+          entryFormNote.textContent = 'Preview ready. Manual records are saved to this browser.';
+        } catch (error) {
+          clearEntryImage();
+          entryImage.setCustomValidity(error.message);
+          entryFormNote.textContent = error.message;
+          entryImage.reportValidity();
+        }
+      });
+      entryForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(entryUrl.value.trim());
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Unsupported protocol');
+        } catch (_) {
+          entryUrl.setCustomValidity('Use a full web address beginning with http:// or https://');
+          entryUrl.setAttribute('aria-invalid', 'true');
+          entryFormNote.textContent = 'Enter a full address beginning with http:// or https://.';
+          entryUrl.reportValidity();
+          return;
+        }
+        if (!entryImageData) {
+          entryImage.setCustomValidity('Choose a preview image for this site');
+          entryImage.reportValidity();
+          return;
+        }
+        const name = document.querySelector('#entry-name').value.trim();
+        const tags = uniqueTags(document.querySelector('#entry-tags').value);
+        const existing = allSites().some((site) => normalize(site.url) === normalize(parsedUrl.href));
+        if (existing) {
+          entryUrl.setCustomValidity('This address is already in the directory records');
+          entryUrl.setAttribute('aria-invalid', 'true');
+          entryFormNote.textContent = 'That website address is already filed.';
+          entryUrl.reportValidity();
+          return;
+        }
+        const record = {
+          id: `${safeId(name)}-${Date.now()}`,
+          name,
+          url: parsedUrl.href,
+          description: document.querySelector('#entry-description').value.trim(),
+          tags,
+          image: entryImageData,
+          source: 'Manual',
+          status: document.querySelector('#entry-status').value,
+          addedAt: Date.now()
+        };
+        managedEntries.unshift(record);
+        if (writeStore(ENTRY_STORE, managedEntries)) {
+          storedTags = [...new Set([...storedTags, ...tags])];
+          writeStore(TAG_STORE, storedTags);
+          showStatus(`Added “${name}” to directory records.`, 'success');
+          entryForm.reset();
+          clearEntryImage();
+          entryFormNote.textContent = 'Manual records are saved to this browser.';
+        }
+        renderAll();
+      });
+
+      document.querySelector('#export-data').addEventListener('click', () => {
+        const payload = { exportedAt: new Date().toISOString(), submissions, moderation, managedEntries, visitCounts, tags: storedTags };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `oddweb-records-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showStatus('Exported the current local records.', 'success');
+      });
+
+      function initialize() {
+        const storedSubmissions = readStore(SUBMISSION_STORE, []);
+        submissions = mergeSubmissions(Array.isArray(storedSubmissions) ? storedSubmissions : []);
+        moderation = readStore(MODERATION_STORE, {});
+        managedEntries = readStore(ENTRY_STORE, []).filter(Boolean).map((entry) => ({ ...entry, tags: uniqueTags(entry.tags), status: entry.status === 'archived' ? 'archived' : 'active' }));
+        visitCounts = readStore(VISIT_STORE, {});
+        storedTags = uniqueTags(readStore(TAG_STORE, []));
+        renderAll();
+        showStatus(storageReady ? 'Local records are ready.' : 'Some local records could not be read. Review browser storage settings.', storageReady ? '' : 'error');
+      }
+
+      initialize();
+    })();
+  </script>
+</body>
+</html>

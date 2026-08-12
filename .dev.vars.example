@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local authentication only. Never commit real values.
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=replace-with-output-from-npm-run-auth-hash
+ADMIN_SESSION_SECRET=replace-with-at-least-32-random-characters

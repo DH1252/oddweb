@@ -1,5 +1,20 @@
+@import 'tailwindcss';
 
-@import "tailwindcss";
+@theme {
+  --color-canvas: #fff4cf;
+  --color-paper: #fffaf0;
+  --color-warm: #ffdca8;
+  --color-ink: #2a1810;
+  --color-brown: #593625;
+  --color-muted: #8a6652;
+  --color-rust: #b9431d;
+  --color-line: #d9aa7a;
+  --color-soft-line: #efd0ab;
+  --color-success: #2f6f3c;
+  --color-danger: #9f2f26;
+  --font-sans: Tahoma, Verdana, sans-serif;
+  --font-mono: 'Courier New', ui-monospace, monospace;
+}
 
 * {
   box-sizing: border-box;
@@ -13,5 +28,69 @@ body,
 
 body {
   margin: 0;
+  color: #2a1810;
+  background: #ffdca8;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #b9431d;
+  outline-offset: 2px;
+}
+
+.odd-shell {
+  width: min(calc(100% - 32px), 900px);
+  margin-inline: auto;
+}
+
+.odd-grid-bg {
+  background-color: #ffdca8;
+  background-image:
+    linear-gradient(135deg, rgb(217 170 122 / 42%) 25%, transparent 25%),
+    linear-gradient(225deg, rgb(217 170 122 / 42%) 25%, transparent 25%),
+    linear-gradient(45deg, rgb(255 250 240 / 52%) 25%, transparent 25%),
+    linear-gradient(315deg, rgb(255 250 240 / 52%) 25%, #fff4cf 25%);
+  background-position:
+    10px 0,
+    10px 0,
+    0 0,
+    0 0;
+  background-size: 20px 20px;
+}
+
+.odd-crosshatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 7px,
+    rgb(255 255 255 / 70%) 7px 8px
+  );
+}
+
+@media (max-width: 720px) {
+  .odd-shell {
+    width: min(calc(100% - 16px), 900px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

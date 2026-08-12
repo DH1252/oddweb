@@ -1,0 +1,1292 @@
+<!doctype html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A searchable directory of unique, playful, and unexpected websites worth exploring.">
+  <title>Oddweb - Unique websites worth exploring</title>
+  <style>
+    /* design-systems/retro/tokens.css
+     * Structured token bindings for Retro.
+     * retro interface with warm colors, chunky controls, and nostalgic product cards.
+     */
+
+    :root {
+      --bg: #fff4cf;
+      --surface: #fffaf0;
+      --surface-warm: #ffdca8;
+      --fg: #2a1810;
+      --fg-2: #593625;
+      --muted: #8a6652;
+      --meta: #d24b1f;
+      --border: #d9aa7a;
+      --border-soft: #efd0ab;
+      --accent: #d24b1f;
+      --accent-on: #ffffff;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+      --accent-ink: color-mix(in oklab, var(--accent), black 12%);
+      --accent-ink-hover: color-mix(in oklab, var(--accent), black 24%);
+      --accent-ink-press: color-mix(in oklab, var(--accent), black 34%);
+      --meta-ink: color-mix(in oklab, var(--meta), black 22%);
+      --success: #3d8f4f;
+      --warn: #f2a93b;
+      --danger: #b83a2f;
+      --font-display: "Courier New", ui-monospace, monospace;
+      --font-body: Tahoma, Verdana, sans-serif;
+      --font-mono: "Courier New", ui-monospace, monospace;
+      --text-xs: 12px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 18px;
+      --text-xl: 24px;
+      --text-2xl: 36px;
+      --text-3xl: 54px;
+      --text-4xl: 76px;
+      --leading-body: 1.52;
+      --leading-tight: 1.06;
+      --tracking-display: 0;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 68px;
+      --section-y-phone: 48px;
+      --radius-sm: 0;
+      --radius-md: 0;
+      --radius-lg: 0;
+      --radius-pill: 0;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: 6px 6px 0 rgba(42, 24, 16, 0.26);
+      --focus-ring: 0 0 0 4px rgba(210, 75, 31, 0.28);
+      --motion-fast: 150ms;
+      --motion-base: 240ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 900px;
+      --container-gutter-desktop: 36px;
+      --container-gutter-tablet: 24px;
+      --container-gutter-phone: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    html { color-scheme: light; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: var(--text-base); line-height: var(--leading-body); }
+    button, input, select, textarea { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { color: inherit; }
+    a { color: inherit; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+    .container { width: min(100% - 72px, var(--container-max)); margin-inline: auto; }
+
+    .masthead { border-bottom: 2px solid var(--fg); }
+    .topline { background: var(--fg); color: var(--surface); font: 500 var(--text-xs)/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+    .topline .container { display: flex; justify-content: space-between; gap: var(--space-4); padding-block: var(--space-2); }
+    .nav { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); }
+    .brand { display: inline-flex; align-items: center; gap: var(--space-3); text-decoration: none; font: 600 var(--text-xl)/1 var(--font-display); letter-spacing: -.02em; }
+    .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; background: var(--surface-warm); border: 2px solid var(--fg); border-radius: 50%; font-size: var(--text-lg); transform: rotate(-8deg); }
+    .nav-links { display: flex; align-items: center; gap: var(--space-6); font-size: var(--text-sm); font-weight: 550; }
+    .nav-links a { text-underline-offset: 5px; text-decoration-thickness: 2px; }
+    .nav-links a:hover { text-decoration-color: var(--meta); }
+
+    .hero { padding-block: var(--space-12); border-bottom: 1px solid var(--border); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: var(--space-12); align-items: end; }
+    .eyebrow { margin: 0 0 var(--space-3); color: var(--meta); font: 600 var(--text-xs)/1.4 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3 { font-family: var(--font-display); }
+    h1 { max-width: 760px; margin-bottom: var(--space-5); font-size: clamp(42px, 6.4vw, var(--text-4xl)); line-height: 1.02; letter-spacing: -.03em; }
+    .lead { max-width: 58ch; margin-bottom: 0; color: var(--fg-2); font-size: var(--text-lg); }
+    .field-label { display: block; margin-bottom: var(--space-2); font: 600 var(--text-xs)/1.4 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
+    .search-wrap { position: relative; }
+    input { width: 100%; min-height: 54px; padding: var(--space-3) var(--space-4); color: var(--fg); background: var(--surface); border: 2px solid var(--fg); border-radius: var(--radius-md); box-shadow: var(--elev-raised); }
+    input::placeholder { color: var(--muted); }
+    input:focus { border-color: var(--accent); }
+
+    main { padding-block: var(--space-8) var(--section-y-desktop); }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); }
+    .toolbar-actions { display: flex; gap: var(--space-4); }
+    .filters { display: flex; gap: var(--space-2); overflow-x: auto; padding: 4px; margin: -4px; scrollbar-width: none; }
+    .filters::-webkit-scrollbar { display: none; }
+    .chip, .btn { min-height: 44px; border: 2px solid var(--fg); border-radius: var(--radius-md); cursor: pointer; font-weight: 600; letter-spacing: .02em; transition: transform var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard); }
+    .chip { flex: 0 0 auto; padding: 0 var(--space-4); background: transparent; }
+    .chip:hover { background: var(--surface-warm); }
+    .chip[aria-pressed="true"] { background: var(--fg); color: var(--surface); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: 0 var(--space-5); text-decoration: none; }
+    .btn:hover { transform: translate(-1px, -1px); }
+    .btn:active { transform: translate(2px, 2px); }
+    .btn-secondary { background: var(--surface); box-shadow: 3px 3px 0 var(--fg); }
+    .btn-secondary:hover { background: var(--surface-warm); }
+    .btn-primary { background: var(--accent-ink); color: var(--accent-on); box-shadow: 3px 3px 0 var(--fg); }
+    .btn-primary:hover { background: var(--accent-ink-hover); color: var(--accent-on); }
+    .btn-primary:active { background: var(--accent-ink-press); color: var(--accent-on); }
+
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8); align-items: start; }
+    .catalog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+    .catalog-head h2 { margin: 0; font-size: var(--text-xl); letter-spacing: -.01em; }
+    .catalog-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); }
+    .sort-label { display: inline-flex; align-items: center; gap: var(--space-2); font: 600 var(--text-xs)/1.4 var(--font-mono); letter-spacing: .02em; }
+    .sort-select { min-height: 44px; padding: 0 34px 0 var(--space-3); color: var(--fg); background: var(--surface); border: 2px solid var(--fg); border-radius: var(--radius-md); cursor: pointer; font: 600 var(--text-sm)/1.2 var(--font-body); }
+    .result-count { margin: 0; color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); letter-spacing: .02em; }
+    .card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
+    .site-card { min-width: 0; background: var(--surface); border: 2px solid var(--fg); border-radius: var(--radius-lg); box-shadow: var(--elev-raised); overflow: hidden; transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
+    .site-card:hover { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 color-mix(in oklab, var(--fg), transparent 74%); }
+    .site-card:focus-within { box-shadow: var(--focus-ring), var(--elev-raised); }
+    .thumb { min-height: 142px; padding: var(--space-4); display: flex; align-items: center; justify-content: center; color: var(--fg); background-color: var(--surface-warm); border-bottom: 2px solid var(--fg); background-image: repeating-linear-gradient(135deg, transparent 0 13px, color-mix(in oklab, var(--border), transparent 42%) 13px 15px); }
+    .card-body { padding: var(--space-5); }
+    .site-card h3 { margin-bottom: var(--space-2); font-size: var(--text-lg); line-height: 1.2; }
+    .site-card p { min-height: 3.05em; margin-bottom: var(--space-4); color: var(--fg-2); font-size: var(--text-sm); }
+    .visit-count { color: var(--muted); font: var(--text-xs)/1.4 var(--font-mono); }
+
+    .empty { display: none; padding: var(--space-8); background: var(--surface); border: 2px dashed var(--border); border-radius: var(--radius-lg); text-align: center; }
+    .empty h3 { margin-bottom: var(--space-2); }
+    footer { padding-block: var(--space-6); border-top: 2px solid var(--fg); font: var(--text-xs)/1.5 var(--font-mono); }
+    footer .container { display: flex; justify-content: space-between; gap: var(--space-5); }
+    [hidden] { display: none !important; }
+
+    @media (max-width: 920px) {
+      .container { width: min(100% - 48px, var(--container-max)); }
+      .hero-grid, .content-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: var(--space-8); }
+    }
+    @media (max-width: 640px) {
+      .container { width: min(100% - 32px, var(--container-max)); }
+      .topline .container span:last-child { display: none; }
+      .nav { min-height: 64px; }
+      .hero { padding-block: var(--section-y-phone); }
+      h1 { font-size: clamp(38px, 13vw, 54px); line-height: 1.04; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .filters { order: 2; }
+      .toolbar .btn { align-self: flex-start; }
+      .catalog-head { align-items: flex-start; flex-direction: column; }
+      .catalog-tools { width: 100%; justify-content: space-between; }
+      .card-grid { grid-template-columns: 1fr; }
+      .thumb { min-height: 128px; }
+      main { padding-bottom: var(--section-y-phone); }
+      footer .container { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+
+    /* 2002 web-zine edition: compact portal proportions and square UI. */
+    body {
+      font-family: Tahoma, Verdana, var(--font-body);
+      font-size: 15px;
+      background-color: var(--surface-warm);
+    }
+    .container { width: min(100% - 32px, 900px); }
+    .masthead { background: var(--fg); border: 0; }
+    .topline { border-bottom: 1px solid var(--border); }
+    .topline .container { min-height: 28px; align-items: center; padding-block: 4px; }
+    .nav { min-height: 44px; color: var(--surface); }
+    .brand { min-height: 44px; gap: 6px; font-size: 18px; letter-spacing: -.02em; }
+    .brand-mark { width: 19px; height: 19px; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 0; box-shadow: none; transform: none; font-size: 12px; }
+    .nav-links { gap: 4px; font: 12px/1 var(--font-mono); }
+    .nav-links a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; color: var(--fg); background: var(--surface); border: 1px solid var(--border); text-decoration: none; }
+    .nav-links a:hover { color: var(--surface); background: var(--fg-2); }
+
+    .hero { width: min(100% - 32px, 900px); margin: 12px auto 0; padding: 12px; background: var(--surface); border: 1px solid var(--fg); }
+    .hero .container { width: 100%; }
+    .hero-grid { grid-template-columns: minmax(0, 1.35fr) minmax(250px, .65fr); gap: 12px; align-items: stretch; }
+    .hero-grid > div:first-child { padding: 13px 16px 12px; color: var(--accent-on); background: var(--accent-ink); border: 1px solid var(--fg); }
+    .eyebrow { margin-bottom: 3px; color: var(--accent-on); font-size: 12px; letter-spacing: .08em; }
+    h1 { max-width: none; margin-bottom: 3px; font-size: clamp(29px, 4vw, 42px); line-height: 1; letter-spacing: -.03em; }
+    .lead { max-width: 60ch; color: var(--accent-on); font-size: 15px; line-height: 1.55; }
+    .hero-grid > div:last-child { padding: 10px; background: var(--bg); border: 1px dotted var(--fg-2); }
+    .field-label { margin-bottom: 5px; font-size: 12px; }
+    input { min-height: 44px; padding: 6px 8px; border: 1px solid var(--fg-2); border-radius: 0; box-shadow: inset 1px 1px 0 var(--border); font-size: 15px; }
+
+    main { width: min(100% - 32px, 900px) !important; margin: 8px auto 16px; padding: 10px; background: var(--surface); border: 1px solid var(--fg); }
+    .toolbar { min-height: 37px; margin-bottom: 9px; padding: 5px; background: var(--bg); border: 1px dotted var(--fg-2); }
+    .filters { flex-wrap: wrap; gap: 3px; padding: 0; margin: 0; overflow: visible; }
+    .chip, .btn { min-height: 44px; border: 1px solid var(--fg-2); border-radius: 0; box-shadow: 1px 1px 0 var(--border); font-size: 13px; transition: none; }
+    .chip { padding: 0 9px; background: var(--surface); }
+    .chip[aria-pressed="true"] { color: var(--surface); background: var(--fg); }
+    .chip[aria-pressed="true"]:hover { color: var(--surface); background: var(--fg-2); }
+    .btn { padding-inline: 10px; white-space: nowrap; }
+    .btn:hover { transform: none; }
+    .btn:active { transform: translate(1px, 1px); box-shadow: none; }
+    .btn:disabled { color: var(--muted); background: var(--bg); box-shadow: none; cursor: wait; transform: none; }
+    .btn-secondary { box-shadow: 1px 1px 0 var(--border); }
+    .btn-primary { min-height: 44px; box-shadow: 1px 1px 0 var(--border); }
+
+    .content-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .content-grid > section { min-width: 0; padding: 10px; border: 1px solid var(--border); }
+    .catalog-head { margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1px dotted var(--fg-2); }
+    .catalog-head h2 { font-size: 16px; line-height: 1.25; letter-spacing: .08em; text-transform: uppercase; }
+    .result-count { font-size: 13px; }
+    .catalog-tools { gap: 12px; }
+    .sort-label { font-size: 13px; }
+    .sort-select { min-height: 44px; padding: 0 28px 0 8px; border: 1px solid var(--fg-2); border-radius: 0; box-shadow: 1px 1px 0 var(--border); font: 14px/1.2 Tahoma, Verdana, sans-serif; }
+    .card-grid { grid-template-columns: 1fr; gap: 0; }
+    .site-card { display: grid; grid-template-columns: 104px minmax(0, 1fr); min-height: 112px; background: transparent; border: 0; border-bottom: 1px dotted var(--muted); border-radius: 0; box-shadow: none; overflow: visible; transition: none; }
+    .site-card:hover { background: var(--bg); transform: none; box-shadow: none; }
+    .site-card:focus-within { box-shadow: inset 0 0 0 2px var(--border); }
+    .thumb { min-height: 0; height: 78px; margin: 12px 10px 12px 0; padding: 5px; border: 1px solid var(--fg-2); background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--border), transparent 34%) 6px 8px); }
+    .card-body { position: relative; padding: 10px 0 48px; }
+    .site-card h3 { display: block; margin: 0; color: var(--fg); font-family: var(--font-mono); font-size: 16px; line-height: 1.4; }
+    .site-card h3 a { display: inline-flex; align-items: center; min-height: 44px; text-underline-offset: 2px; }
+    .site-card h3 a:hover { color: var(--meta-ink); }
+    .site-card p { min-height: 0; margin: 4px 0 0; color: var(--fg-2); font-size: 15px; line-height: 1.5; }
+    .card-meta { position: absolute; left: 0; bottom: 15px; display: flex; align-items: center; gap: 9px; color: var(--muted); font: 13px/1.4 var(--font-mono); }
+    .card-meta span + span::before { content: "/"; margin-right: 9px; color: var(--border); }
+    .visit-count, .added-date { position: static; font: inherit; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 5px; }
+    .card-tags button { min-height: 44px; padding: 0 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); cursor: pointer; font: 12px/1.2 var(--font-mono); }
+    .card-tags button:hover { color: var(--surface); background: var(--fg-2); }
+    .card-tags button[aria-pressed="true"] { color: var(--accent-on); background: var(--accent-ink); border-color: var(--accent-ink); }
+
+    .empty { border-radius: 0; }
+    .empty .btn { margin-top: 8px; }
+    footer { width: min(100% - 32px, 900px); margin: 0 auto 16px; padding: 8px; background: var(--surface); border: 1px solid var(--fg); font-size: 12px; }
+    footer .container { width: 100%; }
+
+    @media (max-width: 720px) {
+      .container, .hero, main, footer { width: min(100% - 16px, 900px) !important; }
+      .hero-grid, .content-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: 6px; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .filters { order: 2; }
+      .toolbar-actions { flex-wrap: wrap; }
+      .toolbar .btn { align-self: flex-start; }
+      .catalog-head { align-items: flex-start; flex-direction: column; }
+      .catalog-tools { width: 100%; justify-content: space-between; }
+    }
+    @media (max-width: 430px) {
+      .site-card { grid-template-columns: 82px minmax(0, 1fr); }
+      .thumb { height: 70px; margin-right: 8px; }
+      .card-meta { position: static; margin-top: 7px; }
+      footer .container { flex-direction: column; }
+    }
+
+    .section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 7px 9px; color: var(--surface); background: var(--fg-2); font: 600 13px/1.25 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+    .section-label span:last-child { color: var(--surface-warm); font-weight: 400; }
+    .utility-board { margin-top: 9px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; align-items: start; }
+    .utility-panel { border: 1px solid var(--fg); background: var(--surface); }
+    .utility-panel-featured { grid-column: 1 / -1; }
+    .utility-panel-featured .section-label { padding: 8px 10px; font-size: 13px; }
+    .utility-panel[data-od-id="guestbook-panel"] { grid-column: 1 / -1; }
+    .utility-body { padding: 10px; color: var(--fg-2); font-size: 14px; line-height: 1.55; }
+    .utility-panel-featured .utility-body { padding: 14px; }
+    .utility-panel-featured .activity-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); counter-reset: activity-rank; }
+    .utility-panel-featured .activity-list li { min-width: 0; min-height: 98px; padding: 14px 17px; border-top: 1px dotted var(--muted); border-right: 1px dotted var(--muted); counter-increment: activity-rank; }
+    .utility-panel-featured .activity-list li:nth-child(-n + 2) { padding-top: 14px; border-top: 0; }
+    .utility-panel-featured .activity-list li:nth-child(even), .utility-panel-featured .activity-list li:last-child { border-right: 0; }
+    .utility-panel-featured .activity-list li::before { content: counter(activity-rank, decimal-leading-zero); grid-column: 1 / -1; color: var(--muted); font: 12px/1.2 var(--font-mono); letter-spacing: .08em; }
+    .utility-panel-featured .activity-list .activity-empty-row { grid-column: 1 / -1; border-right: 0; }
+    .utility-panel-featured .activity-list .activity-empty-row::before { content: none; }
+    .utility-panel-featured .activity-list a { font-size: 15px; }
+    .utility-panel-featured .activity-desc { font-size: 13px; line-height: 1.55; }
+    .activity-pagination { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dotted var(--muted); }
+    .page-button { min-width: 92px; min-height: 44px; padding: 0 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); box-shadow: 1px 1px 0 var(--border); cursor: pointer; font: 600 12px/1.2 var(--font-mono); letter-spacing: .02em; }
+    .page-button:hover:not(:disabled) { color: var(--surface); background: var(--fg-2); }
+    .page-button:active:not(:disabled) { transform: translate(1px, 1px); box-shadow: none; }
+    .page-button:disabled { color: var(--muted); background: var(--surface); cursor: not-allowed; opacity: .58; }
+    .page-status { color: var(--muted); font: 13px/1.4 var(--font-mono); text-align: center; }
+    .directory-pagination { margin-top: 12px; }
+    .utility-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .utility-links a { min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 5px; background: var(--bg); border: 1px solid var(--border); font: 12px/1.3 var(--font-mono); text-align: center; text-transform: uppercase; }
+    .utility-links a:hover { color: var(--surface); background: var(--fg-2); }
+    .guestbook-form { display: grid; grid-template-columns: 1fr; gap: 5px; }
+    .guestbook-body { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); gap: 6px 18px; align-items: start; }
+    .guestbook-body .guestbook-form, .guestbook-body .guestbook-note { grid-column: 1; }
+    .guestbook-body .guestbook-entries { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
+    .guestbook-field { display: grid; gap: 3px; color: var(--fg); font: 600 13px/1.4 var(--font-mono); }
+    .guestbook-form input { min-width: 0; padding-left: 7px; }
+    .guestbook-form .btn { width: 100%; }
+    .guestbook-note { margin: 7px 0 0; font-size: 13px; }
+    .guestbook-entries { margin: 9px 0 0; padding: 0; list-style: none; font: 13px/1.5 var(--font-mono); }
+    .guestbook-entries li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 5px 0; border-top: 1px dotted var(--muted); overflow-wrap: anywhere; }
+    .guestbook-name { color: var(--fg); font-weight: 600; }
+    .guestbook-date { color: var(--muted); white-space: nowrap; }
+    .guestbook-message { grid-column: 1 / -1; color: var(--fg-2); }
+    .activity-list { margin: 0; padding: 0; list-style: none; }
+    .activity-list li { min-height: 44px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: baseline; padding: 6px 0; border-top: 1px dotted var(--muted); }
+    .activity-list li:first-child { padding-top: 0; border-top: 0; }
+    .activity-list a { min-height: 44px; display: flex; align-items: center; color: var(--fg); font: 600 13px/1.35 var(--font-mono); text-underline-offset: 3px; overflow-wrap: anywhere; }
+    .activity-list a:hover { color: var(--meta-ink); }
+    .activity-meta { color: var(--muted); font: 13px/1.4 var(--font-mono); white-space: nowrap; }
+    .activity-desc { grid-column: 1 / -1; margin: 0; color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+    .activity-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    @media (max-width: 720px) {
+      .utility-board { grid-template-columns: 1fr; }
+      .utility-panel[data-od-id="guestbook-panel"] { grid-column: 1; }
+      .guestbook-body { grid-template-columns: 1fr; }
+      .guestbook-body .guestbook-form, .guestbook-body .guestbook-note, .guestbook-body .guestbook-entries { grid-column: 1; grid-row: auto; }
+      .guestbook-body .guestbook-entries { margin-top: 4px; }
+      .utility-panel-featured .activity-list { grid-template-columns: 1fr; }
+      .utility-panel-featured .activity-list li { min-height: 90px; padding: 12px 0; border-top: 1px dotted var(--muted); border-right: 0; }
+      .utility-panel-featured .activity-list li:nth-child(-n + 2) { padding-top: 12px; border-top: 1px dotted var(--muted); }
+      .utility-panel-featured .activity-list li:first-child { padding-top: 0; border-top: 0; }
+      .activity-pagination { flex-wrap: wrap; }
+      .page-status { order: -1; width: 100%; }
+      .page-button { flex: 1; }
+    }
+
+    body.dialog-open { overflow: hidden; }
+    body:has(.submit-dialog:target) { overflow: hidden; }
+    .submit-dialog { position: fixed; inset: 0; z-index: 1000; display: none; place-items: center; padding: 12px; overflow-y: auto; overscroll-behavior: contain; background: rgba(42, 24, 16, 0.5); }
+    .submit-dialog.is-open, .submit-dialog:target { display: grid; }
+    .submit-form { width: min(100%, 520px); max-height: calc(100dvh - 24px); margin: auto; padding: 12px; overflow-y: auto; overscroll-behavior: contain; background: var(--surface); border: 2px solid var(--fg); box-shadow: 6px 6px 0 var(--fg); }
+    .submit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dotted var(--fg-2); }
+    .submit-head h2 { margin: 0; font-family: var(--font-mono); font-size: 14px; line-height: 1.2; letter-spacing: .04em; }
+    .submit-close { width: 44px; height: 44px; display: grid; place-items: center; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); cursor: pointer; font: 14px/1 var(--font-mono); text-decoration: none; }
+    .submit-close:hover { color: var(--surface); background: var(--fg-2); }
+    .submit-form .field-label { margin-bottom: 3px; font-size: 12px; }
+    .submit-form input, .submit-form textarea { width: 100%; min-height: 44px; margin-bottom: 8px; padding: 7px 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); border-radius: 0; box-shadow: inset 1px 1px 0 var(--border); font: 15px/1.5 var(--font-body); }
+    .submit-form input:user-invalid, .submit-form textarea:user-invalid, .submit-form [aria-invalid="true"] { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+    .submit-form textarea { resize: vertical; }
+    .tag-input { position: relative; margin-bottom: 8px; }
+    .tag-input input { margin-bottom: 0; }
+    .tag-chips { display: flex; flex-wrap: wrap; gap: 3px; margin: 0 0 4px; padding: 0; list-style: none; }
+    .tag-chips li { min-height: 44px; display: inline-flex; align-items: center; gap: 4px; padding-left: 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); font: 12px/1.2 var(--font-mono); }
+    .tag-chips button { width: 44px; height: 44px; padding: 0; color: var(--muted); background: none; border: 0; cursor: pointer; font: 14px/1 var(--font-mono); }
+    .tag-chips button:hover { color: var(--danger); }
+    .tag-suggest { position: absolute; top: calc(100% - 2px); left: 0; right: 0; z-index: 5; max-height: 150px; overflow-y: auto; background: var(--surface); border: 1px solid var(--fg); box-shadow: 3px 3px 0 var(--fg); }
+    .tag-suggest.none { display: none; }
+    .tag-suggest button { width: 100%; min-height: 44px; padding: 5px 8px; text-align: left; color: var(--fg); background: none; border: 0; border-bottom: 1px dotted var(--muted); cursor: pointer; font: 12px/1.35 var(--font-mono); }
+    .tag-suggest button:last-child { border-bottom: 0; }
+    .tag-suggest button:hover { background: var(--bg); }
+    .submit-hint { margin: 0 0 8px; color: var(--muted); font: 13px/1.5 var(--font-mono); }
+    .submit-status, .directory-notice { margin: 0 0 8px; color: var(--fg-2); font: 13px/1.5 var(--font-mono); }
+    .submit-status:empty, .directory-notice:empty { display: none; }
+    .submit-status:not(:empty), .directory-notice:not(:empty) { padding: 7px 8px; background: var(--bg); border: 1px solid var(--border); }
+    .submit-status[data-state="error"] { color: var(--fg); border-color: var(--danger); box-shadow: inset 3px 0 0 var(--danger); }
+    .submit-status[data-state="success"], .directory-notice[data-state="success"] { color: var(--fg); border-color: var(--success); box-shadow: inset 3px 0 0 var(--success); }
+    .submit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    .submit-actions .btn { min-height: 44px; font-size: 13px; }
+    .toolbar-actions { gap: 6px; }
+    .thumb { position: relative; align-items: flex-end; justify-content: flex-start; padding: 0; overflow: hidden; background-image: none; }
+    .thumb-image { position: absolute; z-index: 0; width: 300%; max-width: none; height: 300%; object-fit: fill; }
+    .thumb-radio .thumb-image { top: 0; left: 0; }
+    .thumb-neal .thumb-image { top: 0; left: -100%; }
+    .thumb-window .thumb-image { top: 0; left: -200%; }
+    .thumb-patatap .thumb-image { top: -100%; left: 0; }
+    .thumb-mapcrunch .thumb-image { top: -100%; left: -100%; }
+    .thumb-zoomquilt .thumb-image { top: -100%; left: -200%; }
+    .thumb-pointer .thumb-image { top: -200%; left: 0; }
+    .thumb-murmur .thumb-image { top: -200%; left: -100%; }
+    .thumb-useless .thumb-image { top: -200%; left: -200%; }
+    .image-upload { margin-bottom: 8px; padding: 8px; background: var(--bg); border: 1px dotted var(--fg-2); }
+    .image-upload input[type="file"] { margin-bottom: 4px; padding: 5px; box-shadow: none; }
+    .image-upload input[type="file"]::file-selector-button { min-height: 44px; margin-right: 8px; padding: 0 8px; color: var(--fg); background: var(--surface); border: 1px solid var(--fg-2); cursor: pointer; font: 600 12px/1 var(--font-body); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .image-preview { position: relative; margin: 7px 0 0; border: 1px solid var(--fg-2); background: var(--surface); }
+    .image-preview img { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: cover; }
+    .image-preview figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 6px; color: var(--muted); font: 12px/1.4 var(--font-mono); }
+    .image-remove { min-height: 44px; padding: 0 8px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-2); cursor: pointer; }
+    .image-remove:hover { color: var(--surface); background: var(--danger); }
+    :where(a, button, input, select, textarea):focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+  </style>
+</head>
+<body id="top">
+  <header class="masthead" data-od-id="site-header">
+    <nav class="nav container" aria-label="Main navigation">
+      <a class="brand" href="odd-web-directory.html#top" data-od-id="brand-link"><span class="brand-mark" aria-hidden="true">!</span><span>ODDWEB</span></a>
+      <div class="nav-links"><a href="oddweb-admin.html" data-od-id="admin-link">Admin</a></div>
+    </nav>
+  </header>
+
+  <section class="hero" data-od-id="hero-section">
+    <div class="container hero-grid">
+      <div>
+        <p class="eyebrow">No Algorithms, No Feeds</p>
+        <h1 data-od-id="hero-heading">Oddweb Directory</h1>
+        <p class="lead">A directory of one-of-a-kind websites made to surprise, delight, teach, distract, or simply do something different.</p>
+      </div>
+      <div data-od-id="search-control">
+        <label class="field-label" for="search">Find a site</label>
+        <div class="search-wrap">
+          <input id="search" data-od-id="search-input" type="search" autocomplete="off" placeholder="Describe what you feel like finding">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="container" id="directory" data-od-id="directory-section">
+    <div class="toolbar" data-od-id="filter-toolbar">
+      <div class="filters" id="filters" role="group" aria-label="Filter websites by tag"></div>
+      <div class="toolbar-actions">
+        <a class="btn btn-secondary" href="tags.html" data-od-id="browse-tags">Tag List</a>
+        <a class="btn btn-secondary" id="submit-open" href="#submit-dialog" role="button" data-od-id="submit-button" aria-controls="submit-dialog" aria-expanded="false">Submit a Site</a>
+        <button class="btn btn-secondary" id="shuffle" type="button" data-od-id="shuffle-button">Surprise Me</button>
+      </div>
+    </div>
+    <p class="directory-notice" id="directory-notice" role="status" aria-live="polite"></p>
+
+    <div class="content-grid">
+      <section aria-labelledby="catalog-title">
+        <div class="catalog-head">
+          <h2 id="catalog-title" data-od-id="catalog-heading">The filing cabinet</h2>
+          <div class="catalog-tools">
+            <p class="result-count" id="result-count" aria-live="polite">Sites on file</p>
+            <label class="sort-label" for="sort-order">Order
+              <select class="sort-select" id="sort-order" data-od-id="catalog-sort">
+                <option value="popular">Most opened</option>
+                <option value="newest">Newest filed</option>
+                <option value="oldest">Oldest filed</option>
+                <option value="tags">Most tags</option>
+                <option value="az">Title A-Z</option>
+                <option value="za">Title Z-A</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="card-grid" id="card-grid">
+          <article class="site-card" data-od-id="site-card-radio-garden" data-name="Radio Garden" data-tags="listen music radio world map wander" data-added="2026-07-28">
+            <div class="thumb thumb-radio"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Illustrated globe connected by radio signals"></div><div class="card-body"><h3><a href="radio-garden.html">Radio Garden</a></h3><p>A globe you spin to hear live radio from anywhere in the world.</p><div class="card-tags"><button type="button">listen</button><button type="button">music</button><button type="button">radio</button><button type="button">world</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-radio-garden">187 visits</span><span class="added-date">Added Jul 28</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-neal-fun" data-name="Neal.fun" data-tags="play experiments games interactive educational fun" data-added="2026-07-30">
+            <div class="thumb thumb-neal"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Playful laboratory of colorful web experiments"></div><div class="card-body"><h3><a href="neal-fun.html">Neal.fun</a></h3><p>A pile of small, playful little browser experiments.</p><div class="card-tags"><button type="button">play</button><button type="button">experiments</button><button type="button">games</button><button type="button">interactive</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-neal-fun">154 visits</span><span class="added-date">Added Jul 30</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-window-swap" data-name="Window Swap" data-tags="wander windows travel calm views world video" data-added="2026-08-01">
+            <div class="thumb thumb-window"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Open window looking across a distant landscape"></div><div class="card-body"><h3><a href="window-swap.html">Window Swap</a></h3><p>Look through a stranger's window somewhere in the world for a while.</p><div class="card-tags"><button type="button">wander</button><button type="button">windows</button><button type="button">travel</button><button type="button">calm</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-window-swap">122 visits</span><span class="added-date">Added Aug 1</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-patatap" data-name="Patatap" data-tags="play listen sound music keyboard visual art interactive" data-added="2026-08-02">
+            <div class="thumb thumb-patatap"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Keyboard producing colorful geometric sound shapes"></div><div class="card-body"><h3><a href="patatap.html">Patatap</a></h3><p>Press any key to make a sound and a shape.</p><div class="card-tags"><button type="button">play</button><button type="button">listen</button><button type="button">sound</button><button type="button">music</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-patatap">96 visits</span><span class="added-date">Added Aug 2</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-mapcrunch" data-name="MapCrunch" data-tags="wander maps travel random street view world" data-added="2026-08-03">
+            <div class="thumb thumb-mapcrunch"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Unknown road winding through a distant landscape"></div><div class="card-body"><h3><a href="mapcrunch.html">MapCrunch</a></h3><p>Drops you on a random street somewhere, and you figure out where.</p><div class="card-tags"><button type="button">wander</button><button type="button">maps</button><button type="button">travel</button><button type="button">random</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-mapcrunch">81 visits</span><span class="added-date">Added Aug 3</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-zoomquilt" data-name="Zoomquilt" data-tags="odd art infinite zoom surreal visual calm" data-added="2026-08-04">
+            <div class="thumb thumb-zoomquilt"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Infinite painted tunnel leading through nested scenes"></div><div class="card-body"><h3><a href="zoomquilt.html">Zoomquilt</a></h3><p>A painting that keeps zooming into new scenes, forever.</p><div class="card-tags"><button type="button">odd</button><button type="button">art</button><button type="button">infinite</button><button type="button">zoom</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-zoomquilt">73 visits</span><span class="added-date">Added Aug 4</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-pointer-pointer" data-name="Pointer Pointer" data-tags="odd useless funny cursor photo weird" data-added="2026-08-05">
+            <div class="thumb thumb-pointer"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Hand pointing precisely toward an empty spot"></div><div class="card-body"><h3><a href="pointer-pointer.html">Pointer Pointer</a></h3><p>A photo that points at your cursor, wherever you put it.</p><div class="card-tags"><button type="button">odd</button><button type="button">useless</button><button type="button">funny</button><button type="button">cursor</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-pointer-pointer">61 visits</span><span class="added-date">Added Aug 5</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-soft-murmur" data-name="A Soft Murmur" data-tags="listen sound ambient calm focus rain noise" data-added="2026-08-06">
+            <div class="thumb thumb-murmur"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Rain, waves, wind and fire arranged as a sound mixer"></div><div class="card-body"><h3><a href="a-soft-murmur.html">A Soft Murmur</a></h3><p>Mix sounds like rain and waves on separate sliders.</p><div class="card-tags"><button type="button">listen</button><button type="button">sound</button><button type="button">ambient</button><button type="button">calm</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-soft-murmur">48 visits</span><span class="added-date">Added Aug 6</span></div></div>
+          </article>
+          <article class="site-card" data-od-id="site-card-useless-web" data-name="The Useless Web" data-tags="odd useless random funny weird surprise" data-added="2026-08-07">
+            <div class="thumb thumb-useless"><img class="thumb-image" src="oddweb-site-thumbnails.png" alt="Absurd glowing portal leading somewhere unexpected"></div><div class="card-body"><h3><a href="the-useless-web.html">The Useless Web</a></h3><p>Sends you to a random website that has no reason to exist.</p><div class="card-tags"><button type="button">odd</button><button type="button">useless</button><button type="button">random</button><button type="button">funny</button></div><div class="card-meta"><span class="visit-count" data-od-id="visit-count-useless-web">39 visits</span><span class="added-date">Added Aug 7</span></div></div>
+          </article>
+        </div>
+        <div class="empty" id="empty-state" data-od-id="empty-state"><h3>No match in this drawer.</h3><p>Remove a tag or try fewer words.</p><button class="btn btn-secondary" id="reset-search" type="button" data-od-id="reset-search">Show everything</button></div>
+        <nav class="activity-pagination directory-pagination" aria-label="Directory pages" data-od-id="directory-pagination"><button class="page-button" id="directory-prev" type="button" data-od-id="directory-previous">Previous</button><span class="page-status" id="directory-page-status" aria-live="polite">Page 1</span><button class="page-button" id="directory-next" type="button" data-od-id="directory-next">Next</button></nav>
+      </section>
+    </div>
+
+    <section class="utility-board" data-od-id="community-utilities">
+      <section class="utility-panel utility-panel-featured" data-od-id="popular-section" aria-labelledby="popular-heading">
+        <h2 class="section-label" id="popular-heading" data-od-id="popular-heading"><span>Most opened</span><span>MOST POPULAR</span></h2>
+        <div class="utility-body"><ol class="activity-list" id="popular-list" aria-live="polite">
+          <li><a href="radio-garden.html">Radio Garden</a><span class="activity-meta">187 visits</span></li>
+          <li><a href="neal-fun.html">Neal.fun</a><span class="activity-meta">154 visits</span></li>
+          <li><a href="window-swap.html">Window Swap</a><span class="activity-meta">122 visits</span></li>
+          <li><a href="patatap.html">Patatap</a><span class="activity-meta">96 visits</span></li>
+        </ol><nav class="activity-pagination" aria-label="Most opened pages" data-od-id="popular-pagination"><button class="page-button" id="popular-prev" type="button" data-od-id="popular-previous">Previous</button><span class="page-status" id="popular-page-status" aria-live="polite">Page 1</span><button class="page-button" id="popular-next" type="button" data-od-id="popular-next">Next</button></nav></div>
+      </section>
+      <section class="utility-panel utility-panel-featured" data-od-id="recent-submissions-section" aria-labelledby="recent-filings-heading">
+        <h2 class="section-label" id="recent-filings-heading" data-od-id="recent-filings-heading"><span>Recent filings</span><span>NEW ARRIVALS</span></h2>
+        <div class="utility-body"><ol class="activity-list" id="recent-list" aria-live="polite">
+          <li><a href="https://museumofanything.com/" target="_blank" rel="noopener noreferrer">The Museum of Anything</a><span class="activity-meta">Aug 6</span><p class="activity-desc">A strange museum full of things that don't fit together.</p></li>
+          <li><a href="https://www.neonflames.com/" target="_blank" rel="noopener noreferrer">Neonflames</a><span class="activity-meta">Aug 4</span><p class="activity-desc">Paint with glowing colors on a black canvas.</p></li>
+          <li><a href="https://www.windows93.net/" target="_blank" rel="noopener noreferrer">Windows 93</a><span class="activity-meta">Aug 1</span><p class="activity-desc">A ridiculous fake operating system.</p></li>
+        </ol><nav class="activity-pagination" aria-label="Recent filing pages" data-od-id="recent-pagination"><button class="page-button" id="recent-prev" type="button" data-od-id="recent-previous">Previous</button><span class="page-status" id="recent-page-status" aria-live="polite">Page 1</span><button class="page-button" id="recent-next" type="button" data-od-id="recent-next">Next</button></nav></div>
+      </section>
+      <section class="utility-panel" data-od-id="guestbook-panel" aria-labelledby="guestbook-heading">
+        <h2 class="section-label" id="guestbook-heading" data-od-id="guestbook-heading"><span>Guestbook</span><span>NEWEST VISITORS</span></h2>
+        <div class="utility-body guestbook-body">
+          <form class="guestbook-form" id="guestbook-form" data-od-id="guestbook-form">
+            <label class="guestbook-field" for="guestbook-name"><span>Name / alias</span><input id="guestbook-name" data-od-id="guestbook-name" type="text" maxlength="24" required="" placeholder="Your screen name"></label>
+            <label class="guestbook-field" for="guestbook-message"><span>Short note</span><input id="guestbook-message" data-od-id="guestbook-message" type="text" maxlength="120" required="" placeholder="What did you discover?"></label>
+            <button class="btn btn-secondary" type="submit" data-od-id="guestbook-submit">Sign the wall</button>
+          </form>
+          <p class="guestbook-note" id="guestbook-note" aria-live="polite">Name what you clicked, then leave a sentence for the next person.</p>
+          <ul class="guestbook-entries" id="guestbook-entries" aria-label="Recent guestbook signatures">
+            <li><span class="guestbook-name">moss_rat</span><time class="guestbook-date" datetime="2026-08-07">Aug 7</time><span class="guestbook-message">found the rain mixer; staying awhile</span></li>
+            <li><span class="guestbook-name">cablecoma</span><time class="guestbook-date" datetime="2026-08-06">Aug 6</time><span class="guestbook-message">radio set to somewhere very far away</span></li>
+            <li><span class="guestbook-name">lumi.void</span><time class="guestbook-date" datetime="2026-08-04">Aug 4</time><span class="guestbook-message">the cursor site got me again</span></li>
+            <li><span class="guestbook-name">dialtone_x</span><time class="guestbook-date" datetime="2026-08-02">Aug 2</time><span class="guestbook-message">excellent detour, no notes</span></li>
+          </ul>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div class="submit-dialog" id="submit-dialog" data-od-id="submit-dialog" role="dialog" aria-modal="true" aria-labelledby="submit-title">
+    <form class="submit-form" id="submit-form" data-od-id="submit-form">
+      <div class="submit-head"><h2 id="submit-title" data-od-id="submit-heading">File a site</h2><a class="submit-close" href="#directory" role="button" id="submit-close" data-od-id="submit-close" aria-label="Close">&times;</a></div>
+      <label class="field-label" for="sub-name">Site name</label>
+      <input id="sub-name" data-od-id="submit-name" type="text" required="" maxlength="40" placeholder="Enter the site's name">
+      <label class="field-label" for="sub-url">Website address</label>
+      <input id="sub-url" data-od-id="submit-url" type="url" required="" placeholder="https://">
+      <label class="field-label" for="sub-image">Site preview image</label>
+      <div class="image-upload" data-od-id="submit-image-control">
+        <input id="sub-image" data-od-id="submit-image" type="file" accept="image/png,image/jpeg,image/webp" required>
+        <figure class="image-preview" id="sub-image-preview" hidden><img id="sub-image-preview-img" alt="Selected site preview"><figcaption><span>Submission preview</span><button class="image-remove" id="sub-image-remove" type="button">Remove image</button></figcaption></figure>
+      </div>
+      <label class="field-label" for="sub-tags">Tags</label>
+      <div class="tag-input">
+        <ul class="tag-chips" id="sub-tag-chips" aria-label="Added tags"></ul>
+        <input id="sub-tags" data-od-id="submit-tags" type="text" required aria-required="true" placeholder="Type a tag, then press Enter" autocomplete="off" aria-controls="sub-tag-suggest" aria-expanded="false" aria-describedby="sub-tags-hint">
+        <div class="tag-suggest none" id="sub-tag-suggest" role="group" aria-label="Existing tags"></div>
+      </div>
+      <p class="submit-hint" id="sub-tags-hint">Press Enter after each tag.</p>
+      <label class="field-label" for="sub-desc">Short description</label>
+      <textarea id="sub-desc" data-od-id="submit-description" rows="3" maxlength="200" required placeholder="What happens when you click?"></textarea>
+      <p class="submit-status" id="submit-status" role="status" aria-live="polite"></p>
+      <div class="submit-actions"><a class="btn btn-secondary" href="#directory" role="button" id="submit-cancel" data-od-id="submit-cancel">Cancel</a><button class="btn btn-primary" id="submit-save" type="submit" data-od-id="submit-save" aria-describedby="submit-status">Add to the pile</button></div>
+    </form>
+  </div>
+
+  <footer data-od-id="site-footer"><div class="container"><span>ODDWEB / AN INDEX OF THE WEB'S ODD CORNERS</span></div></footer>
+
+  <script>
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.addEventListener('pageshow', () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, 0)));
+    });
+
+    const submitOpen = document.querySelector('#submit-open');
+    const submitDialog = document.querySelector('#submit-dialog');
+    const submitForm = document.querySelector('#submit-form');
+    const submitStatus = document.querySelector('#submit-status');
+    const submitClose = document.querySelector('#submit-close');
+    const submitCancel = document.querySelector('#submit-cancel');
+    const submitSave = document.querySelector('#submit-save');
+    const directoryNotice = document.querySelector('#directory-notice');
+    const tagInput = document.querySelector('#sub-tags');
+    const urlInput = document.querySelector('#sub-url');
+    const imageInput = document.querySelector('#sub-image');
+    const imageUpload = document.querySelector('.image-upload');
+    const imagePreview = document.querySelector('#sub-image-preview');
+    const imagePreviewImg = document.querySelector('#sub-image-preview-img');
+    const imageRemove = document.querySelector('#sub-image-remove');
+    const tagChipsEl = document.querySelector('#sub-tag-chips');
+    const tagSuggest = document.querySelector('#sub-tag-suggest');
+    let draftTags = [];
+    let draftImage = '';
+    let submitReturnFocus = null;
+
+    submitOpen.addEventListener('click', openSubmitDialog);
+    submitClose.addEventListener('click', closeSubmitDialog);
+    submitCancel.addEventListener('click', closeSubmitDialog);
+    imageRemove.addEventListener('click', () => {
+      clearDraftImage();
+      setSubmitStatus('Preview image removed.');
+    });
+    [submitOpen, submitClose, submitCancel].forEach((control) => {
+      control.addEventListener('keydown', (event) => {
+        if (event.key !== ' ') return;
+        event.preventDefault();
+        control.click();
+      });
+    });
+    submitDialog.addEventListener('click', (event) => {
+      if (event.target === submitDialog) closeSubmitDialog();
+    });
+    submitDialog.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSubmitDialog();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const controls = [...submitDialog.querySelectorAll('button, input, textarea, [href], [tabindex]:not([tabindex="-1"])')]
+        .filter((control) => !control.disabled && !control.closest('[hidden]'));
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+
+    const cards = [...document.querySelectorAll('.site-card')];
+    const search = document.querySelector('#search');
+    const filtersEl = document.querySelector('#filters');
+    const count = document.querySelector('#result-count');
+    const empty = document.querySelector('#empty-state');
+    const grid = document.querySelector('#card-grid');
+    const sortOrder = document.querySelector('#sort-order');
+    const directoryPrev = document.querySelector('#directory-prev');
+    const directoryNext = document.querySelector('#directory-next');
+    const directoryPageStatus = document.querySelector('#directory-page-status');
+    const catalogSection = document.querySelector('[aria-labelledby="catalog-title"]');
+    const directoryPageSize = 6;
+    const popularList = document.querySelector('#popular-list');
+    const recentList = document.querySelector('#recent-list');
+    const popularPrev = document.querySelector('#popular-prev');
+    const popularNext = document.querySelector('#popular-next');
+    const popularPageStatus = document.querySelector('#popular-page-status');
+    const recentPrev = document.querySelector('#recent-prev');
+    const recentNext = document.querySelector('#recent-next');
+    const recentPageStatus = document.querySelector('#recent-page-status');
+    const activityPageSize = 6;
+    const tagStore = 'oddweb:tags';
+    const visitStore = 'oddweb:visits';
+    const submissionStore = 'oddweb:submissions';
+    const originalOrder = new Map(cards.map((card, index) => [card, index]));
+    const sampleVisitCounts = {
+      'radio-garden.html': 187,
+      'neal-fun.html': 154,
+      'window-swap.html': 122,
+      'patatap.html': 96,
+      'mapcrunch.html': 81,
+      'zoomquilt.html': 73,
+      'pointer-pointer.html': 61,
+      'a-soft-murmur.html': 48,
+      'the-useless-web.html': 39
+    };
+    const sampleSubmissions = [
+      { name: 'The Museum of Anything', url: 'https://museumofanything.com/', description: "A strange museum full of things that don't fit together.", submittedAt: '2026-08-06T10:00:00' },
+      { name: 'Neonflames', url: 'https://www.neonflames.com/', description: 'Paint with glowing colors on a black canvas.', submittedAt: '2026-08-04T10:00:00' },
+      { name: 'Windows 93', url: 'https://www.windows93.net/', description: 'A ridiculous fake operating system.', submittedAt: '2026-08-01T10:00:00' }
+    ];
+    let visitCounts = {};
+    let submissions = [...sampleSubmissions];
+    let activeFilter = 'all';
+    let chips = [];
+    let directoryPage = 0;
+    let matchingCards = [...cards];
+    let popularPage = 0;
+    let recentPage = 0;
+
+    try { visitCounts = JSON.parse(localStorage.getItem(visitStore) || '{}'); } catch (_) { visitCounts = {}; }
+    try {
+      const stored = JSON.parse(localStorage.getItem(submissionStore) || '[]');
+      const sampleByUrl = new Map(sampleSubmissions.map((item) => [item.url, item]));
+      const refreshedStored = stored.filter(Boolean).map((item) => sampleByUrl.has(item.url) ? { ...item, ...sampleByUrl.get(item.url) } : item);
+      const storedUrls = new Set(refreshedStored.map((item) => item.url));
+      submissions = [...refreshedStored, ...sampleSubmissions.filter((item) => !storedUrls.has(item.url))];
+    } catch (_) { submissions = [...sampleSubmissions]; }
+
+    function normalize(tag) { return tag.trim().toLowerCase(); }
+    function cardKey(card) { return card.querySelector('h3 a').getAttribute('href'); }
+    function getVisitCount(cardOrKey) {
+      const key = typeof cardOrKey === 'string' ? cardOrKey : cardKey(cardOrKey);
+      return Math.max(0, Number(visitCounts[key]) || sampleVisitCounts[key] || 0);
+    }
+
+    function renderVisitCount(card) {
+      const total = getVisitCount(card);
+      const target = card.querySelector('.visit-count');
+      if (target) target.textContent = `${total} ${total === 1 ? 'visit' : 'visits'}`;
+    }
+
+    function renderAddedDate(card) {
+      const target = card.querySelector('.added-date');
+      if (!target) return;
+      const date = new Date(`${card.dataset.added}T12:00:00`);
+      target.textContent = Number.isNaN(date.getTime())
+        ? 'Added date not logged'
+        : `Added ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    }
+
+    function incrementVisit(key) {
+      visitCounts[key] = getVisitCount(key) + 1;
+      try { localStorage.setItem(visitStore, JSON.stringify(visitCounts)); } catch (_) {}
+      const card = cards.find((item) => cardKey(item) === key);
+      if (card) renderVisitCount(card);
+      renderPopular();
+      if (sortOrder.value === 'popular') filterCards();
+    }
+
+    function buildTagSet() {
+      const set = new Set();
+      cards.forEach((card) => (card.dataset.tags || '').split(/\s+/).filter(Boolean).forEach((t) => set.add(normalize(t))));
+      try {
+        const stored = JSON.parse(localStorage.getItem(tagStore) || '[]');
+        stored.forEach((t) => set.add(normalize(t)));
+      } catch (_) {}
+      return [...set].sort();
+    }
+    let allTags = buildTagSet();
+
+    function renderCardTags(card) {
+      const target = card.querySelector('.card-tags');
+      if (!target) return;
+      target.replaceChildren();
+      (card.dataset.tags || '').split(/\s+/).filter(Boolean).slice(0, 4).forEach((tag) => {
+        const t = normalize(tag);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = t;
+        btn.dataset.odId = `card-tag-${cardKey(card).replace('.html', '')}-${t.replace(/[^a-z0-9]+/g, '-')}`;
+        btn.setAttribute('aria-pressed', String(activeFilter === t));
+        btn.addEventListener('click', () => setFilter(t));
+        target.append(btn);
+      });
+    }
+
+    function renderFilters() {
+      filtersEl.replaceChildren();
+      chips = [];
+      const all = document.createElement('button');
+      all.className = 'chip';
+      all.type = 'button';
+      all.textContent = 'Everything';
+      all.dataset.odId = 'filter-all';
+      all.setAttribute('aria-pressed', String(activeFilter === 'all'));
+      all.addEventListener('click', () => setFilter('all'));
+      filtersEl.append(all);
+      chips.push(all);
+      const featuredTags = allTags
+        .map((tag) => ({
+          tag,
+          count: cards.filter((card) => (card.dataset.tags || '').split(/\s+/).map(normalize).includes(tag)).length
+        }))
+        .filter((item) => item.count > 1)
+        .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+        .slice(0, 7);
+      featuredTags.forEach(({ tag }) => {
+        const chip = document.createElement('button');
+        chip.className = 'chip';
+        chip.type = 'button';
+        chip.textContent = tag;
+        chip.dataset.odId = `filter-${tag.replace(/[^a-z0-9]+/g, '-')}`;
+        chip.setAttribute('aria-pressed', String(activeFilter === tag));
+        chip.addEventListener('click', () => setFilter(tag));
+        filtersEl.append(chip);
+        chips.push(chip);
+      });
+    }
+
+    function setFilter(value) {
+      activeFilter = value;
+      directoryPage = 0;
+      chips.forEach((chip) => chip.setAttribute('aria-pressed', String(chip.textContent === (value === 'all' ? 'Everything' : value))));
+      cards.forEach(renderCardTags);
+      filterCards();
+    }
+
+    cards.forEach((card) => {
+      let meta = card.querySelector('.card-meta');
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.className = 'card-meta';
+        card.querySelector('.card-body').append(meta);
+      }
+      let counter = card.querySelector('.visit-count');
+      if (!counter) {
+        counter = document.createElement('span');
+        counter.className = 'visit-count';
+        meta.append(counter);
+      }
+      counter.setAttribute('aria-live', 'polite');
+      counter.dataset.odId = `visit-count-${cardKey(card).replace('.html', '')}`;
+      let addedDate = card.querySelector('.added-date');
+      if (!addedDate) {
+        addedDate = document.createElement('span');
+        addedDate.className = 'added-date';
+        meta.append(addedDate);
+      }
+      let holder = card.querySelector('.card-tags');
+      if (!holder) {
+        holder = document.createElement('div');
+        holder.className = 'card-tags';
+        card.querySelector('.card-body').insertBefore(holder, meta);
+      }
+      card.querySelectorAll('h3 a').forEach((link) => {
+        link.addEventListener('click', () => incrementVisit(cardKey(card)));
+      });
+      renderVisitCount(card);
+      renderAddedDate(card);
+    });
+    renderFilters();
+    cards.forEach(renderCardTags);
+    renderPopular();
+    renderRecent();
+    const urlTag = new URLSearchParams(location.search).get('tag');
+    if (urlTag) setFilter(normalize(urlTag)); else filterCards();
+
+    function sortCards() {
+      const mode = sortOrder.value;
+      const sorted = [...cards].sort((a, b) => {
+        if (mode === 'popular') return getVisitCount(b) - getVisitCount(a) || originalOrder.get(a) - originalOrder.get(b);
+        if (mode === 'newest') return String(b.dataset.added).localeCompare(String(a.dataset.added)) || originalOrder.get(a) - originalOrder.get(b);
+        if (mode === 'oldest') return String(a.dataset.added).localeCompare(String(b.dataset.added)) || originalOrder.get(a) - originalOrder.get(b);
+        if (mode === 'tags') return (b.dataset.tags || '').split(/\s+/).filter(Boolean).length - (a.dataset.tags || '').split(/\s+/).filter(Boolean).length || a.dataset.name.localeCompare(b.dataset.name);
+        if (mode === 'az') return a.dataset.name.localeCompare(b.dataset.name);
+        if (mode === 'za') return b.dataset.name.localeCompare(a.dataset.name);
+        return a.dataset.name.localeCompare(b.dataset.name);
+      });
+      sorted.forEach((card) => grid.append(card));
+      return sorted;
+    }
+
+    function cardMatchesDirectory(card) {
+      const query = search.value.trim().toLowerCase();
+      const haystack = `${card.dataset.name} ${card.dataset.tags} ${card.querySelector('.card-body p').textContent}`.toLowerCase();
+      const matchesSearch = !query || haystack.includes(query);
+      const matchesFilter = activeFilter === 'all' || (card.dataset.tags || '').split(/\s+/).map(normalize).includes(activeFilter);
+      return matchesSearch && matchesFilter;
+    }
+
+    function filterCards() {
+      const sorted = sortCards();
+      matchingCards = sorted.filter(cardMatchesDirectory);
+      const pages = activityPageCount(matchingCards.length, directoryPageSize);
+      directoryPage = Math.min(directoryPage, pages - 1);
+      const pageStart = directoryPage * directoryPageSize;
+      const pageCards = new Set(matchingCards.slice(pageStart, pageStart + directoryPageSize));
+      cards.forEach((card) => { card.hidden = !pageCards.has(card); });
+      count.textContent = `${matchingCards.length} ${matchingCards.length === 1 ? 'site' : 'sites'}`;
+      empty.style.display = matchingCards.length ? 'none' : 'block';
+      directoryPrev.disabled = directoryPage === 0;
+      directoryNext.disabled = directoryPage >= pages - 1;
+      directoryPageStatus.textContent = matchingCards.length
+        ? `Page ${directoryPage + 1} of ${pages} / ${matchingCards.length} ${matchingCards.length === 1 ? 'site' : 'sites'}`
+        : 'No sites found';
+    }
+
+    function revealPage(container, focusTarget) {
+      if (focusTarget) focusTarget.focus({ preventScroll: true });
+      const top = container.getBoundingClientRect().top + window.scrollY - 12;
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: Math.max(0, top), behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
+
+    function revealDirectoryPage() {
+      const firstCard = matchingCards[directoryPage * directoryPageSize];
+      revealPage(catalogSection, firstCard && firstCard.querySelector('h3 a'));
+    }
+
+    function revealActivityPage(list) {
+      requestAnimationFrame(() => revealPage(list.closest('.utility-panel'), list.querySelector('a')));
+    }
+
+    function goToDirectoryPage(nextPage) {
+      const lastPage = activityPageCount(matchingCards.length, directoryPageSize) - 1;
+      directoryPage = Math.max(0, Math.min(lastPage, nextPage));
+      filterCards();
+      requestAnimationFrame(revealDirectoryPage);
+    }
+
+    search.addEventListener('input', () => { directoryPage = 0; filterCards(); });
+    sortOrder.addEventListener('change', () => { directoryPage = 0; filterCards(); });
+    directoryPrev.addEventListener('click', () => goToDirectoryPage(directoryPage - 1));
+    directoryNext.addEventListener('click', () => goToDirectoryPage(directoryPage + 1));
+    document.querySelector('#reset-search').addEventListener('click', () => {
+      search.value = '';
+      setFilter('all');
+      search.focus();
+    });
+
+    document.querySelector('#shuffle').addEventListener('click', () => {
+      let pool = sortCards().filter(cardMatchesDirectory);
+      if (!pool.length) {
+        search.value = '';
+        setFilter('all');
+        pool = sortCards().filter(cardMatchesDirectory);
+      }
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      sortOrder.value = 'popular';
+      const ordered = sortCards().filter(cardMatchesDirectory);
+      directoryPage = Math.max(0, Math.floor(ordered.indexOf(pick) / directoryPageSize));
+      filterCards();
+      pick.querySelector('h3 a').focus();
+    });
+
+    function appendEmptyActivity(list, message) {
+      const item = document.createElement('li');
+      item.className = 'activity-empty-row';
+      const text = document.createElement('p');
+      text.className = 'activity-empty';
+      text.textContent = message;
+      item.append(text);
+      list.append(item);
+    }
+
+    function activityPageCount(totalItems, pageSize = activityPageSize) {
+      return Math.max(1, Math.ceil(totalItems / pageSize));
+    }
+
+    function updateActivityPager(page, totalItems, previousButton, nextButton, status, itemLabel) {
+      const pages = activityPageCount(totalItems);
+      previousButton.disabled = page === 0;
+      nextButton.disabled = page >= pages - 1;
+      status.textContent = totalItems
+        ? `Page ${page + 1} of ${pages} / ${totalItems} ${totalItems === 1 ? itemLabel : `${itemLabel}s`}`
+        : `No ${itemLabel}s yet`;
+    }
+
+    function renderPopular() {
+      popularList.replaceChildren();
+      const ranked = [...cards]
+        .filter((card) => getVisitCount(card) > 0)
+        .sort((a, b) => getVisitCount(b) - getVisitCount(a) || originalOrder.get(a) - originalOrder.get(b));
+      popularPage = Math.min(popularPage, activityPageCount(ranked.length) - 1);
+      const pageStart = popularPage * activityPageSize;
+      const visibleRanked = ranked.slice(pageStart, pageStart + activityPageSize);
+      popularList.style.counterReset = `activity-rank ${pageStart}`;
+      updateActivityPager(popularPage, ranked.length, popularPrev, popularNext, popularPageStatus, 'site');
+      if (!ranked.length) {
+        appendEmptyActivity(popularList, 'No clicks yet. Open any title to start the counter.');
+        return;
+      }
+      visibleRanked.forEach((card) => {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        const key = cardKey(card);
+        const total = getVisitCount(card);
+        link.href = key;
+        link.textContent = card.dataset.name;
+        link.addEventListener('click', () => incrementVisit(key));
+        const meta = document.createElement('span');
+        meta.className = 'activity-meta';
+        meta.textContent = `${total} ${total === 1 ? 'visit' : 'visits'}`;
+        item.append(link, meta);
+        popularList.append(item);
+      });
+    }
+
+    function submittedWhen(timestamp) {
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return 'date unknown';
+      const now = new Date();
+      if (date.toDateString() === now.toDateString()) return 'today';
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function renderRecent() {
+      recentList.replaceChildren();
+      const recent = submissions.filter((item) => item && item.name && item.url);
+      recentPage = Math.min(recentPage, activityPageCount(recent.length) - 1);
+      const pageStart = recentPage * activityPageSize;
+      const visibleRecent = recent.slice(pageStart, pageStart + activityPageSize);
+      recentList.style.counterReset = `activity-rank ${pageStart}`;
+      updateActivityPager(recentPage, recent.length, recentPrev, recentNext, recentPageStatus, 'filing');
+      if (!recent.length) {
+        appendEmptyActivity(recentList, 'Nothing is waiting. Use File a site to put one here.');
+        return;
+      }
+      visibleRecent.forEach((submission) => {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = submission.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = submission.name;
+        const meta = document.createElement('span');
+        meta.className = 'activity-meta';
+        meta.textContent = submittedWhen(submission.submittedAt);
+        item.append(link, meta);
+        if (submission.description) {
+          const description = document.createElement('p');
+          description.className = 'activity-desc';
+          description.textContent = submission.description;
+          item.append(description);
+        }
+        recentList.append(item);
+      });
+    }
+
+    popularPrev.addEventListener('click', () => {
+      popularPage = Math.max(0, popularPage - 1);
+      renderPopular();
+      revealActivityPage(popularList);
+    });
+    popularNext.addEventListener('click', () => {
+      popularPage = Math.min(activityPageCount(cards.filter((card) => getVisitCount(card) > 0).length) - 1, popularPage + 1);
+      renderPopular();
+      revealActivityPage(popularList);
+    });
+    recentPrev.addEventListener('click', () => {
+      recentPage = Math.max(0, recentPage - 1);
+      renderRecent();
+      revealActivityPage(recentList);
+    });
+    recentNext.addEventListener('click', () => {
+      recentPage = Math.min(activityPageCount(submissions.filter((item) => item && item.name && item.url).length) - 1, recentPage + 1);
+      renderRecent();
+      revealActivityPage(recentList);
+    });
+
+    const guestbookEntries = document.querySelector('#guestbook-entries');
+    const guestbookStore = 'oddweb:guestbook';
+    const seedSignatures = [
+      { name: 'moss_rat', note: 'found the rain mixer; staying awhile', date: '2026-08-07T12:00:00' },
+      { name: 'cablecoma', note: 'radio set to somewhere very far away', date: '2026-08-06T12:00:00' },
+      { name: 'lumi.void', note: 'the cursor site got me again', date: '2026-08-04T12:00:00' },
+      { name: 'dialtone_x', note: 'excellent detour, no notes', date: '2026-08-02T12:00:00' }
+    ];
+    let signatures = [];
+    try {
+      const stored = JSON.parse(localStorage.getItem(guestbookStore) || '[]');
+      const storedNames = new Set(stored.filter(Boolean).map((item) => item.name));
+      signatures = [...stored, ...seedSignatures.filter((item) => !storedNames.has(item.name))];
+    } catch (_) { signatures = seedSignatures; }
+
+    function renderGuestbook() {
+      guestbookEntries.replaceChildren();
+      signatures.slice(0, 5).forEach((signature) => {
+        const item = document.createElement('li');
+        const name = document.createElement('span');
+        name.className = 'guestbook-name';
+        name.textContent = signature.name;
+        const date = document.createElement('time');
+        date.className = 'guestbook-date';
+        date.dateTime = signature.date;
+        date.textContent = submittedWhen(signature.date);
+        const message = document.createElement('span');
+        message.className = 'guestbook-message';
+        message.textContent = signature.note || 'left a mark';
+        item.append(name, date, message);
+        guestbookEntries.append(item);
+      });
+    }
+
+    renderGuestbook();
+    document.querySelector('#guestbook-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const name = document.querySelector('#guestbook-name');
+      const message = document.querySelector('#guestbook-message');
+      const screenName = name.value.trim();
+      const note = message.value.trim();
+      if (!screenName || !note) return;
+      signatures.unshift({ name: screenName, note, date: new Date().toISOString() });
+      signatures = signatures.slice(0, 5);
+      try { localStorage.setItem(guestbookStore, JSON.stringify(signatures)); } catch (_) {}
+      renderGuestbook();
+      document.querySelector('#guestbook-note').textContent = `Signed. ${screenName} is now the newest name on the wall.`;
+      name.value = '';
+      message.value = '';
+    });
+
+    function compressImage(file, maxEdge = 720) {
+      return new Promise((resolve, reject) => {
+        if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+          reject(new Error('Choose a PNG, JPEG, or WebP image.'));
+          return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+          reject(new Error('Choose an image smaller than 8 MB.'));
+          return;
+        }
+        const objectUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(objectUrl);
+          resolve(canvas.toDataURL('image/webp', .82));
+        };
+        image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('That image could not be read.')); };
+        image.src = objectUrl;
+      });
+    }
+
+    function clearDraftImage() {
+      draftImage = '';
+      imageInput.value = '';
+      imageInput.setCustomValidity('');
+      imageInput.removeAttribute('aria-invalid');
+      imagePreviewImg.removeAttribute('src');
+      imagePreview.hidden = true;
+    }
+
+    function setSubmitStatus(message = '', state = 'info') {
+      submitStatus.setAttribute('role', state === 'error' ? 'alert' : 'status');
+      submitStatus.textContent = message;
+      if (message) submitStatus.dataset.state = state;
+      else submitStatus.removeAttribute('data-state');
+    }
+
+    function renderDraftTags() {
+      tagChipsEl.replaceChildren();
+      draftTags.forEach((tag) => {
+        const li = document.createElement('li');
+        li.append(document.createTextNode(tag));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Remove tag ${tag}`);
+        remove.textContent = '×';
+        remove.addEventListener('click', () => {
+          draftTags = draftTags.filter((t) => t !== tag);
+          renderDraftTags();
+        });
+        li.append(remove);
+        tagChipsEl.append(li);
+      });
+      tagInput.required = draftTags.length === 0;
+      tagInput.setCustomValidity('');
+      if (draftTags.length) tagInput.removeAttribute('aria-invalid');
+    }
+
+    function showSuggestions(prefix) {
+      tagSuggest.replaceChildren();
+      const matches = prefix
+        ? allTags.filter((t) => t.startsWith(prefix))
+        : [...allTags].sort((a, b) => a.localeCompare(b));
+      const visibleMatches = matches.slice(0, 8);
+      tagSuggest.classList.toggle('none', visibleMatches.length === 0);
+      tagInput.setAttribute('aria-expanded', String(visibleMatches.length > 0));
+      visibleMatches.forEach((tag) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = tag;
+        btn.addEventListener('click', () => { addDraftTag(tag); hideSuggestions(); tagInput.value = ''; tagInput.focus(); });
+        tagSuggest.append(btn);
+      });
+    }
+
+    function hideSuggestions() {
+      tagSuggest.classList.add('none');
+      tagInput.setAttribute('aria-expanded', 'false');
+    }
+
+    function addDraftTag(raw) {
+      const tag = normalize(raw);
+      if (!tag || draftTags.some((t) => t === tag)) return;
+      draftTags.push(tag);
+      renderDraftTags();
+    }
+
+    function openSubmitDialog(event) {
+      if (event) event.preventDefault();
+      submitReturnFocus = document.activeElement;
+      submitDialog.classList.add('is-open');
+      document.body.classList.add('dialog-open');
+      submitOpen.setAttribute('aria-expanded', 'true');
+      submitForm.reset();
+      submitSave.disabled = false;
+      directoryNotice.textContent = '';
+      directoryNotice.removeAttribute('data-state');
+      draftTags = [];
+      clearDraftImage();
+      renderDraftTags();
+      hideSuggestions();
+      urlInput.removeAttribute('aria-invalid');
+      tagInput.removeAttribute('aria-invalid');
+      setSubmitStatus();
+      requestAnimationFrame(() => document.querySelector('#sub-name').focus({ preventScroll: true }));
+    }
+
+    function closeSubmitDialog(event) {
+      if (event) event.preventDefault();
+      submitDialog.classList.remove('is-open');
+      document.body.classList.remove('dialog-open');
+      submitOpen.setAttribute('aria-expanded', 'false');
+      if (location.hash === '#submit-dialog') {
+        try { history.replaceState(history.state, '', `${location.pathname}${location.search}`); }
+        catch (_) { location.hash = 'directory'; }
+      }
+      if (submitReturnFocus instanceof HTMLElement) submitReturnFocus.focus({ preventScroll: true });
+    }
+    tagInput.addEventListener('input', () => {
+      tagInput.setCustomValidity('');
+      tagInput.removeAttribute('aria-invalid');
+      showSuggestions(normalize(tagInput.value));
+    });
+    tagInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        addDraftTag(tagInput.value);
+        tagInput.value = '';
+        hideSuggestions();
+      } else if (event.key === 'Escape') {
+        hideSuggestions();
+      }
+    });
+    tagInput.parentElement.addEventListener('focusout', (event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) hideSuggestions();
+    });
+    urlInput.addEventListener('input', () => {
+      urlInput.setCustomValidity('');
+      urlInput.removeAttribute('aria-invalid');
+      setSubmitStatus();
+    });
+    imageInput.addEventListener('change', async () => {
+      const file = imageInput.files[0];
+      if (!file) { clearDraftImage(); return; }
+      imageInput.setCustomValidity('');
+      imageInput.removeAttribute('aria-invalid');
+      imageUpload.setAttribute('aria-busy', 'true');
+      submitSave.disabled = true;
+      setSubmitStatus('Preparing the preview image.');
+      try {
+        draftImage = await compressImage(file);
+        imagePreviewImg.src = draftImage;
+        imagePreview.hidden = false;
+        setSubmitStatus('Preview ready.', 'success');
+      } catch (error) {
+        clearDraftImage();
+        imageInput.setCustomValidity(error.message);
+        imageInput.setAttribute('aria-invalid', 'true');
+        setSubmitStatus(error.message, 'error');
+        imageInput.reportValidity();
+      } finally {
+        imageUpload.removeAttribute('aria-busy');
+        submitSave.disabled = false;
+      }
+    });
+    submitForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const name = document.querySelector('#sub-name').value.trim();
+      const url = urlInput.value.trim();
+      const description = document.querySelector('#sub-desc').value.trim();
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Unsupported protocol');
+      } catch (_) {
+        urlInput.setCustomValidity('Use a full web address beginning with http:// or https://');
+        urlInput.setAttribute('aria-invalid', 'true');
+        setSubmitStatus('Enter a full address beginning with http:// or https://.', 'error');
+        urlInput.reportValidity();
+        return;
+      }
+      if (!draftImage) {
+        imageInput.setCustomValidity('Choose a preview image for this site');
+        imageInput.setAttribute('aria-invalid', 'true');
+        setSubmitStatus('Choose a preview image for this site.', 'error');
+        imageInput.reportValidity();
+        return;
+      }
+      addDraftTag(tagInput.value);
+      if (!draftTags.length) {
+        tagInput.setCustomValidity('Add at least one tag');
+        tagInput.setAttribute('aria-invalid', 'true');
+        setSubmitStatus('Add at least one tag, then press Enter.', 'error');
+        tagInput.reportValidity();
+        return;
+      }
+      const submission = {
+        name,
+        url: parsedUrl.href,
+        description,
+        tags: [...draftTags],
+        image: draftImage,
+        submittedAt: Date.now()
+      };
+      const nextSubmissions = [submission, ...submissions];
+      try {
+        localStorage.setItem(submissionStore, JSON.stringify(nextSubmissions));
+      } catch (_) {
+        setSubmitStatus('This browser could not save the filing. Remove the image or free browser storage, then try again.', 'error');
+        return;
+      }
+      submissions = nextSubmissions;
+      try {
+        const stored = JSON.parse(localStorage.getItem(tagStore) || '[]').map(normalize);
+        const merged = [...new Set([...stored, ...draftTags])];
+        localStorage.setItem(tagStore, JSON.stringify(merged));
+      } catch (_) {}
+      allTags = [...new Set([...allTags, ...draftTags])].sort();
+      renderFilters();
+      recentPage = 0;
+      renderRecent();
+      closeSubmitDialog();
+      submitForm.reset();
+      clearDraftImage();
+      directoryNotice.textContent = `Filed locally. "${name}" is first in Waiting for review.`;
+      directoryNotice.dataset.state = 'success';
+    });
+  </script>
+
+
+
+</body></html>

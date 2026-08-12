@@ -2,6 +2,10 @@
   "name": "oddweb",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=24.14.0 <25"
+  },
   "imports": {
     "#/*": "./src/*"
   },
@@ -12,27 +16,38 @@
     "preview": "npm run build && vite preview",
     "lint": "eslint",
     "format": "prettier --write . && eslint --fix",
-    "check": "prettier --check .",
-    "deploy": "npm run build && wrangler deploy",
+    "format:check": "prettier --check .",
+    "check": "node scripts/check-release.mjs --local && npm run format:check && npm run lint && npm run typecheck && npm run worker-types:check",
+    "typecheck": "tsc --noEmit",
+    "worker-types:check": "wrangler types --check --env-file .dev.vars.example",
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:migrations": "node scripts/test-migrations.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=moderate",
+    "audit:all": "npm audit --audit-level=high",
+    "deploy:dry-run:built": "wrangler deploy --dry-run --strict",
+    "deploy:dry-run": "npm run build && npm run deploy:dry-run:built",
+    "verify": "npm run generate-routes && npm run check && npm run audit:production && npm run audit:all && npm test && npm run test:migrations && npm run build && npm run deploy:dry-run:built",
+    "release:check": "node scripts/check-release.mjs",
+    "release:smoke": "node scripts/smoke-test.mjs",
+    "deploy": "node scripts/release.mjs",
+    "staging:config": "node scripts/staging-config.mjs",
+    "staging:verify": "npm run verify && npm run staging:config && wrangler deploy --config .wrangler/staging.jsonc --dry-run --strict",
+    "staging:smoke": "node scripts/smoke-test.mjs --staging",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:pull": "drizzle-kit pull",
-    "db:studio": "drizzle-kit studio",
-    "cf-typegen": "wrangler types"
+    "db:migrate": "wrangler d1 migrations apply oddweb --local",
+    "db:migrations:remote:check": "wrangler d1 migrations list oddweb --remote",
+    "db:migrate:remote": "wrangler d1 migrations apply oddweb --remote",
+    "db:execute": "wrangler d1 execute oddweb --local",
+    "db:execute:remote": "wrangler d1 execute oddweb --remote",
+    "auth:hash": "node scripts/hash-admin-password.mjs",
+    "cf-typegen": "wrangler types --env-file .dev.vars.example"
   },
   "dependencies": {
-    "@t3-oss/env-core": "^0.13.10",
     "@tailwindcss/vite": "^4.1.18",
-    "@tanstack/react-devtools": "latest",
-    "@tanstack/react-query": "latest",
-    "@tanstack/react-query-devtools": "latest",
-    "@tanstack/react-router": "latest",
-    "@tanstack/react-router-devtools": "latest",
-    "@tanstack/react-router-ssr-query": "latest",
-    "@tanstack/react-start": "latest",
-    "better-sqlite3": "^12.6.2",
-    "drizzle-kit": "^0.31.9",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.24",
+    "@tanstack/react-router-ssr-query": "1.167.1",
+    "@tanstack/react-start": "1.168.41",
     "drizzle-orm": "^0.45.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -40,32 +55,36 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.26.0",
+    "@cloudflare/vite-plugin": "^1.51.2",
     "@rolldown/plugin-babel": "^0.2.3",
-    "@tanstack/devtools-vite": "latest",
-    "@tanstack/eslint-config": "latest",
+    "@tanstack/devtools-vite": "0.8.3",
+    "@tanstack/eslint-config": "0.4.0",
+    "@tanstack/react-devtools": "0.10.9",
+    "@tanstack/react-query-devtools": "5.101.4",
+    "@tanstack/react-router-devtools": "1.167.1",
     "@tanstack/router-cli": "^1.132.0",
-    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
     "babel-plugin-react-compiler": "^1.0.0",
-    "dotenv": "^17.3.1",
-    "eslint": "^9.20.0",
+    "drizzle-kit": "^0.31.9",
+    "eslint": "^10.8.1",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "wrangler": "^4.120.0"
+    "wrangler": "^4.120.1"
+  },
+  "overrides": {
+    "workerd": "1.20260811.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
       "lightningcss",
       "sharp",
-      "workerd",
-      "better-sqlite3"
+      "workerd"
     ]
   }
 }

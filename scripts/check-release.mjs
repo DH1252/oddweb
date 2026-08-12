@@ -1,0 +1,108 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const localOnly = process.argv.includes('--local')
+const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+  encoding: 'utf8',
+}).trim()
+const packageJson = JSON.parse(
+  readFileSync(resolve(root, 'package.json'), 'utf8'),
+)
+const packageLock = JSON.parse(
+  readFileSync(resolve(root, 'package-lock.json'), 'utf8'),
+)
+const failures = []
+
+if (packageJson.packageManager !== 'npm@11.9.0') {
+  failures.push('packageManager must remain pinned to npm@11.9.0')
+}
+const npmVersion = exec('npm', ['--version'])
+if (npmVersion !== '11.9.0') {
+  failures.push(`npm 11.9.0 is required; found ${npmVersion}`)
+}
+if (packageLock.packages?.['']?.engines?.node !== packageJson.engines.node) {
+  failures.push('package-lock.json release tool metadata is out of sync')
+}
+
+const nodeVersion = process.versions.node.split('.').map(Number)
+if (nodeVersion[0] !== 24 || nodeVersion[1] < 14) {
+  failures.push(
+    `Node 24.14.x or newer Node 24 is required; found ${process.versions.node}`,
+  )
+}
+
+const journal = JSON.parse(
+  readFileSync(resolve(root, 'drizzle/meta/_journal.json'), 'utf8'),
+)
+const journalMigrations = new Set(
+  journal.entries.map((entry) => `${entry.tag}.sql`),
+)
+const sqlMigrations = readdirSync(resolve(root, 'drizzle')).filter((name) =>
+  /^\d{4}_.+\.sql$/.test(name),
+)
+for (const name of sqlMigrations) {
+  if (!journalMigrations.has(name))
+    failures.push(`${name} is missing from the Drizzle journal`)
+  const sql = readFileSync(resolve(root, 'drizzle', name), 'utf8')
+  if (
+    /\bDROP\s+TABLE\b|\bDROP\s+COLUMN\b|\bRENAME\s+(?:TABLE|COLUMN)\b/i.test(
+      sql,
+    ) &&
+    !sql.includes('release: maintenance-required')
+  ) {
+    failures.push(
+      `${name} contains a destructive schema operation; split it into an expand/migrate/contract release`,
+    )
+  }
+}
+for (const name of journalMigrations) {
+  if (!sqlMigrations.includes(name))
+    failures.push(`${name} is journaled but missing`)
+}
+
+if (!localOnly) {
+  const status = exec('git', ['status', '--porcelain'])
+  if (status)
+    failures.push(
+      'the release worktree must be clean, including untracked files',
+    )
+
+  const upstream = tryExec('git', [
+    'rev-parse',
+    '--abbrev-ref',
+    '--symbolic-full-name',
+    '@{upstream}',
+  ])
+  if (!upstream) {
+    failures.push('the release branch must have an upstream remote')
+  } else if (
+    exec('git', ['rev-parse', 'HEAD']) !==
+    exec('git', ['rev-parse', '@{upstream}'])
+  ) {
+    failures.push(
+      `HEAD must exactly match ${upstream}; push the reviewed release commit first`,
+    )
+  }
+}
+
+if (failures.length) {
+  console.error(failures.map((failure) => `- ${failure}`).join('\n'))
+  process.exit(1)
+}
+
+console.log(
+  `Release checks passed (${localOnly ? 'local' : 'clean and remotely backed up'} source).`,
+)
+
+function exec(command, args) {
+  return execFileSync(command, args, { cwd: root, encoding: 'utf8' }).trim()
+}
+
+function tryExec(command, args) {
+  try {
+    return exec(command, args)
+  } catch {
+    return ''
+  }
+}
