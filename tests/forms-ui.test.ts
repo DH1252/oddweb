@@ -82,4 +82,14 @@ test('suspense-backed result controls update inside transitions', async () => {
     admin,
     /function changePage[\s\S]*startTransition\(\(\) => onChange\(nextPage\)\)/,
   )
+  assert.match(directory, /createFileRoute\('\/'\)\(\{\s*shouldReload: false/)
+  assert.match(tags, /createFileRoute\('\/tags'\)\(\{\s*shouldReload: false/)
+  assert.match(
+    directory,
+    /useQuery\(\{[\s\S]*directoryQueryOptions[\s\S]*placeholderData: keepPreviousData/,
+  )
+  assert.match(
+    tags,
+    /useQuery\(\{[\s\S]*tagPageQueryOptions[\s\S]*placeholderData: keepPreviousData/,
+  )
 })

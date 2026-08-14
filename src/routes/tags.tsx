@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { startTransition, useDeferredValue, useState } from 'react'
 
 import { TagInput } from '../components/tag-input'
@@ -29,6 +29,7 @@ const tagsDescription =
   'Browse the tags Oddweb uses to organize unusual, playful, and interactive websites by mood, medium, and activity.'
 
 export const Route = createFileRoute('/tags')({
+  shouldReload: false,
   validateSearch: (search): TagsSearch => {
     const include = normalizeFilterTagList(search.include)
     const exclude = normalizeFilterTagList(search.exclude).filter(
@@ -69,6 +70,7 @@ export const Route = createFileRoute('/tags')({
 })
 
 function TagsPage() {
+  const initialTagPage = Route.useLoaderData()
   const { include: rawInclude = [], exclude: rawExclude = [] } =
     Route.useSearch()
   const navigate = useNavigate({ from: '/tags' })
@@ -77,14 +79,16 @@ function TagsPage() {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
   const [page, setPage] = useState(0)
-  const { data: tagPage } = useSuspenseQuery(
-    tagPageQueryOptions({
-      query: deferredQuery,
-      include,
-      exclude,
-      page,
-    }),
-  )
+  const tagPage =
+    useQuery({
+      ...tagPageQueryOptions({
+        query: deferredQuery,
+        include,
+        exclude,
+        page,
+      }),
+      placeholderData: keepPreviousData,
+    }).data ?? initialTagPage!
   const visibleTags = tagPage.tags
   const pageCount = Math.max(1, Math.ceil(tagPage.total / tagPage.pageSize))
   const safePage = Math.min(page, pageCount - 1)

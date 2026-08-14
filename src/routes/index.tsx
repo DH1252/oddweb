@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
+  keepPreviousData,
   useMutation,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query'
@@ -67,6 +69,7 @@ const sortModes: SortMode[] = [
 ]
 
 export const Route = createFileRoute('/')({
+  shouldReload: false,
   loader: async ({ context }) => {
     await context.queryClient.ensureQueryData(publicSupportQueryOptions())
     const directory = await context.queryClient.ensureQueryData(
@@ -169,12 +172,14 @@ function DirectoryPage() {
     sort,
     page,
   }
-  const { data: directoryData } = useSuspenseQuery(
-    directoryQueryOptions(directoryInput),
-  )
-  const { data: popularData } = useSuspenseQuery(
-    popularQueryOptions(popularPage),
-  )
+  const directoryData = useQuery({
+    ...directoryQueryOptions(directoryInput),
+    placeholderData: keepPreviousData,
+  }).data!
+  const popularData = useQuery({
+    ...popularQueryOptions(popularPage),
+    placeholderData: keepPreviousData,
+  }).data!
   const guestbookMutation = useMutation({
     mutationFn: (input: { name: string; message: string }) =>
       signGuestbook({ data: input }),
