@@ -180,6 +180,7 @@ if (production) {
   await checkDuplicateOrigin(
     process.env.WWW_URL || 'https://www.oddweb.page',
     'redirect',
+    { optionalDns: !process.env.WWW_URL },
   )
   await checkDuplicateOrigin(
     process.env.WORKERS_DEV_URL || 'https://oddweb.oddweb.workers.dev',
@@ -440,8 +441,17 @@ function findJsonLd(body, type) {
   throw new Error(`${type} JSON-LD was missing or invalid`)
 }
 
-async function checkDuplicateOrigin(duplicate, policy) {
-  const response = await fetch(duplicate, { redirect: 'manual' })
+async function checkDuplicateOrigin(duplicate, policy, options = {}) {
+  let response
+  try {
+    response = await fetch(duplicate, { redirect: 'manual' })
+  } catch (error) {
+    if (options.optionalDns && error?.cause?.code === 'ENOTFOUND') {
+      console.warn(`Optional duplicate origin ${duplicate} has no DNS record.`)
+      return
+    }
+    throw error
+  }
   if (policy === 'disabled' && response.status === 404) return
   if ([301, 308].includes(response.status)) {
     const location = new URL(response.headers.get('location'), duplicate)
