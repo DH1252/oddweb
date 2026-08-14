@@ -121,7 +121,6 @@ try {
     run('npx', [
       'wrangler',
       'deploy',
-      '--strict',
       '--message',
       message,
       '--var',
