@@ -50,6 +50,47 @@ export const taxonomyProviderCreateSchema = z
     }
   })
 
+const providerUpdateBase = {
+  providerConfigId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  name: z.string().trim().min(1).max(100).optional(),
+  endpoint: z.string().trim().url().max(500).optional(),
+  model: z.string().trim().min(1).max(200).optional(),
+  routingGroup: z.string().trim().min(1).max(100).optional(),
+  routingRole: z.enum(['primary', 'failover', 'consensus']).optional(),
+  routingPriority: z.number().int().min(0).max(10_000).optional(),
+  timeoutMs: z.number().int().min(1_000).max(120_000).optional(),
+  apiKey: z.string().min(1).max(5_000).optional(),
+}
+
+export const taxonomyProviderUpdateSchema = z
+  .discriminatedUnion('providerKind', [
+    z.strictObject({
+      ...providerUpdateBase,
+      providerKind: z.literal('openai_compatible'),
+      dialect: z.enum(['responses', 'chat_completions']).optional(),
+    }),
+    z.strictObject({
+      ...providerUpdateBase,
+      providerKind: z.literal('gemini'),
+      dialect: z.null().optional(),
+    }),
+  ])
+  .superRefine((input, context) => {
+    if (!input.endpoint) return
+    try {
+      validateProviderEndpoint(input.endpoint, {
+        allowedHosts: taxonomyProviderHostAllowlist,
+      })
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        path: ['endpoint'],
+        message:
+          error instanceof Error ? error.message : 'Invalid provider endpoint',
+      })
+    }
+  })
+
 export const taxonomyPolicyCreateSchema = z
   .strictObject({
     assignmentLimit: z.number().int().min(1).max(100),
@@ -85,6 +126,9 @@ export const taxonomyPolicyCreateSchema = z
 
 export type TaxonomyProviderCreateInput = z.infer<
   typeof taxonomyProviderCreateSchema
+>
+export type TaxonomyProviderUpdateInput = z.infer<
+  typeof taxonomyProviderUpdateSchema
 >
 export type TaxonomyPolicyCreateInput = z.infer<
   typeof taxonomyPolicyCreateSchema

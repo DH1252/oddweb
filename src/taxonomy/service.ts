@@ -222,6 +222,246 @@ export class TaxonomyService {
     return id
   }
 
+  async updateProviderConfig(input: {
+    providerConfigId: number
+    name?: string
+    endpoint?: string
+    model?: string
+    dialect?: 'responses' | 'chat_completions' | null
+    routingGroup?: string
+    routingRole?: 'primary' | 'failover' | 'consensus'
+    routingPriority?: number
+    timeoutMs?: number
+    credential?: string
+    actorId: string
+  }): Promise<boolean> {
+    const config = await this.repository.loadProvider(input.providerConfigId)
+    if (!config) return false
+    const fingerprint =
+      (await this.repository.db
+        .prepare(
+          'SELECT credential_fingerprint FROM taxonomy_provider_configs WHERE id = ?',
+        )
+        .bind(input.providerConfigId)
+        .first<string>('credential_fingerprint')) ?? ''
+    const endpoint = input.endpoint
+      ? validateProviderEndpoint(input.endpoint, {
+          allowedHosts: allowedProviderHosts(config.providerKind),
+        }).href
+      : config.endpoint
+    const dialect = input.dialect !== undefined ? input.dialect : config.dialect
+    const model = input.model?.trim() || config.model
+    if (config.providerKind === 'openai_compatible' && !dialect) {
+      throw new TypeError('OpenAI-compatible providers require a dialect')
+    }
+    if (config.providerKind === 'gemini' && dialect) {
+      throw new TypeError('Gemini providers do not use an OpenAI dialect')
+    }
+    const name = input.name?.trim() || config.name
+    const routingGroup = input.routingGroup?.trim() || config.routingGroup
+    const routingRole = input.routingRole ?? config.routingRole
+    const routingPriority = input.routingPriority ?? config.routingPriority
+    const timeoutMs = input.timeoutMs ?? config.timeoutMs
+    const structural =
+      endpoint !== config.endpoint ||
+      model !== config.model ||
+      dialect !== config.dialect ||
+      Boolean(input.credential)
+    let credential: {
+      nonce: string
+      ciphertext: string
+      fingerprint: string
+      keyVersion: number
+    } | null = null
+    if (input.credential) {
+      const encrypted = await encryptStoredProviderCredential(
+        input.credential,
+        {
+          providerId: input.providerConfigId,
+          keyVersion: config.keyVersion,
+          env: this.env,
+        },
+      )
+      credential = {
+        nonce: encrypted.nonce,
+        ciphertext: encrypted.ciphertext,
+        fingerprint: (await sha256Hex(input.credential)).slice(0, 32),
+        keyVersion: config.keyVersion,
+      }
+    }
+    const now = nowSeconds(this.options)
+    const sanitize = (value: {
+      name?: string
+      endpoint?: string
+      model?: string
+      dialect?: string | null
+      routingGroup?: string
+      routingRole?: string
+      routingPriority?: number
+      timeoutMs?: number
+      keyVersion?: number
+    }) => value
+    await this.repository.auditControlPlane(
+      'provider_config_updated',
+      'provider_config',
+      String(input.providerConfigId),
+      sanitize({
+        name: config.name,
+        endpoint: config.endpoint,
+        model: config.model,
+        dialect: config.dialect,
+        routingGroup: config.routingGroup,
+        routingRole: config.routingRole,
+        routingPriority: config.routingPriority,
+        timeoutMs: config.timeoutMs,
+        keyVersion: config.keyVersion,
+      }),
+      sanitize({
+        name,
+        endpoint,
+        model,
+        dialect,
+        routingGroup,
+        routingRole,
+        routingPriority,
+        timeoutMs,
+        keyVersion: credential?.keyVersion ?? config.keyVersion,
+      }),
+      now,
+      releaseSha(this.env),
+      input.actorId,
+      [
+        this.repository.db
+          .prepare(
+            `SELECT CASE WHEN EXISTS (
+               SELECT 1 FROM taxonomy_provider_configs WHERE id = ?
+             ) THEN 1 ELSE json_extract('provider update guard failed', '$') END`,
+          )
+          .bind(input.providerConfigId),
+        this.repository.db
+          .prepare(
+            `UPDATE taxonomy_provider_configs SET
+               name = ?, endpoint = ?, model = ?, dialect = ?,
+               routing_group = ?, routing_role = ?, routing_priority = ?,
+               timeout_ms = ?,
+               key_version = ?, credential_nonce = ?, credential_ciphertext = ?,
+               credential_fingerprint = ?,
+               enabled = CASE WHEN ? = 1 THEN 0 ELSE enabled END
+             WHERE id = ?`,
+          )
+          .bind(
+            name,
+            endpoint,
+            model,
+            dialect,
+            routingGroup,
+            routingRole,
+            routingPriority,
+            timeoutMs,
+            credential?.keyVersion ?? config.keyVersion,
+            credential?.nonce ?? config.credentialNonce,
+            credential?.ciphertext ?? config.credentialCiphertext,
+            credential?.fingerprint ?? fingerprint,
+            structural ? 1 : 0,
+            input.providerConfigId,
+          ),
+        ...(structural
+          ? [
+              this.repository.db
+                .prepare(
+                  `UPDATE taxonomy_state SET active_provider_config_id = NULL,
+                   mode = CASE WHEN mode IN ('gradual', 'autonomous') THEN 'shadow' ELSE mode END,
+                   mode_changed_at = CASE WHEN mode IN ('gradual', 'autonomous') THEN ? ELSE mode_changed_at END,
+                   updated_at = ? WHERE id = 1 AND active_provider_config_id = ?`,
+                )
+                .bind(now, now, input.providerConfigId),
+            ]
+          : []),
+      ],
+    )
+    return true
+  }
+
+  async deleteProviderConfig(
+    providerConfigId: number,
+    actorId: string,
+  ): Promise<boolean> {
+    const config = await this.repository.loadProvider(providerConfigId)
+    if (!config) return false
+    const state = await this.repository.loadState()
+    if (state.activeProviderConfigId === providerConfigId) {
+      throw new Error('Disable the active provider before deleting it')
+    }
+    const enabled = await this.repository.db
+      .prepare('SELECT enabled FROM taxonomy_provider_configs WHERE id = ?')
+      .bind(providerConfigId)
+      .first<number>('enabled')
+    if (enabled === 1) {
+      throw new Error('Disable the provider before deleting it')
+    }
+    const referenced = await this.repository.db
+      .prepare(
+        `SELECT CASE WHEN EXISTS (
+           SELECT 1 FROM taxonomy_jobs WHERE provider_config_id = ?
+           UNION ALL SELECT 1 FROM taxonomy_job_attempts
+             WHERE provider_config_id = ?
+           UNION ALL SELECT 1 FROM taxonomy_audit_events
+             WHERE provider_config_id = ?
+           UNION ALL SELECT 1 FROM taxonomy_concept_evidence
+             WHERE provider_config_id = ?
+           UNION ALL SELECT 1 FROM taxonomy_provider_configs
+             WHERE supersedes_id = ? AND id <> ?
+         ) THEN 1 ELSE 0 END AS referenced`,
+      )
+      .bind(
+        providerConfigId,
+        providerConfigId,
+        providerConfigId,
+        providerConfigId,
+        providerConfigId,
+        providerConfigId,
+      )
+      .first<number>('referenced')
+    if (referenced) {
+      throw new Error(
+        'Provider has recorded history; keep it disabled instead of deleting it',
+      )
+    }
+    const now = nowSeconds(this.options)
+    await this.repository.auditControlPlane(
+      'provider_config_deleted',
+      'provider_config',
+      String(providerConfigId),
+      {
+        name: config.name,
+        endpoint: config.endpoint,
+        model: config.model,
+        providerKind: config.providerKind,
+      },
+      { deleted: true },
+      now,
+      releaseSha(this.env),
+      actorId,
+      [
+        this.repository.db
+          .prepare(
+            `DELETE FROM taxonomy_provider_configs
+             WHERE id = ? AND enabled = 0`,
+          )
+          .bind(providerConfigId),
+        this.repository.db
+          .prepare(
+            `SELECT CASE WHEN NOT EXISTS (
+               SELECT 1 FROM taxonomy_provider_configs WHERE id = ?
+             ) THEN 1
+             ELSE json_extract('provider delete postcondition failed', '$') END`,
+          )
+          .bind(providerConfigId),
+      ],
+    )
+    return true
+  }
+
   async enableProvider(
     providerConfigId: number,
     actorId = 'admin',

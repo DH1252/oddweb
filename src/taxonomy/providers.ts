@@ -419,7 +419,7 @@ function openAIResult(
   }
 }
 
-function geminiResult(body: unknown): RawProviderResult {
+function geminiInteractionsResult(body: unknown): RawProviderResult {
   if (!body || typeof body !== 'object') {
     throw new TaxonomyProviderError('Provider returned an invalid response', {
       code: 'invalid_response',
@@ -427,27 +427,34 @@ function geminiResult(body: unknown): RawProviderResult {
     })
   }
   const record = body as Record<string, unknown>
-  const candidates = Array.isArray(record.candidates) ? record.candidates : []
-  const first = candidates[0] as Record<string, unknown> | undefined
-  const content = first?.content as Record<string, unknown> | undefined
-  const parts = Array.isArray(content?.parts) ? content.parts : []
-  const text = parts
+  const steps = Array.isArray(record.steps) ? record.steps : []
+  const text = steps
     .filter(
-      (part): part is Record<string, unknown> =>
-        Boolean(part) && typeof part === 'object',
+      (step): step is Record<string, unknown> =>
+        Boolean(step) && typeof step === 'object',
     )
-    .map((part) => part.text)
-    .find((value) => typeof value === 'string')
-  const usage = (record.usageMetadata ?? {}) as Record<string, unknown>
+    .filter((step) => step.type === 'model_output')
+    .flatMap((step) => {
+      const content = Array.isArray(step.content) ? step.content : []
+      return content
+        .filter(
+          (part): part is Record<string, unknown> =>
+            Boolean(part) && typeof part === 'object',
+        )
+        .map((part) => part.text)
+        .filter((value) => typeof value === 'string')
+    })
+    .filter((value) => value.trim())
+    .join('\n')
+  const usage = (record.usage ?? {}) as Record<string, unknown>
   return {
     value: parseStructuredText(text),
     usage: {
-      inputTokens: numberOrNull(usage.promptTokenCount),
-      outputTokens: numberOrNull(usage.candidatesTokenCount),
-      totalTokens: numberOrNull(usage.totalTokenCount),
+      inputTokens: numberOrNull(usage.total_input_tokens),
+      outputTokens: numberOrNull(usage.total_output_tokens),
+      totalTokens: numberOrNull(usage.total_tokens),
     },
-    providerRequestId:
-      typeof record.responseId === 'string' ? record.responseId : null,
+    providerRequestId: typeof record.id === 'string' ? record.id : null,
   }
 }
 
@@ -612,21 +619,21 @@ export function createGeminiProvider(
   return {
     async generateStructured<T>(request: StructuredProviderRequest<T>) {
       const body = {
-        systemInstruction: { parts: [{ text: request.systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: request.userPrompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseJsonSchema: z.toJSONSchema(request.schema),
+        model: config.model,
+        input: request.userPrompt,
+        system_instruction: request.systemPrompt,
+        response_format: {
+          type: 'text',
+          mime_type: 'application/json',
+          schema: z.toJSONSchema(request.schema),
         },
       }
       const result = await executeRequest(
-        providerUrl(
-          baseUrl,
-          `models/${encodeURIComponent(config.model)}:generateContent`,
-        ),
+        providerUrl(baseUrl, 'interactions'),
         {
           method: 'POST',
           headers: {
+            'api-revision': '2026-05-20',
             'content-type': 'application/json',
             'x-goog-api-key': config.apiKey,
           },
@@ -636,7 +643,11 @@ export function createGeminiProvider(
         runtime,
         request.signal,
       )
-      return completeStructuredResult(result, request.schema, geminiResult)
+      return completeStructuredResult(
+        result,
+        request.schema,
+        geminiInteractionsResult,
+      )
     },
   }
 }

@@ -110,7 +110,7 @@ test('OpenAI chat_completions handles compatible response fixtures', async () =>
   })
 })
 
-test('Gemini sends responseJsonSchema without putting its key in the URL', async () => {
+test('Gemini uses the Interactions API with structured output schema', async () => {
   let capturedUrl = ''
   let capturedInit: RequestInit | undefined
   const provider = createGeminiProvider(
@@ -120,14 +120,19 @@ test('Gemini sends responseJsonSchema without putting its key in the URL', async
         capturedUrl = String(input)
         capturedInit = init
         return Response.json({
-          responseId: 'gemini-1',
-          candidates: [
-            { content: { parts: [{ text: JSON.stringify(decision) }] } },
+          id: 'interaction-1',
+          status: 'completed',
+          steps: [
+            { type: 'thought', signature: 'thought-signature' },
+            {
+              type: 'model_output',
+              content: [{ type: 'text', text: JSON.stringify(decision) }],
+            },
           ],
-          usageMetadata: {
-            promptTokenCount: 10,
-            candidatesTokenCount: 6,
-            totalTokenCount: 16,
+          usage: {
+            total_input_tokens: 10,
+            total_output_tokens: 6,
+            total_tokens: 16,
           },
         })
       },
@@ -136,18 +141,31 @@ test('Gemini sends responseJsonSchema without putting its key in the URL', async
   const result = await provider.generateStructured(request)
   assert.equal(
     capturedUrl,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/interactions',
   )
   assert.equal(capturedUrl.includes('gemini-secret'), false)
-  assert.equal(
-    (capturedInit?.headers as Record<string, string>)['x-goog-api-key'],
-    'gemini-secret',
-  )
+  const headers = capturedInit?.headers as Record<string, string>
+  assert.equal(headers['x-goog-api-key'], 'gemini-secret')
+  assert.equal(headers['api-revision'], '2026-05-20')
   const sent = JSON.parse(String(capturedInit?.body)) as {
-    generationConfig: Record<string, unknown>
+    model: string
+    input: string
+    system_instruction: string
+    response_format: {
+      type: string
+      mime_type: string
+      schema: Record<string, unknown>
+    }
   }
-  assert.equal(sent.generationConfig.responseMimeType, 'application/json')
-  assert.ok(sent.generationConfig.responseJsonSchema)
+  assert.equal(sent.model, 'gemini-test')
+  assert.equal(sent.input, 'Site data: radio garden')
+  assert.equal(
+    sent.system_instruction,
+    'Classify only against the supplied catalog.',
+  )
+  assert.equal(sent.response_format.mime_type, 'application/json')
+  assert.ok(sent.response_format.schema)
+  assert.equal(result.providerRequestId, 'interaction-1')
   assert.deepEqual(result.usage, {
     inputTokens: 10,
     outputTokens: 6,

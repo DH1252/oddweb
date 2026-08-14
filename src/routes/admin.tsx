@@ -52,6 +52,7 @@ import {
 import {
   activateTaxonomyPolicy,
   activateTaxonomyProvider,
+  deleteTaxonomyProvider,
   createTaxonomyLock,
   createTaxonomyPolicy,
   createTaxonomyProvider,
@@ -65,6 +66,7 @@ import {
   rollbackTaxonomyEvent,
   rollbackTaxonomySite,
   testTaxonomyProvider,
+  updateTaxonomyProvider,
   transitionTaxonomyMode,
   triggerTaxonomyBackfill,
 } from '../server/taxonomy-admin'
@@ -1050,6 +1052,9 @@ function AutomationSection({
     'openai_compatible' | 'gemini'
   >('openai_compatible')
   const [backfillCursor, setBackfillCursor] = useState<number | null>(0)
+  const [editingProviderId, setEditingProviderId] = useState<number | null>(
+    null,
+  )
 
   const { data: dashboard } = useSuspenseQuery(taxonomyDashboardQueryOptions())
   const { data: providers } = useSuspenseQuery(
@@ -1287,6 +1292,82 @@ function AutomationSection({
     } catch (error) {
       showStatus(
         await handleAdminError(error, `Could not ${action} provider.`),
+        'error',
+      )
+    }
+  }
+
+  async function submitProviderUpdate(
+    event: FormEvent<HTMLFormElement>,
+    kind: 'openai_compatible' | 'gemini',
+    providerConfigId: number,
+  ) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const apiKeyElement = form.elements.namedItem('apiKey')
+    const apiKeyInput =
+      apiKeyElement instanceof HTMLInputElement ? apiKeyElement : null
+    try {
+      const routingRoleValue = String(data.get('routingRole'))
+      if (!isRoutingRole(routingRoleValue))
+        throw new Error('Invalid provider routing role')
+      const shared = {
+        providerConfigId,
+        name: String(data.get('name') || '').trim(),
+        endpoint: String(data.get('endpoint') || '').trim(),
+        model: String(data.get('model') || '').trim(),
+        routingGroup: String(data.get('routingGroup') || '').trim(),
+        routingRole: routingRoleValue,
+        routingPriority: numberFromForm(data, 'routingPriority'),
+        timeoutMs: numberFromForm(data, 'timeoutMs'),
+        apiKey: apiKeyInput?.value.trim() || undefined,
+      }
+      const input =
+        kind === 'openai_compatible'
+          ? {
+              ...shared,
+              providerKind: kind,
+              dialect: parseProviderDialect(data.get('dialect')),
+            }
+          : { ...shared, providerKind: kind, dialect: null }
+      await updateTaxonomyProvider({ data: input })
+      if (apiKeyInput) apiKeyInput.value = ''
+      setEditingProviderId(null)
+      await invalidateTaxonomy('providers', 'dashboard')
+      showStatus(
+        'Provider configuration updated. Structural changes disable the provider until it passes a new test.',
+        'success',
+      )
+    } catch (error) {
+      showStatus(
+        await handleAdminError(
+          error,
+          'Could not update provider configuration.',
+        ),
+        'error',
+      )
+    } finally {
+      if (apiKeyInput) apiKeyInput.value = ''
+    }
+  }
+
+  async function deleteProvider(providerConfigId: number) {
+    if (!window.confirm('Delete this provider configuration?')) return
+    try {
+      const result = await deleteTaxonomyProvider({
+        data: { providerConfigId },
+      })
+      if (!result.deleted) throw new Error('Provider was not deleted')
+      setEditingProviderId(null)
+      await invalidateTaxonomy('providers', 'dashboard')
+      showStatus('Provider configuration deleted.', 'success')
+    } catch (error) {
+      showStatus(
+        await handleAdminError(
+          error,
+          'Could not delete provider configuration.',
+        ),
         'error',
       )
     }
@@ -1874,8 +1955,152 @@ function AutomationSection({
                               Disable
                             </button>
                           ) : null}
+                          <button
+                            type="button"
+                            className={buttonClass}
+                            disabled={pending}
+                            onClick={() =>
+                              setEditingProviderId((current) =>
+                                current === Number(provider.id)
+                                  ? null
+                                  : Number(provider.id),
+                              )
+                            }
+                          >
+                            {editingProviderId === Number(provider.id)
+                              ? 'Close editor'
+                              : 'Edit'}
+                          </button>
+                          {!provider.enabled && !provider.active ? (
+                            <button
+                              type="button"
+                              className={dangerButtonClass}
+                              disabled={pending}
+                              onClick={() =>
+                                deleteProvider(Number(provider.id))
+                              }
+                            >
+                              Delete
+                            </button>
+                          ) : null}
                         </div>
                       </div>
+                      {editingProviderId === Number(provider.id) ? (
+                        <form
+                          key={`edit-${String(provider.id)}`}
+                          onSubmit={(event) =>
+                            submitProviderUpdate(
+                              event,
+                              provider.providerKind === 'gemini'
+                                ? 'gemini'
+                                : 'openai_compatible',
+                              Number(provider.id),
+                            )
+                          }
+                          className="mt-2 grid gap-2 border-t border-line pt-2"
+                        >
+                          <label className="grid gap-1 font-mono text-xs">
+                            Name
+                            <input
+                              name="name"
+                              defaultValue={String(provider.name)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            Endpoint
+                            <input
+                              name="endpoint"
+                              type="url"
+                              defaultValue={String(provider.endpoint)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            Model
+                            <input
+                              name="model"
+                              defaultValue={String(provider.model)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          {provider.providerKind !== 'gemini' ? (
+                            <label className="grid gap-1 font-mono text-xs">
+                              Dialect
+                              <select
+                                name="dialect"
+                                defaultValue={String(
+                                  provider.dialect ?? 'responses',
+                                )}
+                                className="border border-line bg-paper px-2 py-1"
+                              >
+                                <option value="responses">responses</option>
+                                <option value="chat_completions">
+                                  chat_completions
+                                </option>
+                              </select>
+                            </label>
+                          ) : null}
+                          <label className="grid gap-1 font-mono text-xs">
+                            Routing group
+                            <input
+                              name="routingGroup"
+                              defaultValue={String(provider.routingGroup)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            Routing role
+                            <select
+                              name="routingRole"
+                              defaultValue={String(provider.routingRole)}
+                              className="border border-line bg-paper px-2 py-1"
+                            >
+                              <option value="primary">primary</option>
+                              <option value="failover">failover</option>
+                              <option value="consensus">consensus</option>
+                            </select>
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            Routing priority
+                            <input
+                              name="routingPriority"
+                              type="number"
+                              min={0}
+                              defaultValue={Number(provider.routingPriority)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            Timeout (ms)
+                            <input
+                              name="timeoutMs"
+                              type="number"
+                              min={1000}
+                              max={120000}
+                              defaultValue={Number(provider.timeoutMs)}
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <label className="grid gap-1 font-mono text-xs">
+                            New API key (optional)
+                            <input
+                              name="apiKey"
+                              type="password"
+                              autoComplete="off"
+                              placeholder="Leave empty to keep the stored key"
+                              className="border border-line bg-paper px-2 py-1"
+                            />
+                          </label>
+                          <p className="m-0 font-mono text-xs text-muted">
+                            Changing the endpoint, model, dialect, or key
+                            disables the provider until it passes a new test.
+                          </p>
+                          <button type="submit" className={buttonClass}>
+                            Save provider
+                          </button>
+                        </form>
+                      ) : null}
                     </li>
                   )
                 })}

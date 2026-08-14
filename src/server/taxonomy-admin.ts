@@ -19,12 +19,14 @@ import {
   taxonomyPolicyCreateSchema,
   taxonomyProviderCreateSchema,
   taxonomyProviderHostAllowlist,
+  taxonomyProviderUpdateSchema,
 } from './taxonomy-admin-validation'
 
 export {
   taxonomyPolicyCreateSchema,
   taxonomyProviderCreateSchema,
   taxonomyProviderHostAllowlist,
+  taxonomyProviderUpdateSchema,
 } from './taxonomy-admin-validation'
 
 const positiveId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
@@ -186,6 +188,39 @@ export const createTaxonomyProvider = createServerFn({ method: 'POST' })
       }
     }
   })
+
+export const updateTaxonomyProvider = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => taxonomyProviderUpdateSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { apiKey, providerConfigId, ...patch } = data
+    return {
+      updated: await service().updateProviderConfig({
+        providerConfigId,
+        name: patch.name,
+        endpoint: patch.endpoint,
+        model: patch.model,
+        dialect:
+          data.providerKind === 'gemini' ? null : (patch.dialect ?? undefined),
+        routingGroup: patch.routingGroup,
+        routingRole: patch.routingRole,
+        routingPriority: patch.routingPriority,
+        timeoutMs: patch.timeoutMs,
+        credential: apiKey,
+        actorId: context.admin.username,
+      }),
+    }
+  })
+
+export const deleteTaxonomyProvider = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => providerIdInput.parse(data))
+  .handler(async ({ data, context }) => ({
+    deleted: await service().deleteProviderConfig(
+      data.providerConfigId,
+      context.admin.username,
+    ),
+  }))
 
 export const testTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])

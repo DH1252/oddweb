@@ -310,6 +310,145 @@ test('admin primitives persist encrypted provider and immutable policy revisions
   )
 })
 
+test('admin provider edit and delete are audited, disabled, and guarded', async (context) => {
+  const mf = new Miniflare(
+    convertV4MiniflareOptions({
+      compatibilityDate: '2026-08-14',
+      modules: true,
+      script: 'export default { fetch() { return new Response("ok") } }',
+      d1Databases: ['DB'],
+    }),
+  )
+  context.after(() => mf.dispose())
+  const db = await mf.getD1Database('DB')
+  await db.exec(
+    `${adminSchema} ${runtimeSchema}
+    CREATE TABLE taxonomy_concept_evidence (
+      id TEXT PRIMARY KEY, provider_config_id INTEGER
+    );`.replace(/\s+/g, ' '),
+  )
+  const env = {
+    DB: db,
+    TAXONOMY_MASTER_KEY_V1: base64Url(new Uint8Array(32).fill(4)),
+    RELEASE_SHA: 'test',
+  }
+  const service = new TaxonomyService(env, { now: () => 1_000_000 })
+  const providerId = await service.createProviderConfig({
+    name: 'gemini-primary',
+    providerKind: 'gemini',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-test',
+    keyVersion: 1,
+    credential: 'first-secret',
+    enabled: false,
+    actorId: 'admin',
+  })
+
+  await assert.rejects(
+    service.updateProviderConfig({
+      providerConfigId: providerId,
+      dialect: 'responses',
+      actorId: 'admin',
+    }),
+    /do not use an OpenAI dialect/,
+  )
+  assert.equal(
+    await service.updateProviderConfig({
+      providerConfigId: providerId,
+      model: 'gemini-new',
+      credential: 'second-secret',
+      routingPriority: 5,
+      actorId: 'admin',
+    }),
+    true,
+  )
+  const updated = await db
+    .prepare(
+      `SELECT model, key_version AS keyVersion, credential_ciphertext AS ciphertext,
+              credential_fingerprint AS fingerprint, enabled, routing_priority AS priority
+       FROM taxonomy_provider_configs WHERE id = ?`,
+    )
+    .bind(providerId)
+    .first<{
+      model: string
+      keyVersion: number
+      ciphertext: string
+      fingerprint: string
+      enabled: number
+      priority: number
+    }>()
+  assert.equal(updated?.model, 'gemini-new')
+  assert.equal(updated?.keyVersion, 1)
+  assert.equal(updated?.priority, 5)
+  assert.equal(updated?.enabled, 0)
+  assert.equal(
+    updated?.ciphertext.includes('first-secret') ||
+      updated?.ciphertext.includes('second-secret'),
+    false,
+  )
+  await assert.rejects(service.testProvider(providerId), () => true)
+
+  await db
+    .prepare(
+      'UPDATE taxonomy_state SET active_provider_config_id = ? WHERE id = 1',
+    )
+    .bind(providerId)
+    .run()
+  await assert.rejects(
+    service.deleteProviderConfig(providerId, 'admin'),
+    /active/i,
+  )
+  await db
+    .prepare(
+      'UPDATE taxonomy_state SET active_provider_config_id = NULL WHERE id = 1',
+    )
+    .run()
+  await db
+    .prepare('UPDATE taxonomy_provider_configs SET enabled = 1 WHERE id = ?')
+    .bind(providerId)
+    .run()
+  await assert.rejects(
+    service.deleteProviderConfig(providerId, 'admin'),
+    /disable/i,
+  )
+  await db
+    .prepare('UPDATE taxonomy_provider_configs SET enabled = 0 WHERE id = ?')
+    .bind(providerId)
+    .run()
+  assert.equal(await service.deleteProviderConfig(providerId, 'admin'), true)
+  assert.equal(
+    await db
+      .prepare('SELECT count(*) AS count FROM taxonomy_provider_configs')
+      .first<number>('count'),
+    0,
+  )
+
+  const supersededId = await service.createProviderConfig({
+    name: 'rotated',
+    providerKind: 'gemini',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-test',
+    keyVersion: 1,
+    credential: 'history-secret',
+    enabled: false,
+    actorId: 'admin',
+  })
+  await service.createProviderConfig({
+    name: 'rotated',
+    providerKind: 'gemini',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-test',
+    keyVersion: 1,
+    credential: 'history-secret',
+    enabled: false,
+    actorId: 'admin',
+  })
+  await assert.rejects(
+    service.deleteProviderConfig(supersededId, 'admin'),
+    /history/i,
+  )
+})
+
 const runtimeSchema = `
 CREATE TABLE taxonomy_jobs (
   id TEXT PRIMARY KEY, job_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
