@@ -52,6 +52,25 @@ test('semantic button tones override shared hover colors', async () => {
   assert.match(source, /dangerButtonClass[\s\S]*hover:bg-\[#78221c\]/)
 })
 
+test('admin pages use high-contrast text, borders, and disabled controls', async () => {
+  const styles = await readFile(
+    new URL('../src/styles.css', import.meta.url),
+    'utf8',
+  )
+  const login = await readFile(
+    new URL('../src/routes/admin_.login.tsx', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(styles, /data-od-id='admin-page'/)
+  assert.match(styles, /data-od-id='admin-login'/)
+  assert.match(styles, /--color-muted: #704936/)
+  assert.match(styles, /--color-line: #996141/)
+  assert.match(styles, /fieldset:disabled[\s\S]*opacity: 1/)
+  assert.match(styles, /-webkit-text-fill-color: #593625/)
+  assert.match(login, /data-od-id="admin-login"/)
+})
+
 test('suspense-backed result controls update inside transitions', async () => {
   const directory = await readFile(
     new URL('../src/routes/index.tsx', import.meta.url),

@@ -83,6 +83,32 @@ button {
   margin-inline: auto;
 }
 
+:where([data-od-id='admin-page'], [data-od-id='admin-login']) {
+  --color-muted: #704936;
+  --color-line: #996141;
+  --color-soft-line: #9f6747;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  fieldset:disabled {
+  opacity: 1;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :where(input, select, textarea):disabled {
+  cursor: not-allowed;
+  border-color: #704936;
+  background: #e5d8bb;
+  color: #593625;
+  -webkit-text-fill-color: #593625;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :where(input, textarea)::placeholder {
+  color: #704936;
+  opacity: 1;
+}
+
 .odd-grid-bg {
   background-color: #ffdca8;
   background-image:

@@ -77,6 +77,7 @@ function AdminLoginPage() {
         id="main-content"
         tabIndex={-1}
         className="odd-shell my-6 mb-8 grid place-items-center"
+        data-od-id="admin-login"
       >
         <section className="w-full max-w-md border-2 border-ink bg-paper p-3 shadow-[6px_6px_0_#2a1810]">
           <div className="mb-3 border border-ink bg-rust px-4 py-3 text-white">
