@@ -6,14 +6,14 @@ import {
   runTaxonomyMaintenance,
 } from './taxonomy/processor'
 
-const fetchEntry = createServerEntry({
+const fetchHandler = createServerEntry({
   fetch(request) {
     return handler.fetch(request)
   },
 })
 
 export default {
-  ...fetchEntry,
+  fetch: fetchHandler.fetch,
   async queue(batch: MessageBatch<unknown>) {
     for (const message of batch.messages) {
       try {

@@ -161,18 +161,32 @@ function currentVersionId() {
 }
 
 function deployMaintenance(message) {
+  const maintenanceConfig = resolve(root, '.wrangler/maintenance.jsonc')
+  writeFileSync(
+    maintenanceConfig,
+    `${JSON.stringify(
+      {
+        $schema: 'node_modules/wrangler/config-schema.json',
+        name: 'oddweb',
+        main: 'scripts/maintenance-worker.mjs',
+        compatibility_date: '2026-08-03',
+        workers_dev: false,
+        routes: [{ pattern: 'oddweb.page', custom_domain: true }],
+        vars: {
+          ENVIRONMENT: 'production',
+          PUBLIC_SITE_URL: 'https://oddweb.page',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  )
   run('npx', [
     'wrangler',
     'deploy',
     'scripts/maintenance-worker.mjs',
     '--config',
-    'wrangler.jsonc',
-    '--name',
-    'oddweb',
-    '--compatibility-date',
-    '2026-08-03',
-    '--no-bundle',
-    '--keep-vars',
+    maintenanceConfig,
     '--message',
     message,
   ])
