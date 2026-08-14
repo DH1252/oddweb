@@ -189,6 +189,7 @@ if (production) {
 }
 
 if (!local) await taxonomyProbe()
+await realtimeProbe()
 
 console.log(`Smoke test passed for ${baseUrl}.`)
 
@@ -465,6 +466,29 @@ async function checkDuplicateOrigin(duplicate, policy, options = {}) {
   throw new Error(
     `${duplicate} must ${policy === 'redirect' ? 'permanently redirect' : 'return 404 or permanently redirect'}; received ${response.status}`,
   )
+}
+
+async function realtimeProbe() {
+  const websocketUrl = new URL('/api/realtime', baseUrl)
+  websocketUrl.protocol = websocketUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+  await new Promise((resolve, reject) => {
+    const socket = new WebSocket(websocketUrl)
+    const timeout = setTimeout(() => {
+      socket.close()
+      reject(new Error('realtime WebSocket did not respond within 10 seconds'))
+    }, 10_000)
+    socket.addEventListener('open', () => socket.send('ping'))
+    socket.addEventListener('message', (event) => {
+      if (event.data !== 'pong') return
+      clearTimeout(timeout)
+      socket.close(1000, 'Smoke test complete')
+      resolve()
+    })
+    socket.addEventListener('error', () => {
+      clearTimeout(timeout)
+      reject(new Error('realtime WebSocket connection failed'))
+    })
+  })
 }
 
 function expectMatch(value, pattern, label) {

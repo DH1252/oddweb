@@ -30,6 +30,23 @@ if (parsedWranglerConfig.main !== 'src/server.ts') {
     'production Worker main must use the custom src/server.ts entry',
   )
 }
+const realtimeBinding = parsedWranglerConfig.durable_objects?.bindings?.find(
+  (binding) => binding.name === 'REALTIME_HUB',
+)
+if (realtimeBinding?.class_name !== 'RealtimeHub') {
+  failures.push('production Worker must bind REALTIME_HUB to RealtimeHub')
+}
+if (
+  !parsedWranglerConfig.migrations?.some(
+    (migration) =>
+      migration.tag === 'v1-realtime-hub' &&
+      migration.new_sqlite_classes?.includes('RealtimeHub'),
+  )
+) {
+  failures.push(
+    'production Worker must declare the RealtimeHub SQLite migration',
+  )
+}
 
 if (!wranglerConfig.includes('"PUBLIC_SITE_URL": "https://oddweb.page"')) {
   failures.push('production PUBLIC_SITE_URL must be https://oddweb.page')
@@ -41,6 +58,9 @@ if (!wranglerConfig.includes('"workers_dev": false')) {
   failures.push('production workers_dev must be disabled')
 }
 const serverEntry = readFileSync(resolve(root, 'src/server.ts'), 'utf8')
+if (!serverEntry.includes("export { RealtimeHub } from './realtime/hub'")) {
+  failures.push('src/server.ts must export RealtimeHub')
+}
 for (const handler of [
   'processTaxonomyMessage',
   'dispatchTaxonomyOutbox',

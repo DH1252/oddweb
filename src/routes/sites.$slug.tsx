@@ -222,7 +222,7 @@ function SiteDetailPage() {
 
         <nav
           className="mt-2.5 flex items-stretch justify-between gap-2 border border-line bg-canvas p-1.5 font-mono text-sm font-bold"
-          aria-label="Browse directory entries"
+          aria-label="Browse sites"
         >
           <Link
             to="/sites/$slug"

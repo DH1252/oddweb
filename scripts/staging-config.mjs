@@ -98,6 +98,12 @@ writeFileSync(
         ],
       },
       triggers: { crons: ['*/5 * * * *'] },
+      durable_objects: {
+        bindings: [{ name: 'REALTIME_HUB', class_name: 'RealtimeHub' }],
+      },
+      migrations: [
+        { tag: 'v1-realtime-hub', new_sqlite_classes: ['RealtimeHub'] },
+      ],
       observability: {
         enabled: true,
         logs: {

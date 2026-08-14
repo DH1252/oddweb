@@ -38,6 +38,7 @@ export function TagInput({
   const deferredQuery = useDeferredValue(normalizeTag(query))
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [requiredError, setRequiredError] = useState(false)
   const atLimit = selected.length >= maxTags
   const { data } = useQuery(
     tagSuggestionsQueryOptions({
@@ -66,6 +67,7 @@ export function TagInput({
 
   function update(next: string[]) {
     if (value === undefined) setInternalValue(next)
+    if (next.length) setRequiredError(false)
     onChange?.(next)
   }
 
@@ -144,7 +146,7 @@ export function TagInput({
             role="combobox"
             aria-autocomplete="list"
             aria-required={required || undefined}
-            aria-describedby={`${id}-instructions`}
+            aria-describedby={`${id}-instructions${requiredError ? ` ${id}-error` : ''}`}
             aria-haspopup="listbox"
             aria-expanded={open && suggestions.length > 0}
             aria-controls={
@@ -184,6 +186,9 @@ export function TagInput({
                     : undefined,
                 )
               } else if (event.key === 'Escape') {
+                if (!open) return
+                event.preventDefault()
+                event.stopPropagation()
                 setOpen(false)
               } else if (
                 event.key === 'Backspace' &&
@@ -194,6 +199,7 @@ export function TagInput({
               }
             }}
             className="min-h-10 w-full border-0 bg-transparent px-1.5 py-1 text-[15px] outline-none placeholder:text-muted"
+            aria-invalid={requiredError || undefined}
             placeholder={
               atLimit ? `Maximum of ${maxTags} tags reached` : placeholder
             }
@@ -253,6 +259,13 @@ export function TagInput({
                   ?.querySelector<HTMLInputElement>('[role="combobox"]')
                   ?.focus()
               }}
+              onInvalid={(event) => {
+                event.preventDefault()
+                setRequiredError(true)
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLInputElement>('[role="combobox"]')
+                  ?.focus()
+              }}
               required
               aria-label={`${label} are required`}
               className="absolute size-px opacity-0"
@@ -260,6 +273,15 @@ export function TagInput({
             />
           ) : null}
         </>
+      ) : null}
+      {requiredError ? (
+        <p
+          id={`${id}-error`}
+          className="mt-1 mb-0 border-l-4 border-danger bg-red-50 px-2 py-1 text-sm font-bold text-danger"
+          role="alert"
+        >
+          Add at least one tag before submitting.
+        </p>
       ) : null}
       <p
         id={`${id}-instructions`}

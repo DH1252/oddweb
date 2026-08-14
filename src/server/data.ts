@@ -27,6 +27,7 @@ import {
 import { tagSlug } from '../data/tags'
 import { normalizeWebsiteUrl } from '../lib/website-url'
 import { deferVisitAccounting } from './visit-accounting'
+import { publishRealtimeEvent } from './realtime'
 
 const daySeconds = 24 * 60 * 60
 const maxUploadRequestBytes = 9 * 1024 * 1024
@@ -135,6 +136,7 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
         status: data.status,
         source: 'Manual',
       })
+      await publishRealtimeEvent({ type: 'directory.changed' })
       return { id, thumbnailKey: thumbnail.key }
     } catch (error) {
       await removeThumbnail(thumbnail.key)
@@ -147,6 +149,7 @@ export const signGuestbook = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await enforcePublicRateLimit('guestbook', 5, daySeconds)
     await addGuestbookEntry(data)
+    await publishRealtimeEvent({ type: 'guestbook.changed' })
   })
 
 export const recordSiteVisit = createServerFn({ method: 'POST' })
@@ -160,6 +163,7 @@ export const reviewSubmission = createServerFn({ method: 'POST' })
   .validator((data) => moderationInput.parse(data))
   .handler(async ({ data }) => {
     await moderateSubmission(data.id, data.status)
+    await publishRealtimeEvent({ type: 'directory.changed' })
   })
 
 export const updateSiteStatus = createServerFn({ method: 'POST' })
@@ -167,6 +171,7 @@ export const updateSiteStatus = createServerFn({ method: 'POST' })
   .validator((data) => siteStatusInput.parse(data))
   .handler(async ({ data }) => {
     await setSiteStatus(data.id, data.status)
+    await publishRealtimeEvent({ type: 'directory.changed' })
   })
 
 export const setGuestbookEntryVisibility = createServerFn({ method: 'POST' })
@@ -174,6 +179,7 @@ export const setGuestbookEntryVisibility = createServerFn({ method: 'POST' })
   .validator((data) => guestbookVisibilityInput.parse(data))
   .handler(async ({ data }) => {
     await setGuestbookVisibility(data.id, data.hidden)
+    await publishRealtimeEvent({ type: 'guestbook.changed' })
   })
 
 export const reconcileThumbnailStorage = createServerFn({ method: 'POST' })
@@ -227,6 +233,7 @@ export const updateDirectorySite = createServerFn({ method: 'POST' })
         key: result.previousThumbnailKey,
       })
     }
+    await publishRealtimeEvent({ type: 'directory.changed' })
     return { id: data.id, thumbnailKey: result.thumbnailKey }
   })
 
@@ -234,10 +241,12 @@ export const saveTag = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => tagDefinitionInput.parse(data))
   .handler(async ({ data, context }) => {
-    return createTaxonomyService(env).correctTag({
+    const result = await createTaxonomyService(env).correctTag({
       ...data,
       actorId: context.admin.username,
     })
+    await publishRealtimeEvent({ type: 'directory.changed' })
+    return result
   })
 
 export const mergeTag = createServerFn({ method: 'POST' })
@@ -250,11 +259,13 @@ export const mergeTag = createServerFn({ method: 'POST' })
       .bind(data.targetSlug)
       .first<{ id: number }>()
     if (!target) throw new Error('Valid source and target tags are required.')
-    return createTaxonomyService(env).correctMerge({
+    const result = await createTaxonomyService(env).correctMerge({
       sourceId: data.sourceId,
       targetId: target.id,
       actorId: context.admin.username,
     })
+    await publishRealtimeEvent({ type: 'directory.changed' })
+    return result
   })
 
 function validateSiteForm(data: unknown) {

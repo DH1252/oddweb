@@ -1,6 +1,7 @@
 import { env, waitUntil } from 'cloudflare:workers'
 
 import { recordAtomicVisit, VisitRepositoryError } from '../db/visit-repository'
+import { publishRealtimeEvent } from './realtime'
 
 export type DeferredVisitInput = {
   request: Request
@@ -75,8 +76,17 @@ export async function deferVisitAccounting({
 
   const visitorKey = await visitorVisitKey(request, slug, secret)
   waitUntil(
-    recordAtomicVisit(database, { slug, visitorKey }).catch(
-      (error: unknown) => {
+    recordAtomicVisit(database, { slug, visitorKey })
+      .then(async (result) => {
+        if (result.recorded && result.views !== undefined) {
+          await publishRealtimeEvent({
+            type: 'site.viewed',
+            slug,
+            views: result.views,
+          })
+        }
+      })
+      .catch((error: unknown) => {
         console.error({
           event: 'visit_accounting_failed',
           code:
@@ -86,8 +96,7 @@ export async function deferVisitAccounting({
           slug,
           error: error instanceof Error ? error.message : String(error),
         })
-      },
-    ),
+      }),
   )
 
   return { accepted: true }

@@ -16,6 +16,7 @@ import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as AdminLoginRouteImport } from './routes/admin_.login'
+import { Route as ApiRealtimeRouteImport } from './routes/api.realtime'
 import { Route as SitesSlugRouteImport } from './routes/sites.$slug'
 import { Route as ThumbnailsKeyRouteImport } from './routes/thumbnails.$key'
 
@@ -54,6 +55,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRealtimeRoute = ApiRealtimeRouteImport.update({
+  id: '/api/realtime',
+  path: '/api/realtime',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesSlugRoute = SitesSlugRouteImport.update({
   id: '/sites/$slug',
   path: '/sites/$slug',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/api/realtime': typeof ApiRealtimeRoute
   '/sites/$slug': typeof SitesSlugRoute
   '/thumbnails/$key': typeof ThumbnailsKeyRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/api/realtime': typeof ApiRealtimeRoute
   '/sites/$slug': typeof SitesSlugRoute
   '/thumbnails/$key': typeof ThumbnailsKeyRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin_/login': typeof AdminLoginRoute
+  '/api/realtime': typeof ApiRealtimeRoute
   '/sites/$slug': typeof SitesSlugRoute
   '/thumbnails/$key': typeof ThumbnailsKeyRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/tags'
     | '/admin/login'
+    | '/api/realtime'
     | '/sites/$slug'
     | '/thumbnails/$key'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/tags'
     | '/admin/login'
+    | '/api/realtime'
     | '/sites/$slug'
     | '/thumbnails/$key'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/tags'
     | '/admin_/login'
+    | '/api/realtime'
     | '/sites/$slug'
     | '/thumbnails/$key'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TagsRoute: typeof TagsRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  ApiRealtimeRoute: typeof ApiRealtimeRoute
   SitesSlugRoute: typeof SitesSlugRoute
   ThumbnailsKeyRoute: typeof ThumbnailsKeyRoute
 }
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/realtime': {
+      id: '/api/realtime'
+      path: '/api/realtime'
+      fullPath: '/api/realtime'
+      preLoaderRoute: typeof ApiRealtimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/$slug': {
       id: '/sites/$slug'
       path: '/sites/$slug'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TagsRoute: TagsRoute,
   AdminLoginRoute: AdminLoginRoute,
+  ApiRealtimeRoute: ApiRealtimeRoute,
   SitesSlugRoute: SitesSlugRoute,
   ThumbnailsKeyRoute: ThumbnailsKeyRoute,
 }

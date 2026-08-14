@@ -56,7 +56,7 @@ const pageSize = 6
 const sortStorageKey = 'oddweb-directory-sort'
 const homeTitle = 'Oddweb: Unusual, Fun and Interactive Websites'
 const homeDescription =
-  'Explore a hand-filed directory of unusual, fun, and interactive websites, selected for curious detours beyond the usual web.'
+  'Explore unusual, fun, and interactive websites selected for curious detours beyond the usual web.'
 const sortModes: SortMode[] = [
   'popular',
   'newest',
@@ -126,7 +126,7 @@ export const Route = createFileRoute('/')({
             {
               '@type': 'ItemList',
               '@id': `${SITE_ORIGIN}/#directory-list`,
-              name: 'Oddweb directory entries',
+              name: 'Websites on Oddweb',
               numberOfItems: loaderData?.sites.length ?? 0,
               itemListElement: (loaderData?.sites ?? []).map((site, index) => ({
                 '@type': 'ListItem',
@@ -298,7 +298,7 @@ function DirectoryPage() {
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
       ])
-      setNotice(`${name} was added to the review pile with its R2 thumbnail.`)
+      setNotice(`${name} was submitted for review with its preview image.`)
       setSubmitOpen(false)
       form.reset()
     } catch (error) {
@@ -440,15 +440,14 @@ function DirectoryPage() {
               tabIndex={-1}
               className="m-0 font-mono text-base font-bold tracking-[0.08em] uppercase"
             >
-              The filing cabinet
+              Sites
             </h2>
             <div className="flex items-center justify-between gap-3">
               <p
                 className="m-0 font-mono text-xs text-muted"
                 aria-live="polite"
               >
-                {matchingSiteCount} {matchingSiteCount === 1 ? 'site' : 'sites'}{' '}
-                on file
+                {matchingSiteCount} {matchingSiteCount === 1 ? 'site' : 'sites'}
               </p>
               <label className="inline-flex items-center gap-2 font-mono text-xs font-bold">
                 Order
@@ -461,9 +460,9 @@ function DirectoryPage() {
                   className="min-h-11 border border-brown bg-paper px-2 text-sm shadow-[1px_1px_0_#d9aa7a]"
                   data-od-id="catalog-sort"
                 >
-                  <option value="popular">Most opened</option>
-                  <option value="newest">Newest filed</option>
-                  <option value="oldest">Oldest filed</option>
+                  <option value="popular">Most viewed</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
                   <option value="tags">Most tags</option>
                   <option value="az">Title A-Z</option>
                   <option value="za">Title Z-A</option>
@@ -490,9 +489,7 @@ function DirectoryPage() {
               className="my-3 border border-dashed border-line bg-paper p-8 text-center"
               data-od-id="empty-state"
             >
-              <h3 className="mb-1 font-mono font-bold">
-                No match in this drawer.
-              </h3>
+              <h3 className="mb-1 font-mono font-bold">No sites found.</h3>
               <p className="mb-3 text-brown">
                 Remove a tag or try fewer words.
               </p>
@@ -520,8 +517,8 @@ function DirectoryPage() {
 
         <div className="mt-2.5 grid gap-2.5">
           <Panel
-            title="Most opened"
-            label="DETAIL ENTRIES"
+            title="Most viewed"
+            label="POPULAR SITES"
             className="[&>div:last-child]:p-3.5"
           >
             <ol
@@ -545,7 +542,7 @@ function DirectoryPage() {
                     {site.name}
                   </Link>
                   <span className="ml-2 font-mono text-xs text-muted">
-                    {site.visits} detail opens
+                    {site.visits} {site.visits === 1 ? 'view' : 'views'}
                   </span>
                   <p className="mt-1 mb-0 text-sm text-brown">
                     {site.description}
@@ -557,12 +554,12 @@ function DirectoryPage() {
               page={safePopularPage}
               pageCount={popularPageCount}
               onPageChange={setPopularPage}
-              label="Most opened pages"
+              label="Most viewed pages"
               focusTargetId="most-opened-results"
             />
           </Panel>
 
-          <Panel title="Recently approved" label="COMMUNITY FILINGS">
+          <Panel title="Recently added" label="COMMUNITY PICKS">
             <ol className="m-0 grid list-none gap-1 p-0 sm:grid-cols-3">
               {communityFilings.slice(0, 6).map((filing) => (
                 <li
@@ -604,35 +601,36 @@ function DirectoryPage() {
                   onSubmit={addGuestbookEntry}
                   data-od-id="guestbook-form"
                 >
-                  <label className="font-mono text-xs font-bold">
-                    Name / alias
-                    <input
-                      name="name"
-                      required
-                      maxLength={24}
-                      className={`${fieldClass} mt-1`}
-                      placeholder="Your screen name"
-                    />
-                  </label>
-                  <label className="font-mono text-xs font-bold">
-                    Short note
-                    <input
-                      name="message"
-                      required
-                      maxLength={120}
-                      className={`${fieldClass} mt-1`}
-                      placeholder="What did you discover?"
-                    />
-                  </label>
-                  <button
-                    className={buttonClass}
-                    type="submit"
+                  <fieldset
                     disabled={guestbookMutation.isPending}
+                    className="m-0 grid min-w-0 gap-1.5 border-0 p-0"
                   >
-                    {guestbookMutation.isPending
-                      ? 'Signing...'
-                      : 'Sign the wall'}
-                  </button>
+                    <label className="font-mono text-xs font-bold">
+                      Name / alias
+                      <input
+                        name="name"
+                        required
+                        maxLength={24}
+                        className={`${fieldClass} mt-1`}
+                        placeholder="Your screen name"
+                      />
+                    </label>
+                    <label className="font-mono text-xs font-bold">
+                      Short note
+                      <input
+                        name="message"
+                        required
+                        maxLength={120}
+                        className={`${fieldClass} mt-1`}
+                        placeholder="What did you discover?"
+                      />
+                    </label>
+                    <button className={buttonClass} type="submit">
+                      {guestbookMutation.isPending
+                        ? 'Signing...'
+                        : 'Sign the wall'}
+                    </button>
+                  </fieldset>
                 </form>
                 <p className="mt-2 mb-0 text-sm text-brown">
                   Name what you clicked, then leave a sentence for the next
@@ -675,7 +673,7 @@ function DirectoryPage() {
                 id="submit-title"
                 className="m-0 font-mono text-sm font-bold tracking-wide uppercase"
               >
-                File a site
+                Submit a site
               </h2>
               <button
                 type="button"
@@ -687,82 +685,89 @@ function DirectoryPage() {
                 X
               </button>
             </div>
-            <SubmitField
-              label="Site name"
-              name="name"
-              placeholder="Enter the site's name"
-              maxLength={40}
-              autoFocus
-            />
-            <SubmitField
-              label="Website address"
-              name="url"
-              type="url"
-              placeholder="https://"
-            />
-            <div className="mb-2">
-              <FieldLabel htmlFor="submit-image">Site preview image</FieldLabel>
-              <div className="border border-dotted border-brown bg-canvas p-2">
-                <input
-                  id="submit-image"
-                  name="image"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  required
-                  className="w-full"
-                />
-                <small className="mt-1 block text-muted">
-                  PNG, JPEG, or WebP, up to 8 MB. Stored in Cloudflare R2.
-                </small>
+            <fieldset
+              disabled={submitPending}
+              className="m-0 min-w-0 border-0 p-0"
+            >
+              <SubmitField
+                label="Site name"
+                name="name"
+                placeholder="Enter the site's name"
+                maxLength={40}
+                autoFocus
+              />
+              <SubmitField
+                label="Website address"
+                name="url"
+                type="url"
+                placeholder="https://"
+              />
+              <div className="mb-2">
+                <FieldLabel htmlFor="submit-image">
+                  Site preview image
+                </FieldLabel>
+                <div className="border border-dotted border-brown bg-canvas p-2">
+                  <input
+                    id="submit-image"
+                    name="image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    required
+                    className="w-full"
+                  />
+                  <small className="mt-1 block text-muted">
+                    PNG, JPEG, or WebP, up to 8 MB.
+                  </small>
+                </div>
               </div>
-            </div>
-            <div className="mb-2">
-              <TagInput
-                label="Tags"
-                name="tags"
-                required
-                placeholder="Try sound, wander, useless..."
-              />
-            </div>
-            <div className="mb-2">
-              <FieldLabel htmlFor="submit-description">
-                Short description
-              </FieldLabel>
-              <textarea
-                id="submit-description"
-                name="description"
-                required
-                maxLength={200}
-                rows={3}
-                className={`${fieldClass} resize-y`}
-                placeholder="What happens when you click?"
-              />
-            </div>
-            {noticeError ? (
-              <p
-                className="mb-2 border border-danger bg-canvas px-2 py-1.5 font-mono text-xs text-danger"
-                role="alert"
-              >
-                {notice}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className={buttonClass}
-                onClick={() => setSubmitOpen(false)}
-                disabled={submitPending}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className={primaryButtonClass}
-                disabled={submitPending}
-              >
-                {submitPending ? 'Uploading to R2...' : 'Add to the pile'}
-              </button>
-            </div>
+              <div className="mb-2">
+                <TagInput
+                  label="Tags"
+                  name="tags"
+                  required
+                  placeholder="Try sound, wander, useless..."
+                />
+              </div>
+              <div className="mb-2">
+                <FieldLabel htmlFor="submit-description">
+                  Short description
+                </FieldLabel>
+                <textarea
+                  id="submit-description"
+                  name="description"
+                  required
+                  maxLength={200}
+                  rows={3}
+                  className={`${fieldClass} resize-y`}
+                  placeholder="What happens when you click?"
+                />
+              </div>
+              {noticeError ? (
+                <p
+                  className="mb-2 border border-danger bg-canvas px-2 py-1.5 font-mono text-xs text-danger"
+                  role="alert"
+                >
+                  {notice}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className={buttonClass}
+                  onClick={() => setSubmitOpen(false)}
+                  disabled={submitPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={primaryButtonClass}
+                  disabled={submitPending}
+                >
+                  {submitPending ? 'Submitting...' : 'Submit site'}
+                </button>
+              </div>
+            </fieldset>
           </form>
         </ModalDialog>
       ) : null}
@@ -815,7 +820,9 @@ function SiteRow({
           labels={site.tagLabels || {}}
         />
         <div className="mt-1.5 flex gap-2 font-mono text-xs text-muted">
-          <span>{site.visits} detail opens</span>
+          <span>
+            {site.visits} {site.visits === 1 ? 'view' : 'views'}
+          </span>
           <span aria-hidden="true">/</span>
           <time dateTime={site.added}>Added {site.addedLabel}</time>
         </div>

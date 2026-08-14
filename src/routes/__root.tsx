@@ -6,6 +6,7 @@ import {
 import { lazy, Suspense } from 'react'
 
 import { RouteError, RouteNotFound, RoutePending } from '../components/oddweb'
+import { RealtimeSync } from '../components/realtime-sync'
 import {
   DEFAULT_DESCRIPTION,
   isProduction,
@@ -127,6 +128,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <RealtimeSync />
         {children}
         <Suspense>{DevelopmentDevtools && <DevelopmentDevtools />}</Suspense>
         <Scripts />

@@ -7,9 +7,11 @@ import type { ReactNode } from 'react'
 import type { SiteEntry } from '../data/sites'
 
 export const buttonClass =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink bg-paper px-3 text-sm font-bold text-ink no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] hover:bg-warm active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown disabled:shadow-none'
+  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink bg-paper px-3 text-sm font-bold text-ink no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] hover:bg-warm active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:border-muted disabled:bg-[#e5d8bb] disabled:text-[#684b3b] disabled:shadow-none'
 
 export const primaryButtonClass = `${buttonClass} bg-rust text-white hover:bg-[#9f3516]`
+export const successButtonClass = `${buttonClass} bg-success text-white hover:bg-[#24592f]`
+export const dangerButtonClass = `${buttonClass} bg-danger text-white hover:bg-[#78221c]`
 
 export function SiteHeader({
   directoryLink = false,
@@ -199,6 +201,7 @@ export function ModalDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const backdropPointerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -220,14 +223,28 @@ export function ModalDialog({
     <dialog
       ref={dialogRef}
       aria-labelledby={labelledBy}
-      className="m-auto h-full max-h-none w-full max-w-none place-items-center overflow-y-auto border-0 bg-transparent p-3 text-ink open:grid backdrop:bg-ink/55"
+      className="m-auto h-full max-h-[100dvh] w-full max-w-none place-items-center overflow-y-auto overscroll-contain border-0 bg-transparent p-3 text-ink open:grid backdrop:bg-ink/55"
       onCancel={(event) => {
         event.preventDefault()
         if (!closeDisabled) onClose()
       }}
-      onClick={(event) => {
-        if (closeDisabled || event.target !== event.currentTarget) return
+      onPointerDown={(event) => {
+        backdropPointerRef.current =
+          event.target === event.currentTarget ? event.pointerId : null
+      }}
+      onPointerUp={(event) => {
+        const startedOnBackdrop = backdropPointerRef.current === event.pointerId
+        backdropPointerRef.current = null
+        if (
+          closeDisabled ||
+          !startedOnBackdrop ||
+          event.target !== event.currentTarget
+        )
+          return
         onClose()
+      }}
+      onPointerCancel={() => {
+        backdropPointerRef.current = null
       }}
     >
       {children}
@@ -237,8 +254,8 @@ export function ModalDialog({
 
 export function RoutePending() {
   return (
-    <RouteState eyebrow="Opening drawer" title="Finding that file...">
-      The filing cabinet is catching up.
+    <RouteState eyebrow="Loading" title="Opening this page...">
+      This should only take a moment.
     </RouteState>
   )
 }
@@ -254,8 +271,8 @@ export function RouteError({
     <>
       <meta name="robots" content="noindex, nofollow" />
       <RouteState
-        eyebrow="Drawer jammed"
-        title="This page could not be opened."
+        eyebrow="Something went wrong"
+        title="This page could not be loaded."
         action={
           <button type="button" className={primaryButtonClass} onClick={reset}>
             Try again
@@ -276,15 +293,15 @@ export function RouteNotFound() {
     <>
       <meta name="robots" content="noindex, nofollow" />
       <RouteState
-        eyebrow="File not found"
-        title="That drawer is empty."
+        eyebrow="Page not found"
+        title="We could not find that page."
         action={
           <Link to="/" className={primaryButtonClass}>
             Return to directory
           </Link>
         }
       >
-        The requested Oddweb record does not exist.
+        The site may have moved or is no longer listed.
       </RouteState>
     </>
   )

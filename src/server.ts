@@ -5,6 +5,9 @@ import {
   processTaxonomyMessage,
   runTaxonomyMaintenance,
 } from './taxonomy/processor'
+import { publishRealtimeEvent } from './server/realtime'
+
+export { RealtimeHub } from './realtime/hub'
 
 const fetchHandler = createServerEntry({
   fetch(request) {
@@ -27,7 +30,10 @@ export default {
           throw new TypeError('Taxonomy queue message requires a jobId')
         }
 
-        await processTaxonomyMessage(message.body.jobId)
+        const result = await processTaxonomyMessage(message.body.jobId)
+        if (result.mutations > 0) {
+          await publishRealtimeEvent({ type: 'directory.changed' })
+        }
         message.ack()
       } catch (error) {
         console.error({

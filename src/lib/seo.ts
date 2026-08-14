@@ -3,7 +3,7 @@ import type { SiteEntry } from '../data/sites'
 export const FALLBACK_SITE_ORIGIN = 'https://oddweb.page'
 export const SITE_NAME = 'Oddweb'
 export const DEFAULT_DESCRIPTION =
-  'A hand-filed directory of unusual, playful, and interactive websites worth exploring.'
+  'A collection of unusual, playful, and interactive websites worth exploring.'
 export const DEFAULT_SOCIAL_IMAGE_PATH = '/oddweb-social.png'
 export const SITE_ORIGIN = resolveSiteOrigin(
   typeof process === 'undefined' ? undefined : process.env.PUBLIC_SITE_URL,

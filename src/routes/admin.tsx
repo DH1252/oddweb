@@ -16,8 +16,10 @@ import {
   SiteFooter,
   SiteHeader,
   buttonClass,
+  dangerButtonClass,
   fieldClass,
   primaryButtonClass,
+  successButtonClass,
 } from '../components/oddweb'
 import {
   adminGuestbookQueryOptions,
@@ -184,6 +186,7 @@ function AdminPage() {
   const [editingEntry, setEditingEntry] = useState<AdminSite | null>(null)
   const [editingTag, setEditingTag] = useState<AdminTagRecord | null>(null)
   const [mergeTarget, setMergeTarget] = useState('')
+  const [editorError, setEditorError] = useState('')
   const [status, setStatus] = useState('Ready.')
   const [statusState, setStatusState] = useState<'success' | 'error' | ''>('')
   const [entryTagInputKey, setEntryTagInputKey] = useState(0)
@@ -357,6 +360,7 @@ function AdminPage() {
     try {
       showStatus('Loading site editor...')
       setEditingEntry(await queryClient.fetchQuery(adminSiteQueryOptions(id)))
+      setEditorError('')
       showStatus('Ready.')
     } catch (error) {
       showStatus(
@@ -377,15 +381,18 @@ function AdminPage() {
     )
       return
     try {
+      setEditorError('')
       await editMutation.mutateAsync(formData)
       await refreshData()
       setEditingEntry(null)
       showStatus(`Updated "${name}".`, 'success')
     } catch (error) {
-      showStatus(
-        await handleAdminError(error, 'Could not update the site.'),
-        'error',
+      const message = await handleAdminError(
+        error,
+        'Could not update the site.',
       )
+      setEditorError(message)
+      showStatus(message, 'error')
     }
   }
 
@@ -394,6 +401,7 @@ function AdminPage() {
     if (!editingTag) return
     const form = new FormData(event.currentTarget)
     try {
+      setEditorError('')
       await saveTagMutation.mutateAsync({
         id: editingTag.id,
         name: String(form.get('name') || ''),
@@ -404,7 +412,9 @@ function AdminPage() {
       setEditingTag(null)
       showStatus('Tag saved.', 'success')
     } catch (error) {
-      showStatus(await handleAdminError(error, 'Could not save tag.'), 'error')
+      const message = await handleAdminError(error, 'Could not save tag.')
+      setEditorError(message)
+      showStatus(message, 'error')
     }
   }
 
@@ -417,6 +427,7 @@ function AdminPage() {
     )
       return
     try {
+      setEditorError('')
       await mergeTagMutation.mutateAsync({
         sourceId: editingTag.id,
         targetSlug: mergeTarget.trim(),
@@ -426,7 +437,9 @@ function AdminPage() {
       setMergeTarget('')
       showStatus('Tags merged.', 'success')
     } catch (error) {
-      showStatus(await handleAdminError(error, 'Could not merge tag.'), 'error')
+      const message = await handleAdminError(error, 'Could not merge tag.')
+      setEditorError(message)
+      showStatus(message, 'error')
     }
   }
 
@@ -572,11 +585,7 @@ function AdminPage() {
             value={overview.pendingSubmissions}
             note="Unresolved submissions"
           />
-          <Stat
-            label="Detail opens"
-            value={overview.visits}
-            note="Detail-page opens"
-          />
+          <Stat label="Views" value={overview.visits} note="Site page views" />
           <Stat
             label="Tags in use"
             value={overview.tagsInUse}
@@ -646,71 +655,72 @@ function AdminPage() {
 
           <Panel title="Add site">
             <form onSubmit={addEntry}>
-              <AdminField
-                label="Site name"
-                name="name"
-                placeholder="Name as it should appear"
-                maxLength={60}
-              />
-              <AdminField
-                label="Website address"
-                name="url"
-                type="url"
-                placeholder="https://"
-              />
-              <div className="mb-2.5 border border-dotted border-brown bg-canvas p-2">
-                <FieldLabel htmlFor="entry-image">
-                  Site preview image
-                </FieldLabel>
-                <input
-                  id="entry-image"
-                  name="image"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  required
-                  className="w-full"
-                />
-                <small className="mt-1 block text-muted">
-                  PNG, JPEG, or WebP, up to 8 MB.
-                </small>
-              </div>
-              <div className="mb-2.5">
-                <FieldLabel htmlFor="entry-description">
-                  Card description
-                </FieldLabel>
-                <textarea
-                  id="entry-description"
-                  name="description"
-                  maxLength={220}
-                  required
-                  className={`${fieldClass} min-h-24 resize-y`}
-                />
-              </div>
-              <div className="mb-2.5">
-                <TagInput
-                  key={entryTagInputKey}
-                  label="Tags"
-                  name="tags"
-                  required
-                  placeholder="Try audio, playful, tool..."
-                />
-              </div>
-              <label className="mb-2.5 block">
-                <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
-                  Initial status
-                </span>
-                <select name="status" className={fieldClass}>
-                  <option value="active">Published</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </label>
-              <button
-                type="submit"
-                className={primaryButtonClass}
+              <fieldset
                 disabled={createMutation.isPending}
+                className="m-0 min-w-0 border-0 p-0"
               >
-                {createMutation.isPending ? 'Adding...' : 'Add site'}
-              </button>
+                <AdminField
+                  label="Site name"
+                  name="name"
+                  placeholder="Name as it should appear"
+                  maxLength={60}
+                />
+                <AdminField
+                  label="Website address"
+                  name="url"
+                  type="url"
+                  placeholder="https://"
+                />
+                <div className="mb-2.5 border border-dotted border-brown bg-canvas p-2">
+                  <FieldLabel htmlFor="entry-image">
+                    Site preview image
+                  </FieldLabel>
+                  <input
+                    id="entry-image"
+                    name="image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    required
+                    className="w-full"
+                  />
+                  <small className="mt-1 block text-muted">
+                    PNG, JPEG, or WebP, up to 8 MB.
+                  </small>
+                </div>
+                <div className="mb-2.5">
+                  <FieldLabel htmlFor="entry-description">
+                    Card description
+                  </FieldLabel>
+                  <textarea
+                    id="entry-description"
+                    name="description"
+                    maxLength={220}
+                    required
+                    className={`${fieldClass} min-h-24 resize-y`}
+                  />
+                </div>
+                <div className="mb-2.5">
+                  <TagInput
+                    key={entryTagInputKey}
+                    label="Tags"
+                    name="tags"
+                    required
+                    placeholder="Try audio, playful, tool..."
+                  />
+                </div>
+                <label className="mb-2.5 block">
+                  <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                    Initial status
+                  </span>
+                  <select name="status" className={fieldClass}>
+                    <option value="active">Published</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+                <button type="submit" className={primaryButtonClass}>
+                  {createMutation.isPending ? 'Adding...' : 'Add site'}
+                </button>
+              </fieldset>
             </form>
           </Panel>
 
@@ -974,6 +984,7 @@ function AdminPage() {
         <SiteEditor
           entry={editingEntry}
           pending={editMutation.isPending}
+          error={editorError}
           onClose={() => setEditingEntry(null)}
           onSubmit={saveEntry}
         />
@@ -984,6 +995,7 @@ function AdminPage() {
           mergeTarget={mergeTarget}
           onMergeTarget={setMergeTarget}
           pending={saveTagMutation.isPending || mergeTagMutation.isPending}
+          error={editorError}
           onClose={() => setEditingTag(null)}
           onSubmit={saveTagRecord}
           onMerge={mergeCurrentTag}
@@ -1215,9 +1227,9 @@ function AutomationSection({
       apiKey = null
       data.delete('apiKey')
       apiKeyInput.value = ''
+      const result = await request
       form.reset()
       setProviderKind('openai_compatible')
-      const result = await request
       await invalidateTaxonomy('providers', 'dashboard')
       if (result.enableError) {
         showStatus(
@@ -1667,7 +1679,7 @@ function AutomationSection({
               ))}
               <button
                 type="button"
-                className={`${buttonClass} min-h-9 bg-danger text-white`}
+                className={`${dangerButtonClass} min-h-9`}
                 disabled={circuitMutation.isPending}
                 onClick={resetCircuit}
               >
@@ -1881,111 +1893,112 @@ function AutomationSection({
 
         <AutomationBox title="Create provider">
           <form onSubmit={submitProvider} autoComplete="off">
-            <div className="grid gap-x-2 sm:grid-cols-2">
-              <AutomationInput
-                label="Configuration name"
-                name="name"
-                placeholder="Production classifier"
-                maxLength={100}
-              />
-              <label className="mb-2.5 block">
-                <span className="mb-1 block font-mono text-xs font-bold uppercase">
-                  Provider type
-                </span>
-                <select
-                  name="providerKind"
-                  className={fieldClass}
-                  value={providerKind}
-                  onChange={(event) =>
-                    setProviderKind(event.target.value as typeof providerKind)
-                  }
-                >
-                  <option value="openai_compatible">OpenAI-compatible</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-              </label>
-              <AutomationInput
-                label="Endpoint"
-                name="endpoint"
-                type="url"
-                placeholder={
-                  providerKind === 'gemini'
-                    ? 'https://generativelanguage.googleapis.com/...'
-                    : 'https://api.openai.com/v1/...'
-                }
-              />
-              <AutomationInput
-                label="Model"
-                name="model"
-                placeholder="Model identifier"
-                maxLength={200}
-              />
-              {providerKind === 'openai_compatible' ? (
+            <fieldset
+              disabled={providerCreatePending}
+              className="m-0 min-w-0 border-0 p-0"
+            >
+              <div className="grid gap-x-2 sm:grid-cols-2">
+                <AutomationInput
+                  label="Configuration name"
+                  name="name"
+                  placeholder="Production classifier"
+                  maxLength={100}
+                />
                 <label className="mb-2.5 block">
                   <span className="mb-1 block font-mono text-xs font-bold uppercase">
-                    Dialect
+                    Provider type
                   </span>
-                  <select name="dialect" className={fieldClass}>
-                    <option value="responses">Responses API</option>
-                    <option value="chat_completions">Chat completions</option>
+                  <select
+                    name="providerKind"
+                    className={fieldClass}
+                    value={providerKind}
+                    onChange={(event) =>
+                      setProviderKind(event.target.value as typeof providerKind)
+                    }
+                  >
+                    <option value="openai_compatible">OpenAI-compatible</option>
+                    <option value="gemini">Gemini</option>
                   </select>
                 </label>
-              ) : null}
-              <AutomationInput
-                label="Routing group"
-                name="routingGroup"
-                placeholder="default"
-                defaultValue="default"
-                maxLength={100}
-              />
-              <label className="mb-2.5 block">
-                <span className="mb-1 block font-mono text-xs font-bold uppercase">
-                  Routing role
-                </span>
-                <select name="routingRole" className={fieldClass}>
-                  <option value="primary">Primary</option>
-                  <option value="failover">Failover</option>
-                  <option value="consensus">Consensus</option>
-                </select>
+                <AutomationInput
+                  label="Endpoint"
+                  name="endpoint"
+                  type="url"
+                  placeholder={
+                    providerKind === 'gemini'
+                      ? 'https://generativelanguage.googleapis.com/...'
+                      : 'https://api.openai.com/v1/...'
+                  }
+                />
+                <AutomationInput
+                  label="Model"
+                  name="model"
+                  placeholder="Model identifier"
+                  maxLength={200}
+                />
+                {providerKind === 'openai_compatible' ? (
+                  <label className="mb-2.5 block">
+                    <span className="mb-1 block font-mono text-xs font-bold uppercase">
+                      Dialect
+                    </span>
+                    <select name="dialect" className={fieldClass}>
+                      <option value="responses">Responses API</option>
+                      <option value="chat_completions">Chat completions</option>
+                    </select>
+                  </label>
+                ) : null}
+                <AutomationInput
+                  label="Routing group"
+                  name="routingGroup"
+                  placeholder="default"
+                  defaultValue="default"
+                  maxLength={100}
+                />
+                <label className="mb-2.5 block">
+                  <span className="mb-1 block font-mono text-xs font-bold uppercase">
+                    Routing role
+                  </span>
+                  <select name="routingRole" className={fieldClass}>
+                    <option value="primary">Primary</option>
+                    <option value="failover">Failover</option>
+                    <option value="consensus">Consensus</option>
+                  </select>
+                </label>
+                <AutomationInput
+                  label="Routing priority"
+                  name="routingPriority"
+                  type="number"
+                  placeholder="0"
+                  defaultValue="0"
+                  min="0"
+                  max="10000"
+                />
+                <AutomationInput
+                  label="Timeout (ms)"
+                  name="timeoutMs"
+                  type="number"
+                  placeholder="30000"
+                  defaultValue="30000"
+                  min="1000"
+                  max="120000"
+                />
+                <AutomationInput
+                  label="API key"
+                  name="apiKey"
+                  type="password"
+                  placeholder="Cleared immediately after submit"
+                  autoComplete="new-password"
+                  maxLength={5000}
+                />
+              </div>
+              <label className="mb-2.5 flex items-center gap-2 border border-dotted border-line bg-paper p-2">
+                <input type="checkbox" name="enabled" defaultChecked />{' '}
+                <span>Enable this revision after creation</span>
               </label>
-              <AutomationInput
-                label="Routing priority"
-                name="routingPriority"
-                type="number"
-                placeholder="0"
-                defaultValue="0"
-                min="0"
-                max="10000"
-              />
-              <AutomationInput
-                label="Timeout (ms)"
-                name="timeoutMs"
-                type="number"
-                placeholder="30000"
-                defaultValue="30000"
-                min="1000"
-                max="120000"
-              />
-              <AutomationInput
-                label="API key"
-                name="apiKey"
-                type="password"
-                placeholder="Cleared immediately after submit"
-                autoComplete="new-password"
-                maxLength={5000}
-              />
-            </div>
-            <label className="mb-2.5 flex items-center gap-2 border border-dotted border-line bg-paper p-2">
-              <input type="checkbox" name="enabled" defaultChecked />{' '}
-              <span>Enable this revision after creation</span>
-            </label>
-            <button
-              type="submit"
-              className={primaryButtonClass}
-              disabled={providerCreatePending}
-            >
-              {providerCreatePending ? 'Creating...' : 'Create provider'}
-            </button>
+              <button type="submit" className={primaryButtonClass}>
+                {providerCreatePending ? 'Creating...' : 'Create provider'}
+              </button>
+            </fieldset>
             <p className="mt-2 mb-0 text-xs text-muted">
               Credentials are encrypted server-side. The key field is cleared
               before the request completes and is never returned.
@@ -3424,7 +3437,7 @@ function SubmissionCard({
             {submission.status !== 'approved' ? (
               <button
                 type="button"
-                className={`${buttonClass} bg-success text-white`}
+                className={successButtonClass}
                 onClick={() => onReview(submission, 'approved')}
                 disabled={pending}
               >
@@ -3434,7 +3447,7 @@ function SubmissionCard({
             {submission.status !== 'rejected' ? (
               <button
                 type="button"
-                className={`${buttonClass} bg-danger text-white`}
+                className={dangerButtonClass}
                 onClick={() => onReview(submission, 'rejected')}
                 disabled={pending}
               >
@@ -3580,11 +3593,13 @@ function TagRow({
 function SiteEditor({
   entry,
   pending,
+  error,
   onClose,
   onSubmit,
 }: {
   entry: AdminSite
   pending: boolean
+  error: string
   onClose: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
@@ -3605,144 +3620,149 @@ function SiteEditor({
           onClose={onClose}
           disabled={pending}
         />
-        <input type="hidden" name="id" value={entry.id} />
-        <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-          <div>
+        {error ? <EditorError message={error} /> : null}
+        <fieldset disabled={pending} className="m-0 min-w-0 border-0 p-0">
+          <input type="hidden" name="id" value={entry.id} />
+          <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+            <div>
+              <AdminField
+                label="Site name"
+                name="name"
+                placeholder="Name as it should appear"
+                maxLength={60}
+                defaultValue={entry.name}
+                autoFocus
+              />
+              <AdminField
+                label="Website address"
+                name="url"
+                type="url"
+                placeholder="https://"
+                defaultValue={entry.externalUrl}
+              />
+            </div>
+            <div>
+              <FieldLabel>Current thumbnail</FieldLabel>
+              <ItemThumbnail
+                thumbnailKey={entry.thumbnailKey}
+                alt={entry.thumbnailAlt || `Preview of ${entry.name}`}
+                label={entry.name}
+                className="aspect-4/3 w-full"
+              />
+            </div>
+          </div>
+          <AdminTextArea
+            id="edit-entry-description"
+            label="Card description"
+            name="description"
+            defaultValue={entry.description}
+            maxLength={220}
+          />
+          <AdminTextArea
+            id="edit-entry-summary"
+            label="Detail summary"
+            name="summary"
+            defaultValue={entry.summary}
+            maxLength={400}
+          />
+          <div className="grid gap-2 md:grid-cols-2">
             <AdminField
-              label="Site name"
-              name="name"
-              placeholder="Name as it should appear"
-              maxLength={60}
-              defaultValue={entry.name}
-              autoFocus
+              label="Categories"
+              name="categories"
+              placeholder="Interactive, Audio"
+              defaultValue={entry.categories.join(', ')}
             />
             <AdminField
-              label="Website address"
-              name="url"
-              type="url"
-              placeholder="https://"
-              defaultValue={entry.externalUrl}
+              label="Credit"
+              name="poster"
+              placeholder="Submitted by..."
+              maxLength={120}
+              defaultValue={entry.poster}
             />
           </div>
-          <div>
-            <FieldLabel>Current thumbnail</FieldLabel>
-            <ItemThumbnail
-              thumbnailKey={entry.thumbnailKey}
-              alt={entry.thumbnailAlt || `Preview of ${entry.name}`}
-              label={entry.name}
-              className="aspect-4/3 w-full"
+          <AdminTextArea
+            id="edit-entry-notes"
+            label="Detail notes"
+            name="notes"
+            defaultValue={entry.notes.join('\n')}
+            tall
+          />
+          <AdminTextArea
+            id="edit-entry-facts"
+            label="Facts"
+            name="facts"
+            defaultValue={entry.facts
+              .map((fact) => `${fact.label}: ${fact.value}`)
+              .join('\n')}
+            tall
+          />
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="mb-2.5 block">
+              <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                Accent
+              </span>
+              <select
+                name="accent"
+                defaultValue={entry.accent}
+                className={fieldClass}
+              >
+                {accentOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <AdminField
+              label="Thumbnail alt text"
+              name="thumbnailAlt"
+              placeholder="Describe the image"
+              maxLength={180}
+              defaultValue={entry.thumbnailAlt || `Preview of ${entry.name}`}
             />
           </div>
-        </div>
-        <AdminTextArea
-          id="edit-entry-description"
-          label="Card description"
-          name="description"
-          defaultValue={entry.description}
-          maxLength={220}
-        />
-        <AdminTextArea
-          id="edit-entry-summary"
-          label="Detail summary"
-          name="summary"
-          defaultValue={entry.summary}
-          maxLength={400}
-        />
-        <div className="grid gap-2 md:grid-cols-2">
-          <AdminField
-            label="Categories"
-            name="categories"
-            placeholder="Interactive, Audio"
-            defaultValue={entry.categories.join(', ')}
-          />
-          <AdminField
-            label="Credit"
-            name="poster"
-            placeholder="Submitted by..."
-            maxLength={120}
-            defaultValue={entry.poster}
-          />
-        </div>
-        <AdminTextArea
-          id="edit-entry-notes"
-          label="Detail notes"
-          name="notes"
-          defaultValue={entry.notes.join('\n')}
-          tall
-        />
-        <AdminTextArea
-          id="edit-entry-facts"
-          label="Facts"
-          name="facts"
-          defaultValue={entry.facts
-            .map((fact) => `${fact.label}: ${fact.value}`)
-            .join('\n')}
-          tall
-        />
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="mb-2.5 block">
-            <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
-              Accent
-            </span>
-            <select
-              name="accent"
-              defaultValue={entry.accent}
-              className={fieldClass}
-            >
-              {accentOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <AdminField
-            label="Thumbnail alt text"
-            name="thumbnailAlt"
-            placeholder="Describe the image"
-            maxLength={180}
-            defaultValue={entry.thumbnailAlt || `Preview of ${entry.name}`}
-          />
-        </div>
-        <div className="mb-2.5 border border-dotted border-brown bg-canvas p-2">
-          <FieldLabel htmlFor="edit-entry-image">Replace thumbnail</FieldLabel>
-          <input
-            id="edit-entry-image"
-            name="image"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="w-full"
-          />
-          <small className="mt-1 block text-muted">
-            Leave empty to keep the current image.
-          </small>
-        </div>
-        <div className="grid gap-2 md:grid-cols-[1fr_180px]">
-          <div className="mb-2.5">
-            <TagInput
-              key={entry.id}
-              label="Tags"
-              name="tags"
-              required
-              defaultValue={entry.tags}
-              initialLabels={entry.tagLabels}
+          <div className="mb-2.5 border border-dotted border-brown bg-canvas p-2">
+            <FieldLabel htmlFor="edit-entry-image">
+              Replace thumbnail
+            </FieldLabel>
+            <input
+              id="edit-entry-image"
+              name="image"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="w-full"
             />
+            <small className="mt-1 block text-muted">
+              Leave empty to keep the current image.
+            </small>
           </div>
-          <label className="mb-2.5 block">
-            <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
-              Status
-            </span>
-            <select
-              name="status"
-              defaultValue={entry.status}
-              className={fieldClass}
-            >
-              <option value="active">Published</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
-        </div>
-        <EditorActions pending={pending} onClose={onClose} />
+          <div className="grid gap-2 md:grid-cols-[1fr_180px]">
+            <div className="mb-2.5">
+              <TagInput
+                key={entry.id}
+                label="Tags"
+                name="tags"
+                required
+                defaultValue={entry.tags}
+                initialLabels={entry.tagLabels}
+              />
+            </div>
+            <label className="mb-2.5 block">
+              <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                Status
+              </span>
+              <select
+                name="status"
+                defaultValue={entry.status}
+                className={fieldClass}
+              >
+                <option value="active">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+          </div>
+          <EditorActions pending={pending} onClose={onClose} />
+        </fieldset>
       </form>
     </ModalDialog>
   )
@@ -3753,6 +3773,7 @@ function TagEditor({
   mergeTarget,
   onMergeTarget,
   pending,
+  error,
   onClose,
   onSubmit,
   onMerge,
@@ -3761,6 +3782,7 @@ function TagEditor({
   mergeTarget: string
   onMergeTarget: (value: string) => void
   pending: boolean
+  error: string
   onClose: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onMerge: () => void
@@ -3782,57 +3804,60 @@ function TagEditor({
           onClose={onClose}
           disabled={pending}
         />
-        <AdminField
-          label="Display name"
-          name="name"
-          placeholder="Canonical display name"
-          defaultValue={tag.name}
-          maxLength={80}
-          autoFocus
-        />
-        <AdminField
-          label="Aliases"
-          name="aliases"
-          placeholder="audio, sounds, relaxing"
-          defaultValue={tag.aliases.join(', ')}
-          required={false}
-        />
-        <AdminField
-          label="Parent tag slugs"
-          name="parents"
-          placeholder="listen, wander"
-          defaultValue={tag.parents.join(', ')}
-          required={false}
-        />
-        {!tag.canonical ? (
-          <div className="mb-3 border border-dotted border-line bg-canvas p-2">
-            <FieldLabel htmlFor="merge-target">
-              Merge into canonical slug
-            </FieldLabel>
-            <div className="flex gap-2">
-              <input
-                id="merge-target"
-                value={mergeTarget}
-                onChange={(event) => onMergeTarget(event.target.value)}
-                className={fieldClass}
-                placeholder="canonical-tag"
-              />
-              <button
-                type="button"
-                className={buttonClass}
-                disabled={!mergeTarget.trim() || pending}
-                onClick={onMerge}
-              >
-                Merge
-              </button>
+        {error ? <EditorError message={error} /> : null}
+        <fieldset disabled={pending} className="m-0 min-w-0 border-0 p-0">
+          <AdminField
+            label="Display name"
+            name="name"
+            placeholder="Canonical display name"
+            defaultValue={tag.name}
+            maxLength={80}
+            autoFocus
+          />
+          <AdminField
+            label="Aliases"
+            name="aliases"
+            placeholder="audio, sounds, relaxing"
+            defaultValue={tag.aliases.join(', ')}
+            required={false}
+          />
+          <AdminField
+            label="Parent tag slugs"
+            name="parents"
+            placeholder="listen, wander"
+            defaultValue={tag.parents.join(', ')}
+            required={false}
+          />
+          {!tag.canonical ? (
+            <div className="mb-3 border border-dotted border-line bg-canvas p-2">
+              <FieldLabel htmlFor="merge-target">
+                Merge into canonical slug
+              </FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  id="merge-target"
+                  value={mergeTarget}
+                  onChange={(event) => onMergeTarget(event.target.value)}
+                  className={`${fieldClass} min-w-0 flex-1`}
+                  placeholder="canonical-tag"
+                />
+                <button
+                  type="button"
+                  className={buttonClass}
+                  disabled={!mergeTarget.trim() || pending}
+                  onClick={onMerge}
+                >
+                  Merge
+                </button>
+              </div>
             </div>
-          </div>
-        ) : null}
-        <EditorActions
-          pending={pending}
-          onClose={onClose}
-          submitLabel={tag.canonical ? 'Save tag' : 'Make canonical'}
-        />
+          ) : null}
+          <EditorActions
+            pending={pending}
+            onClose={onClose}
+            submitLabel={tag.canonical ? 'Save tag' : 'Make canonical'}
+          />
+        </fieldset>
       </form>
     </ModalDialog>
   )
@@ -3897,6 +3922,17 @@ function EditorActions({
         {pending ? 'Saving...' : submitLabel}
       </button>
     </div>
+  )
+}
+
+function EditorError({ message }: { message: string }) {
+  return (
+    <p
+      className="mb-3 border-l-4 border-danger bg-red-50 px-3 py-2 text-sm font-bold text-danger"
+      role="alert"
+    >
+      {message}
+    </p>
   )
 }
 

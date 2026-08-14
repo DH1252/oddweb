@@ -13,6 +13,7 @@ export type RecordVisitInput = {
 export type RecordVisitResult = {
   recorded: boolean
   siteFound: boolean
+  views?: number
 }
 
 export class VisitRepositoryError extends Error {
@@ -69,7 +70,7 @@ export async function recordAtomicVisit(
              SELECT 1 FROM public_rate_limits
              WHERE key = ?2 AND count = 1 AND window_started = ?3
            )
-         RETURNING id`,
+         RETURNING visits`,
       )
       .bind(input.slug, input.visitorKey, now),
   ]
@@ -94,6 +95,8 @@ export async function recordAtomicVisit(
     return {
       recorded: incrementResult.results.length === 1,
       siteFound: limitResult.results.length === 1,
+      views: (incrementResult.results[0] as { visits?: number } | undefined)
+        ?.visits,
     }
   } catch (cause) {
     throw new VisitRepositoryError('Atomic visit accounting failed.', { cause })
