@@ -4,7 +4,8 @@ import {
   setResponseStatus,
   useSession,
 } from '@tanstack/react-start/server'
-import { timingSafeEqual } from 'node:crypto'
+import { pbkdf2, timingSafeEqual } from 'node:crypto'
+import { promisify } from 'node:util'
 
 import {
   cleanupAuthRecords,
@@ -21,6 +22,7 @@ type AdminSession = {
 
 const sessionDurationSeconds = 8 * 60 * 60
 const loginWindowSeconds = 15 * 60
+const derivePassword = promisify(pbkdf2)
 const passwordHashPattern =
   /^\$pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/
 
@@ -206,24 +208,14 @@ async function keyedHash(secret: string, value: string) {
 async function verifyPassword(password: string, encodedHash: string) {
   const parsed = parsePasswordHash(encodedHash)
   if (!parsed) return false
-  const passwordKey = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
+  const derived = await derivePassword(
+    password,
+    parsed.salt,
+    parsed.iterations,
+    32,
+    'sha256',
   )
-  const derived = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: parsed.salt,
-      iterations: parsed.iterations,
-    },
-    passwordKey,
-    256,
-  )
-  return timingSafeEqual(Buffer.from(derived), Buffer.from(parsed.hash))
+  return timingSafeEqual(derived, parsed.hash)
 }
 
 function parsePasswordHash(value: string) {
