@@ -1,5 +1,5 @@
 import { useDeferredValue, useId, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { normalizeTag, tagsForForm } from '../data/tags'
 import { tagSuggestionsQueryOptions } from '../queries/oddweb'
@@ -32,12 +32,14 @@ export function TagInput({
   initialLabels = {},
 }: TagInputProps) {
   const id = useId()
+  const queryClient = useQueryClient()
   const [internalValue, setInternalValue] = useState(defaultValue)
   const selected = value ?? internalValue
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(normalizeTag(query))
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [resolvingTag, setResolvingTag] = useState(false)
   const [requiredError, setRequiredError] = useState(false)
   const atLimit = selected.length >= maxTags
   const { data } = useQuery(
@@ -82,11 +84,40 @@ export function TagInput({
         tag.aliases.includes(input),
     )
     const token = canonical?.slug || (allowFreeform ? `~${input}` : undefined)
-    if (!token || selected.includes(token)) return
+    if (!token) return
+    addToken(token)
+  }
+
+  function addToken(token: string) {
+    if (atLimit || selected.includes(token)) return
     update([...selected, token])
     setQuery('')
     setOpen(false)
     setActiveIndex(0)
+  }
+
+  async function commitEnteredTag() {
+    const input = normalizeTag(query)
+    if (!input || atLimit || resolvingTag) return
+
+    const visibleSuggestion =
+      deferredQuery === input ? suggestions[activeIndex] : undefined
+    if (visibleSuggestion) {
+      addToken(visibleSuggestion.slug)
+      return
+    }
+
+    setResolvingTag(true)
+    try {
+      const result = await queryClient.fetchQuery(
+        tagSuggestionsQueryOptions({ query: input, selected, limit: 8 }),
+      )
+      const suggestion = result.suggestions.at(0)
+      if (suggestion) addToken(suggestion.slug)
+      else addTag(input)
+    } finally {
+      setResolvingTag(false)
+    }
   }
 
   function removeTag(token: string) {
@@ -180,11 +211,7 @@ export function TagInput({
                 )
               } else if (event.key === 'Enter' || event.key === ',') {
                 event.preventDefault()
-                addTag(
-                  open && suggestions[activeIndex]
-                    ? suggestions[activeIndex].slug
-                    : undefined,
-                )
+                void commitEnteredTag()
               } else if (event.key === 'Escape') {
                 if (!open) return
                 event.preventDefault()
@@ -203,7 +230,7 @@ export function TagInput({
             placeholder={
               atLimit ? `Maximum of ${maxTags} tags reached` : placeholder
             }
-            disabled={atLimit}
+            disabled={atLimit || resolvingTag}
           />
           {open && suggestions.length ? (
             <ul
@@ -225,7 +252,7 @@ export function TagInput({
                     <div
                       className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${index === activeIndex ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => addTag(tag.slug)}
+                      onClick={() => addToken(tag.slug)}
                     >
                       <span>
                         <strong className="block font-mono text-xs">
@@ -289,9 +316,11 @@ export function TagInput({
       >
         {atLimit
           ? `Maximum of ${maxTags} tags selected. Remove one to add another.`
-          : allowFreeform
-            ? 'Choose a canonical suggestion, or press Enter/comma to add an unwrangled tag.'
-            : 'Only canonical tags can be used in directory filters.'}
+          : resolvingTag
+            ? 'Checking for a canonical tag...'
+            : allowFreeform
+              ? 'Press Enter/comma to choose the closest canonical suggestion, or add an unwrangled tag when none match.'
+              : 'Only canonical tags can be used in directory filters.'}
       </p>
     </div>
   )

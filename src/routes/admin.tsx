@@ -4,7 +4,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useDeferredValue, useState } from 'react'
+import { startTransition, useDeferredValue, useState } from 'react'
 
 import { TagInput } from '../components/tag-input'
 import {
@@ -485,14 +485,20 @@ function AdminPage() {
   }
 
   function setManagementTags(type: 'include' | 'exclude', tags: string[]) {
-    if (type === 'include') {
-      setIncludedTags(tags)
-      setExcludedTags((current) => current.filter((tag) => !tags.includes(tag)))
-    } else {
-      setExcludedTags(tags)
-      setIncludedTags((current) => current.filter((tag) => !tags.includes(tag)))
-    }
-    setSitePage(0)
+    startTransition(() => {
+      if (type === 'include') {
+        setIncludedTags(tags)
+        setExcludedTags((current) =>
+          current.filter((tag) => !tags.includes(tag)),
+        )
+      } else {
+        setExcludedTags(tags)
+        setIncludedTags((current) =>
+          current.filter((tag) => !tags.includes(tag)),
+        )
+      }
+      setSitePage(0)
+    })
   }
 
   return (
@@ -4030,7 +4036,7 @@ function AdminPagination({
     ),
   ).sort((a, b) => a - b)
   function changePage(nextPage: number) {
-    onChange(nextPage)
+    startTransition(() => onChange(nextPage))
     requestAnimationFrame(() => document.getElementById(focusTargetId)?.focus())
   }
   if (pageCount === 1) return null

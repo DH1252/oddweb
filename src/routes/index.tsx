@@ -205,7 +205,6 @@ function DirectoryPage() {
   const visiblePopular = popularData.sites
 
   function setFilterTags(type: 'include' | 'exclude', nextTags: string[]) {
-    setPage(0)
     const nextInclude =
       type === 'include'
         ? nextTags
@@ -215,6 +214,7 @@ function DirectoryPage() {
         ? nextTags
         : exclude.filter((tag) => !nextTags.includes(tag))
     startTransition(() => {
+      setPage(0)
       navigate({
         search: {
           include: nextInclude.length ? nextInclude : undefined,
@@ -241,8 +241,18 @@ function DirectoryPage() {
   }
 
   function clearTagFilters() {
-    setPage(0)
-    startTransition(() => navigate({ search: {} }))
+    startTransition(() => {
+      setPage(0)
+      navigate({ search: {} })
+    })
+  }
+
+  function changeDirectoryPage(nextPage: number) {
+    startTransition(() => setPage(nextPage))
+  }
+
+  function changePopularPage(nextPage: number) {
+    startTransition(() => setPopularPage(nextPage))
   }
 
   function surprise() {
@@ -509,7 +519,7 @@ function DirectoryPage() {
           <Pagination
             page={safePage}
             pageCount={pageCount}
-            onPageChange={setPage}
+            onPageChange={changeDirectoryPage}
             label="Directory pages"
             focusTargetId="catalog-title"
           />
@@ -553,13 +563,13 @@ function DirectoryPage() {
             <Pagination
               page={safePopularPage}
               pageCount={popularPageCount}
-              onPageChange={setPopularPage}
+              onPageChange={changePopularPage}
               label="Most viewed pages"
               focusTargetId="most-opened-results"
             />
           </Panel>
 
-          <Panel title="Recently added" label="COMMUNITY PICKS">
+          <Panel title="Recently added" label="NEWEST SUBMISSIONS">
             <ol className="m-0 grid list-none gap-1 p-0 sm:grid-cols-3">
               {communityFilings.slice(0, 6).map((filing) => (
                 <li

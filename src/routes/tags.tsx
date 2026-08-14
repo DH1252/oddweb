@@ -90,7 +90,6 @@ function TagsPage() {
   const safePage = Math.min(page, pageCount - 1)
 
   function setFilterTags(type: 'include' | 'exclude', nextTags: string[]) {
-    setPage(0)
     const nextInclude =
       type === 'include'
         ? nextTags
@@ -100,6 +99,7 @@ function TagsPage() {
         ? nextTags
         : exclude.filter((tag) => !nextTags.includes(tag))
     startTransition(() => {
+      setPage(0)
       navigate({
         search: {
           include: nextInclude.length ? nextInclude : undefined,
@@ -110,8 +110,14 @@ function TagsPage() {
   }
 
   function clearFilters() {
-    setPage(0)
-    startTransition(() => navigate({ search: {} }))
+    startTransition(() => {
+      setPage(0)
+      navigate({ search: {} })
+    })
+  }
+
+  function changePage(nextPage: number) {
+    startTransition(() => setPage(nextPage))
   }
 
   return (
@@ -289,7 +295,7 @@ function TagsPage() {
               type="button"
               className={buttonClass}
               disabled={safePage === 0}
-              onClick={() => setPage(safePage - 1)}
+              onClick={() => changePage(safePage - 1)}
             >
               Previous
             </button>
@@ -300,7 +306,7 @@ function TagsPage() {
               type="button"
               className={buttonClass}
               disabled={safePage >= pageCount - 1}
-              onClick={() => setPage(safePage + 1)}
+              onClick={() => changePage(safePage + 1)}
             >
               Next
             </button>
