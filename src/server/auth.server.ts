@@ -22,6 +22,7 @@ type AdminSession = {
 
 const sessionDurationSeconds = 8 * 60 * 60
 const loginWindowSeconds = 15 * 60
+const passwordHashIterations = 100_000
 const derivePassword = promisify(pbkdf2)
 const passwordHashPattern =
   /^\$pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/
@@ -225,9 +226,7 @@ function parsePasswordHash(value: string) {
   const salt = Buffer.from(match[2], 'base64url')
   const hash = Buffer.from(match[3], 'base64url')
   if (
-    !Number.isSafeInteger(iterations) ||
-    iterations < 210_000 ||
-    iterations > 2_000_000 ||
+    iterations !== passwordHashIterations ||
     salt.byteLength < 16 ||
     hash.byteLength !== 32
   ) {

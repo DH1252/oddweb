@@ -2,7 +2,7 @@ import { pbkdf2, randomBytes } from 'node:crypto'
 import { promisify } from 'node:util'
 
 const derive = promisify(pbkdf2)
-const iterations = 310_000
+const iterations = 100_000
 const password = process.stdin.isTTY
   ? await readPasswordTwice()
   : (await readStdin()).trimEnd()

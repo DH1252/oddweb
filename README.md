@@ -17,7 +17,7 @@ npm run db:migrate
 npm run dev
 ```
 
-Local D1 and R2 data are stored under `.wrangler/state`. Generate an admin password hash with `npm run auth:hash`, then set `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, and a random `ADMIN_SESSION_SECRET` of at least 32 characters in `.dev.vars`.
+Local D1 and R2 data are stored under `.wrangler/state`. Generate an admin password hash with `npm run auth:hash`, then set `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, and a random `ADMIN_SESSION_SECRET` of at least 32 characters in `.dev.vars`. Regenerate older password hashes that use more than 100,000 PBKDF2 iterations; the Workers runtime does not support them.
 
 Run the complete secret-free release verification with:
 
