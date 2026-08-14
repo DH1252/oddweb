@@ -1,4 +1,6 @@
-# Copy to .dev.vars for local authentication only. Never commit real values.
+# Copy to .dev.vars for local development only. Never commit real values.
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD_HASH=replace-with-output-from-npm-run-auth-hash
 ADMIN_SESSION_SECRET=replace-with-at-least-32-random-characters
+TAXONOMY_MASTER_KEY_V1=replace-with-a-32-byte-base64url-key
+PUBLIC_SITE_URL=http://localhost:3000

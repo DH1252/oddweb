@@ -1,20 +1,102 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
-import { getAdjacentSites, getSite } from '../data/sites'
 import { thumbnailUrl } from '../lib/thumbnails'
-import { directoryQueryOptions } from '../queries/oddweb'
+import { siteDetailQueryOptions } from '../queries/oddweb'
 import { recordSiteVisit } from '../server/data'
+import {
+  SITE_ORIGIN,
+  notFoundHeaders,
+  publicRobots,
+  siteDetailUrl,
+  siteSocialImage,
+  socialMeta,
+} from '../lib/seo'
 
 export const Route = createFileRoute('/sites/$slug')({
   loader: async ({ context, params }) => {
     const data = await context.queryClient.ensureQueryData(
-      directoryQueryOptions(),
+      siteDetailQueryOptions(params.slug),
     )
-    if (!getSite(params.slug, data.sites)) throw notFound()
+    if (!data) throw notFound({ headers: notFoundHeaders })
     return data
+  },
+  head: ({ loaderData }) => {
+    if (!loaderData) return { meta: [{ name: 'robots', content: 'noindex' }] }
+
+    const { site } = loaderData
+    const title = `${site.name}: What It Is and Why Visit | Oddweb`
+    const description = site.summary
+    const url = siteDetailUrl(site.slug)
+    const image = siteSocialImage(site)
+
+    return {
+      meta: [
+        { title },
+        { name: 'description', content: description },
+        { name: 'robots', content: publicRobots },
+        ...socialMeta({
+          title,
+          description,
+          url,
+          image,
+          imageAlt: site.thumbnailAlt || `Preview of ${site.name} on Oddweb`,
+          type: 'article',
+        }),
+        { property: 'article:published_time', content: site.added },
+        ...site.tags.map((tag) => ({
+          property: 'article:tag',
+          content: tag,
+        })),
+        {
+          'script:ld+json': {
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'WebPage',
+                '@id': `${url}#webpage`,
+                url,
+                name: title,
+                description,
+                datePublished: site.added,
+                isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+                breadcrumb: { '@id': `${url}#breadcrumb` },
+                about: {
+                  '@type': 'WebSite',
+                  name: site.name,
+                  url: site.externalUrl,
+                },
+                primaryImageOfPage: {
+                  '@type': 'ImageObject',
+                  url: image,
+                },
+              },
+              {
+                '@type': 'BreadcrumbList',
+                '@id': `${url}#breadcrumb`,
+                itemListElement: [
+                  {
+                    '@type': 'ListItem',
+                    position: 1,
+                    name: 'Directory',
+                    item: `${SITE_ORIGIN}/`,
+                  },
+                  {
+                    '@type': 'ListItem',
+                    position: 2,
+                    name: site.name,
+                    item: url,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      links: [{ rel: 'canonical', href: url }],
+    }
   },
   component: SiteDetailPage,
 })
@@ -22,29 +104,13 @@ export const Route = createFileRoute('/sites/$slug')({
 function SiteDetailPage() {
   const { slug } = Route.useParams()
   const data = Route.useLoaderData()
-  const queryClient = useQueryClient()
-  const [visitError, setVisitError] = useState('')
   const [imageFailed, setImageFailed] = useState(false)
-  const site = getSite(slug, data.sites)
+  const { site } = data
   const visitMutation = useMutation({
     mutationFn: (entrySlug: string) =>
       recordSiteVisit({ data: { slug: entrySlug } }),
-    onSuccess: (result) => {
-      if (result.recorded) {
-        void queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'directory'],
-        })
-      }
-    },
-    onError: (error) =>
-      setVisitError(
-        error instanceof Error
-          ? error.message
-          : 'This detail entry could not be recorded.',
-      ),
   })
   const recordEntry = useEffectEvent((entrySlug: string) => {
-    setVisitError('')
     visitMutation.mutate(entrySlug)
   })
 
@@ -53,9 +119,7 @@ function SiteDetailPage() {
     recordEntry(slug)
   }, [slug])
 
-  if (!site) throw notFound()
-
-  const { previous, next } = getAdjacentSites(site.slug, data.sites)
+  const { previous, next } = data
 
   return (
     <PageShell>
@@ -109,22 +173,6 @@ function SiteDetailPage() {
           </div>
         </section>
 
-        {visitMutation.isPending ? (
-          <p
-            className="mt-2 mb-0 font-mono text-[11px] text-muted"
-            role="status"
-          >
-            Recording this detail entry...
-          </p>
-        ) : visitError ? (
-          <p
-            className="mt-2 mb-0 border border-danger bg-red-50 px-2 py-1 font-mono text-xs text-danger"
-            role="alert"
-          >
-            The page opened, but its detail count was not updated: {visitError}
-          </p>
-        ) : null}
-
         <div className="mt-2.5 grid items-start gap-2.5 md:grid-cols-[minmax(0,1.4fr)_minmax(240px,.6fr)]">
           <Panel title="What you will find" className="h-full">
             <div data-od-id="entry-notes">
@@ -149,6 +197,26 @@ function SiteDetailPage() {
                 </div>
               ))}
             </dl>
+            <div className="mt-3 border-t border-dotted border-muted pt-2">
+              <h3 className="mt-0 mb-1 font-mono text-xs font-bold tracking-wide uppercase">
+                Tags
+              </h3>
+              <div className="flex flex-wrap gap-1">
+                {site.tags.map((siteTag) => {
+                  return (
+                    <Link
+                      key={siteTag}
+                      to="/"
+                      search={{ include: [siteTag] }}
+                      className="border border-line bg-canvas px-2 py-1 font-mono text-xs underline-offset-2 hover:bg-brown hover:text-paper"
+                    >
+                      Filter by{' '}
+                      {site.tagLabels?.[siteTag] || siteTag.replace(/^~/, '')}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
           </Panel>
         </div>
 

@@ -48,8 +48,9 @@ button {
 }
 
 :where(a, button, input, select, textarea):focus-visible {
-  outline: 2px solid #b9431d;
+  outline: 3px solid #2a1810;
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px #fffaf0;
 }
 
 .odd-shell {

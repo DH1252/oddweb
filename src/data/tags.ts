@@ -2,13 +2,10 @@ import { recentFilings, sites } from './sites'
 
 import type { SiteEntry } from './sites'
 
-export type TagCategory = 'Activity' | 'Medium' | 'Mood' | 'Topic'
-
 export type CanonicalTag = {
   id?: number
   slug: string
   name: string
-  category: TagCategory
   aliases: string[]
   parents: string[]
   count: number
@@ -25,49 +22,6 @@ const aliases: Partial<Record<string, string>> = {
   relaxing: 'calm',
   sounds: 'sound',
   view: 'views',
-}
-
-const categoryTags: Record<TagCategory, string[]> = {
-  Activity: ['listen', 'play', 'wander', 'odd', 'experiments', 'interactive'],
-  Medium: [
-    'music',
-    'radio',
-    'maps',
-    'windows',
-    'video',
-    'games',
-    'sound',
-    'keyboard',
-    'visual',
-    'art',
-    'street',
-    'photo',
-    'ambient',
-    'drawing',
-  ],
-  Mood: [
-    'calm',
-    'funny',
-    'weird',
-    'surreal',
-    'useless',
-    'random',
-    'surprise',
-    'focus',
-    'fun',
-  ],
-  Topic: [
-    'world',
-    'travel',
-    'views',
-    'educational',
-    'infinite',
-    'zoom',
-    'cursor',
-    'rain',
-    'noise',
-    'museum',
-  ],
 }
 
 const parentTags: Partial<Record<string, string[]>> = {
@@ -92,12 +46,6 @@ const parentTags: Partial<Record<string, string[]>> = {
   world: ['wander'],
 }
 
-const categoryBySlug = new Map(
-  Object.entries(categoryTags).flatMap(([category, tags]) =>
-    tags.map((tag) => [tag, category as TagCategory] as const),
-  ),
-)
-
 const rawTags = [
   ...sites.flatMap((site) => site.tags),
   ...recentFilings.flatMap((filing) => filing.tags),
@@ -110,7 +58,6 @@ const canonicalSlugs = [...new Set(rawTags.map(seedResolveTagSlug))].sort(
 const tagsWithoutCounts = canonicalSlugs.map((slug) => ({
   slug,
   name: displayTagName(slug),
-  category: categoryBySlug.get(slug) || ('Topic' as const),
   aliases: Object.entries(aliases)
     .filter(([, canonical]) => canonical === slug)
     .map(([alias]) => alias),

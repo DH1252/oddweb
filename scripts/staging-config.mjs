@@ -6,6 +6,9 @@ const required = [
   'STAGING_D1_DATABASE_NAME',
   'STAGING_D1_DATABASE_ID',
   'STAGING_R2_BUCKET',
+  'STAGING_TAXONOMY_QUEUE',
+  'STAGING_TAXONOMY_DLQ',
+  'STAGING_URL',
 ]
 const missing = required.filter((name) => !process.env[name])
 if (missing.length)
@@ -15,11 +18,35 @@ const forbidden = new Map([
   ['STAGING_D1_DATABASE_NAME', 'oddweb'],
   ['STAGING_D1_DATABASE_ID', '061176be-fed4-47e4-ac6f-b985588640e8'],
   ['STAGING_R2_BUCKET', 'oddweb-thumbnails'],
+  ['STAGING_TAXONOMY_QUEUE', 'oddweb-taxonomy'],
+  ['STAGING_TAXONOMY_DLQ', 'oddweb-taxonomy-dlq'],
 ])
 for (const [name, productionValue] of forbidden) {
   if (process.env[name] === productionValue) {
     throw new Error(`${name} must not target the production resource.`)
   }
+}
+if (process.env.STAGING_TAXONOMY_QUEUE === process.env.STAGING_TAXONOMY_DLQ) {
+  throw new Error('The staging taxonomy queue and DLQ must be distinct.')
+}
+if (
+  !process.env.STAGING_TAXONOMY_QUEUE.startsWith(
+    `${process.env.STAGING_WORKER_NAME}-`,
+  ) ||
+  !process.env.STAGING_TAXONOMY_DLQ.startsWith(
+    `${process.env.STAGING_WORKER_NAME}-`,
+  )
+) {
+  throw new Error(
+    'Staging taxonomy queue names must be prefixed with STAGING_WORKER_NAME.',
+  )
+}
+const stagingUrl = new URL(process.env.STAGING_URL)
+if (
+  stagingUrl.protocol !== 'https:' ||
+  stagingUrl.origin === 'https://oddweb.page'
+) {
+  throw new Error('STAGING_URL must be an isolated HTTPS staging origin.')
 }
 
 const output = resolve('.wrangler/staging.jsonc')
@@ -41,9 +68,36 @@ writeFileSync(
       assets: { directory: '../dist/client' },
       vars: {
         ENVIRONMENT: 'staging',
+        PUBLIC_SITE_URL: stagingUrl.origin,
         RELEASE_SHA: 'staging-dry-run',
         RELEASE_TIME: 'staging-dry-run',
       },
+      secrets: {
+        required: [
+          'ADMIN_USERNAME',
+          'ADMIN_PASSWORD_HASH',
+          'ADMIN_SESSION_SECRET',
+          'TAXONOMY_MASTER_KEY_V1',
+        ],
+      },
+      queues: {
+        producers: [
+          {
+            binding: 'TAXONOMY_QUEUE',
+            queue: process.env.STAGING_TAXONOMY_QUEUE,
+          },
+        ],
+        consumers: [
+          {
+            queue: process.env.STAGING_TAXONOMY_QUEUE,
+            max_batch_size: 10,
+            max_batch_timeout: 5,
+            max_retries: 5,
+            dead_letter_queue: process.env.STAGING_TAXONOMY_DLQ,
+          },
+        ],
+      },
+      triggers: { crons: ['*/5 * * * *'] },
       observability: {
         enabled: true,
         logs: {

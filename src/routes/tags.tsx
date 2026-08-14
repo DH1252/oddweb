@@ -10,18 +10,23 @@ import {
   buttonClass,
   fieldClass,
 } from '../components/oddweb'
+import { normalizeFilterTagList } from '../data/tags'
+import { tagPageQueryOptions } from '../queries/oddweb'
 import {
-  normalizeFilterTagList,
-  resolveFilterTagList,
-  siteMatchesFilterTag,
-  tagLabel,
-} from '../data/tags'
-import { directoryQueryOptions } from '../queries/oddweb'
+  absoluteUrl,
+  filteredRobots,
+  publicRobots,
+  socialMeta,
+} from '../lib/seo'
 
 type TagsSearch = {
   include?: string[]
   exclude?: string[]
 }
+
+const tagsTitle = 'Browse Website Tags | Oddweb'
+const tagsDescription =
+  'Browse the tags Oddweb uses to organize unusual, playful, and interactive websites by mood, medium, and activity.'
 
 export const Route = createFileRoute('/tags')({
   validateSearch: (search): TagsSearch => {
@@ -34,17 +39,32 @@ export const Route = createFileRoute('/tags')({
       exclude: exclude.length ? exclude : undefined,
     }
   },
-  head: () => ({
+  head: ({ match }) => ({
     meta: [
-      { title: 'Tags / Oddweb' },
+      { title: tagsTitle },
       {
         name: 'description',
-        content: 'Browse every tag in the Oddweb directory.',
+        content: tagsDescription,
       },
+      {
+        name: 'robots',
+        content:
+          match.search.include?.length || match.search.exclude?.length
+            ? filteredRobots
+            : publicRobots,
+      },
+      ...socialMeta({
+        title: tagsTitle,
+        description: tagsDescription,
+        url: absoluteUrl('/tags'),
+      }),
     ],
+    links: [{ rel: 'canonical', href: absoluteUrl('/tags') }],
   }),
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(directoryQueryOptions()),
+    context.queryClient.ensureQueryData(
+      tagPageQueryOptions({ query: '', include: [], exclude: [], page: 0 }),
+    ),
   component: TagsPage,
 })
 
@@ -52,27 +72,25 @@ function TagsPage() {
   const { include: rawInclude = [], exclude: rawExclude = [] } =
     Route.useSearch()
   const navigate = useNavigate({ from: '/tags' })
-  const { data } = useSuspenseQuery(directoryQueryOptions())
-  const canonicalTags = data.tagCatalog
-  const include = resolveFilterTagList(rawInclude, canonicalTags)
-  const exclude = resolveFilterTagList(rawExclude, canonicalTags).filter(
-    (tag) => !include.includes(tag),
-  )
+  const include = rawInclude
+  const exclude = rawExclude.filter((tag) => !include.includes(tag))
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
-  const visibleTags = canonicalTags.filter(
-    (tag) =>
-      !deferredQuery ||
-      tag.name.toLowerCase().includes(deferredQuery) ||
-      tag.aliases.some((alias) => alias.includes(deferredQuery)),
+  const [page, setPage] = useState(0)
+  const { data: tagPage } = useSuspenseQuery(
+    tagPageQueryOptions({
+      query: deferredQuery,
+      include,
+      exclude,
+      page,
+    }),
   )
-  const matchingSites = data.sites.filter(
-    (site) =>
-      include.every((tag) => siteMatchesFilterTag(site, tag, canonicalTags)) &&
-      !exclude.some((tag) => siteMatchesFilterTag(site, tag, canonicalTags)),
-  )
+  const visibleTags = tagPage.tags
+  const pageCount = Math.max(1, Math.ceil(tagPage.total / tagPage.pageSize))
+  const safePage = Math.min(page, pageCount - 1)
 
   function setFilterTags(type: 'include' | 'exclude', nextTags: string[]) {
+    setPage(0)
     const nextInclude =
       type === 'include'
         ? nextTags
@@ -92,6 +110,7 @@ function TagsPage() {
   }
 
   function clearFilters() {
+    setPage(0)
     startTransition(() => navigate({ search: {} }))
   }
 
@@ -130,7 +149,6 @@ function TagsPage() {
           </div>
           <div className="grid gap-3 p-2.5 md:grid-cols-2">
             <TagInput
-              catalog={canonicalTags}
               label="Tags to include"
               value={include}
               onChange={(tags) => setFilterTags('include', tags)}
@@ -138,7 +156,6 @@ function TagsPage() {
               placeholder="Include a tag..."
             />
             <TagInput
-              catalog={canonicalTags}
               label="Tags to exclude"
               value={exclude}
               onChange={(tags) => setFilterTags('exclude', tags)}
@@ -148,9 +165,9 @@ function TagsPage() {
           </div>
           <div className="flex flex-col justify-between gap-2 border-t border-dotted border-line bg-canvas px-2.5 py-2 sm:flex-row sm:items-center">
             <p className="m-0 font-mono text-xs text-brown">
-              {matchingSites.length} matching{' '}
-              {matchingSites.length === 1 ? 'site' : 'sites'}. Includes use AND;
-              exclusions use OR.
+              {tagPage.matchingSiteCount} matching{' '}
+              {tagPage.matchingSiteCount === 1 ? 'site' : 'sites'}. Includes use
+              AND; exclusions use OR.
             </p>
             <div className="flex gap-1.5">
               {include.length || exclude.length ? (
@@ -184,7 +201,10 @@ function TagsPage() {
             id="tag-search"
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(0)
+            }}
             autoComplete="off"
             className={`${fieldClass} bg-canvas`}
             placeholder="Search tags, e.g. sound, wander, useless..."
@@ -195,7 +215,7 @@ function TagsPage() {
           className="mb-2 font-mono text-xs tracking-[0.06em] text-muted uppercase"
           aria-live="polite"
         >
-          {visibleTags.length} {visibleTags.length === 1 ? 'tag' : 'tags'}
+          {tagPage.total} {tagPage.total === 1 ? 'tag' : 'tags'}
         </p>
 
         {visibleTags.length ? (
@@ -222,7 +242,7 @@ function TagsPage() {
                   <p className="my-1 font-mono text-[11px] text-brown">
                     Subtag of{' '}
                     {tag.parents
-                      .map((parent) => tagLabel(parent, canonicalTags))
+                      .map((parent) => tagPage.tagLabels[parent] || parent)
                       .join(', ')}
                   </p>
                 ) : null}
@@ -249,7 +269,7 @@ function TagsPage() {
                     search={{ include: [tag.slug] }}
                     className={buttonClass}
                   >
-                    View {tag.name} sites
+                    Filter by {tag.name}
                   </Link>
                 </div>
               </article>
@@ -260,6 +280,32 @@ function TagsPage() {
             No tags match that search.
           </div>
         )}
+        {tagPage.total ? (
+          <nav
+            className="mt-3 flex items-center justify-between border-t border-dotted border-muted pt-2.5"
+            aria-label="Tag list pages"
+          >
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={safePage === 0}
+              onClick={() => setPage(safePage - 1)}
+            >
+              Previous
+            </button>
+            <span className="font-mono text-xs text-muted" aria-live="polite">
+              Page {safePage + 1} of {pageCount}
+            </span>
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage(safePage + 1)}
+            >
+              Next
+            </button>
+          </nav>
+        ) : null}
       </main>
       <SiteFooter />
     </PageShell>

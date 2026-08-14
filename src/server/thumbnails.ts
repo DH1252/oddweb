@@ -2,11 +2,24 @@ import { env } from 'cloudflare:workers'
 
 import { thumbnailUrl } from '../lib/thumbnails'
 import {
+  findReferencedThumbnailKeys,
   isThumbnailReferenced,
-  listReferencedThumbnailKeys,
+  listReferencedThumbnailKeyBatch,
 } from '../db/repository'
+import {
+  decodeReconciliationCursor,
+  emptyReconciliationProgress,
+  encodeReconciliationCursor,
+  mergeReconciliationProgress,
+  reconciliationCursorMaxAgeSeconds,
+} from './thumbnail-reconciliation'
 
 import type { ThumbnailUpload } from '../lib/thumbnails'
+import type {
+  ReconciliationCursorState,
+  ReconciliationPhase,
+  ReconciliationProgress,
+} from './thumbnail-reconciliation'
 
 const maxThumbnailBytes = 8 * 1024 * 1024
 const thumbnailTypes = {
@@ -58,55 +71,147 @@ export async function removeThumbnail(key: string) {
   await env.THUMBNAILS.delete(`thumbnails/${key}`)
 }
 
-export async function reconcileThumbnails(deleteOrphans = false) {
-  const referenced = await listReferencedThumbnailKeys()
-  const storedKeys = new Set<string>()
-  const orphanKeys: string[] = []
-  let cursor: string | undefined
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000
-  do {
-    const page = await env.THUMBNAILS.list({
-      prefix: 'thumbnails/',
-      cursor,
-      limit: 500,
-    })
-    for (const object of page.objects) {
-      const key = object.key.slice('thumbnails/'.length)
-      storedKeys.add(key)
-      if (object.uploaded.getTime() < cutoff && !referenced.has(key)) {
-        orphanKeys.push(object.key)
-      }
-    }
-    cursor = page.truncated ? page.cursor : undefined
-  } while (cursor)
+export async function reconcileThumbnails(input?: {
+  cursor?: string
+  limit?: number
+}) {
+  const limit = normalizeReconciliationLimit(input?.limit)
+  const secret = env.ADMIN_SESSION_SECRET
+  const state = input?.cursor
+    ? await decodeReconciliationCursor(input.cursor, secret)
+    : initialReconciliationState()
 
-  if (deleteOrphans) {
-    for (let index = 0; index < orphanKeys.length; index += 1000) {
-      await env.THUMBNAILS.delete(orphanKeys.slice(index, index + 1000))
-    }
+  if (state.phase === 'r2') {
+    return reconcileR2Page(state, limit, secret)
   }
-  const missingKeys = [...referenced].filter((key) => !storedKeys.has(key))
-  return {
-    referenced: referenced.size,
-    stored: storedKeys.size,
+  return reconcileD1Batch(state, limit, secret)
+}
+
+async function reconcileR2Page(
+  state: ReconciliationCursorState,
+  limit: number,
+  secret: string,
+) {
+  const page = await env.THUMBNAILS.list({
+    prefix: 'thumbnails/',
+    cursor: state.r2Cursor,
+    limit,
+  })
+  const keys = page.objects.map((object) =>
+    object.key.slice('thumbnails/'.length),
+  )
+  const referenced = await findReferencedThumbnailKeys(keys)
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  const orphanKeys = page.objects
+    .filter(
+      (object, index) =>
+        object.uploaded.getTime() < cutoff && !referenced.has(keys[index]),
+    )
+    .map((object) => object.key)
+  const progress = mergeReconciliationProgress(state, {
+    stored: page.objects.length,
+    orphaned: orphanKeys.length,
     orphanKeys,
-    missingKeys,
-    deleted: deleteOrphans ? orphanKeys.length : 0,
+  })
+  const nextState: ReconciliationCursorState = {
+    ...state,
+    ...progress,
+    phase: page.truncated ? 'r2' : 'd1',
+    r2Cursor: page.truncated ? page.cursor : undefined,
   }
+  return reconciliationResult(
+    progress,
+    nextState.phase,
+    await encodeReconciliationCursor(nextState, secret),
+  )
+}
+
+async function reconcileD1Batch(
+  state: ReconciliationCursorState,
+  limit: number,
+  secret: string,
+) {
+  const batch = await listReferencedThumbnailKeyBatch(state.d1AfterKey, limit)
+  const present = await mapConcurrent(batch.keys, 20, async (key) => ({
+    key,
+    exists: (await env.THUMBNAILS.head(`thumbnails/${key}`)) !== null,
+  }))
+  const missingKeys = present
+    .filter((entry) => !entry.exists)
+    .map((entry) => entry.key)
+  const progress = mergeReconciliationProgress(state, {
+    referenced: batch.keys.length,
+    missing: missingKeys.length,
+    missingKeys,
+  })
+  if (!batch.hasMore) return reconciliationResult(progress, 'complete')
+
+  const nextState: ReconciliationCursorState = {
+    ...state,
+    ...progress,
+    d1AfterKey: batch.keys.at(-1),
+  }
+  return reconciliationResult(
+    progress,
+    'd1',
+    await encodeReconciliationCursor(nextState, secret),
+  )
+}
+
+function initialReconciliationState(): ReconciliationCursorState {
+  return {
+    version: 1,
+    phase: 'r2',
+    expiresAt:
+      Math.floor(Date.now() / 1000) + reconciliationCursorMaxAgeSeconds,
+    ...emptyReconciliationProgress(),
+  }
+}
+
+function normalizeReconciliationLimit(limit: number | undefined) {
+  if (limit === undefined) return 100
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error(
+      'Thumbnail reconciliation limit must be a positive integer.',
+    )
+  }
+  return Math.min(limit, 200)
+}
+
+function reconciliationResult(
+  progress: ReconciliationProgress,
+  phase: ReconciliationPhase,
+  cursor?: string,
+) {
+  return { ...progress, phase, cursor, deleted: 0 as const }
+}
+
+async function mapConcurrent<T, TResult>(
+  values: T[],
+  concurrency: number,
+  callback: (value: T) => Promise<TResult>,
+) {
+  const results = new Array<TResult>(values.length)
+  let nextIndex = 0
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++
+        results[index] = await callback(values[index])
+      }
+    }),
+  )
+  return results
 }
 
 export async function cleanupArchivedThumbnail(key: string) {
-  return cleanupUnreferencedThumbnail(key)
-}
-
-async function cleanupUnreferencedThumbnail(key: string) {
   try {
     if (await isThumbnailReferenced(key)) return false
-    await removeThumbnail(key)
-    return true
+    console.info({ event: 'archived_thumbnail_retained', key })
+    return false
   } catch (error) {
     console.error({
-      event: 'archived_thumbnail_cleanup_failed',
+      event: 'archived_thumbnail_check_failed',
       key,
       error: error instanceof Error ? error.message : String(error),
     })

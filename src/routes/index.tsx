@@ -26,18 +26,24 @@ import {
   fieldClass,
   primaryButtonClass,
 } from '../components/oddweb'
+import { normalizeFilterTagList } from '../data/tags'
 import {
-  normalizeFilterTagList,
-  resolveFilterTagList,
-  siteMatchesFilterTag,
-  tagLabel,
-} from '../data/tags'
-import { directoryQueryOptions } from '../queries/oddweb'
+  directoryQueryOptions,
+  popularQueryOptions,
+  publicSupportQueryOptions,
+} from '../queries/oddweb'
 import { signGuestbook, submitSite as submitSiteMutation } from '../server/data'
+import {
+  SITE_ORIGIN,
+  absoluteUrl,
+  filteredRobots,
+  publicRobots,
+  siteDetailUrl,
+  socialMeta,
+} from '../lib/seo'
 
 import type { FormEvent } from 'react'
 import type { SiteEntry } from '../data/sites'
-import type { CanonicalTag } from '../data/tags'
 
 type DirectorySearch = {
   include?: string[]
@@ -48,6 +54,9 @@ type SortMode = 'popular' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
 const pageSize = 6
 const sortStorageKey = 'oddweb-directory-sort'
+const homeTitle = 'Oddweb: Unusual, Fun and Interactive Websites'
+const homeDescription =
+  'Explore a hand-filed directory of unusual, fun, and interactive websites, selected for curious detours beyond the usual web.'
 const sortModes: SortMode[] = [
   'popular',
   'newest',
@@ -58,6 +67,20 @@ const sortModes: SortMode[] = [
 ]
 
 export const Route = createFileRoute('/')({
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(publicSupportQueryOptions())
+    const directory = await context.queryClient.ensureQueryData(
+      directoryQueryOptions({
+        query: '',
+        include: [],
+        exclude: [],
+        sort: 'popular',
+        page: 0,
+      }),
+    )
+    await context.queryClient.ensureQueryData(popularQueryOptions(0))
+    return directory
+  },
   validateSearch: (search): DirectorySearch => {
     const include = normalizeFilterTagList(search.include)
     const exclude = normalizeFilterTagList(search.exclude).filter(
@@ -68,18 +91,56 @@ export const Route = createFileRoute('/')({
       exclude: exclude.length ? exclude : undefined,
     }
   },
-  head: () => ({
+  head: ({ loaderData, match }) => ({
     meta: [
-      { title: 'Oddweb - Unique websites worth exploring' },
+      { title: homeTitle },
       {
         name: 'description',
+        content: homeDescription,
+      },
+      {
+        name: 'robots',
         content:
-          'A searchable directory of unique, playful, and unexpected websites worth exploring.',
+          match.search.include?.length || match.search.exclude?.length
+            ? filteredRobots
+            : publicRobots,
+      },
+      ...socialMeta({
+        title: homeTitle,
+        description: homeDescription,
+        url: `${SITE_ORIGIN}/`,
+      }),
+      {
+        'script:ld+json': {
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'CollectionPage',
+              '@id': `${SITE_ORIGIN}/#directory`,
+              url: `${SITE_ORIGIN}/`,
+              name: homeTitle,
+              description: homeDescription,
+              isPartOf: { '@id': `${SITE_ORIGIN}/#website` },
+              mainEntity: { '@id': `${SITE_ORIGIN}/#directory-list` },
+            },
+            {
+              '@type': 'ItemList',
+              '@id': `${SITE_ORIGIN}/#directory-list`,
+              name: 'Oddweb directory entries',
+              numberOfItems: loaderData?.sites.length ?? 0,
+              itemListElement: (loaderData?.sites ?? []).map((site, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                name: site.name,
+                item: siteDetailUrl(site.slug),
+              })),
+            },
+          ],
+        },
       },
     ],
+    links: [{ rel: 'canonical', href: absoluteUrl('/') }],
   }),
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(directoryQueryOptions()),
   component: DirectoryPage,
 })
 
@@ -88,12 +149,10 @@ function DirectoryPage() {
     Route.useSearch()
   const navigate = useNavigate({ from: '/' })
   const queryClient = useQueryClient()
-  const { data } = useSuspenseQuery(directoryQueryOptions())
-  const { sites, guestbook, recentFilings: communityFilings } = data
-  const include = resolveFilterTagList(rawInclude, data.tagCatalog)
-  const exclude = resolveFilterTagList(rawExclude, data.tagCatalog).filter(
-    (tag) => !include.includes(tag),
-  )
+  const { data: supportData } = useSuspenseQuery(publicSupportQueryOptions())
+  const { guestbook, recentFilings: communityFilings } = supportData
+  const include = rawInclude
+  const exclude = rawExclude.filter((tag) => !include.includes(tag))
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
   const [sort, setSort] = useState<SortMode>('popular')
@@ -103,6 +162,19 @@ function DirectoryPage() {
   const [submitOpen, setSubmitOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
+  const directoryInput = {
+    query: deferredQuery,
+    include,
+    exclude,
+    sort,
+    page,
+  }
+  const { data: directoryData } = useSuspenseQuery(
+    directoryQueryOptions(directoryInput),
+  )
+  const { data: popularData } = useSuspenseQuery(
+    popularQueryOptions(popularPage),
+  )
   const guestbookMutation = useMutation({
     mutationFn: (input: { name: string; message: string }) =>
       signGuestbook({ data: input }),
@@ -124,43 +196,13 @@ function DirectoryPage() {
     if (sortLoaded) window.localStorage.setItem(sortStorageKey, sort)
   }, [sort, sortLoaded])
 
-  const matchingSites = sites
-    .filter((site) => {
-      const matchesIncluded = include.every((tag) =>
-        siteMatchesFilterTag(site, tag, data.tagCatalog),
-      )
-      const matchesExcluded = exclude.some((tag) =>
-        siteMatchesFilterTag(site, tag, data.tagCatalog),
-      )
-      const haystack =
-        `${site.name} ${site.description} ${site.tags.join(' ')}`.toLowerCase()
-      return (
-        matchesIncluded &&
-        !matchesExcluded &&
-        (!deferredQuery || haystack.includes(deferredQuery))
-      )
-    })
-    .sort((a, b) => {
-      if (sort === 'newest') return b.added.localeCompare(a.added)
-      if (sort === 'oldest') return a.added.localeCompare(b.added)
-      if (sort === 'tags') return b.tags.length - a.tags.length
-      if (sort === 'az') return a.name.localeCompare(b.name)
-      if (sort === 'za') return b.name.localeCompare(a.name)
-      return b.visits - a.visits
-    })
-
-  const pageCount = Math.max(1, Math.ceil(matchingSites.length / pageSize))
+  const matchingSiteCount = directoryData.total
+  const pageCount = Math.max(1, Math.ceil(matchingSiteCount / pageSize))
   const safePage = Math.min(page, pageCount - 1)
-  const visibleSites = matchingSites.slice(
-    safePage * pageSize,
-    (safePage + 1) * pageSize,
-  )
-  const popularSites = [...sites].sort((a, b) => b.visits - a.visits)
-  const popularPageCount = Math.ceil(popularSites.length / 4)
-  const visiblePopular = popularSites.slice(
-    popularPage * 4,
-    (popularPage + 1) * 4,
-  )
+  const visibleSites = directoryData.sites
+  const popularPageCount = Math.max(1, Math.ceil(popularData.total / 4))
+  const safePopularPage = Math.min(popularPage, popularPageCount - 1)
+  const visiblePopular = popularData.sites
 
   function setFilterTags(type: 'include' | 'exclude', nextTags: string[]) {
     setPage(0)
@@ -204,14 +246,15 @@ function DirectoryPage() {
   }
 
   function surprise() {
-    if (!matchingSites.length) {
+    if (!directoryData.surpriseSlug) {
       setNotice('No matching sites are available to surprise you.')
       setNoticeError(true)
       return
     }
-    const picked =
-      matchingSites[Math.floor(Math.random() * matchingSites.length)]
-    navigate({ to: '/sites/$slug', params: { slug: picked.slug } })
+    navigate({
+      to: '/sites/$slug',
+      params: { slug: directoryData.surpriseSlug },
+    })
   }
 
   async function addGuestbookEntry(event: FormEvent<HTMLFormElement>) {
@@ -227,7 +270,7 @@ function DirectoryPage() {
     setNoticeError(false)
     try {
       await guestbookMutation.mutateAsync({ name, message })
-      await queryClient.invalidateQueries({ queryKey: ['oddweb', 'directory'] })
+      await queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] })
       form.reset()
       setNotice('Your guestbook note was added.')
     } catch (error) {
@@ -252,7 +295,7 @@ function DirectoryPage() {
     try {
       await submissionMutation.mutateAsync(formData)
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'directory'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
       ])
       setNotice(`${name} was added to the review pile with its R2 thumbnail.`)
@@ -404,8 +447,8 @@ function DirectoryPage() {
                 className="m-0 font-mono text-xs text-muted"
                 aria-live="polite"
               >
-                {matchingSites.length}{' '}
-                {matchingSites.length === 1 ? 'site' : 'sites'} on file
+                {matchingSiteCount} {matchingSiteCount === 1 ? 'site' : 'sites'}{' '}
+                on file
               </p>
               <label className="inline-flex items-center gap-2 font-mono text-xs font-bold">
                 Order
@@ -439,7 +482,6 @@ function DirectoryPage() {
                   excludedTags={exclude}
                   onInclude={toggleIncludedTag}
                   onExclude={addExcludedTag}
-                  tagCatalog={data.tagCatalog}
                 />
               ))}
             </div>
@@ -512,7 +554,7 @@ function DirectoryPage() {
               ))}
             </ol>
             <Pagination
-              page={popularPage}
+              page={safePopularPage}
               pageCount={popularPageCount}
               onPageChange={setPopularPage}
               label="Most opened pages"
@@ -676,7 +718,6 @@ function DirectoryPage() {
             </div>
             <div className="mb-2">
               <TagInput
-                catalog={data.tagCatalog}
                 label="Tags"
                 name="tags"
                 required
@@ -735,14 +776,12 @@ function SiteRow({
   excludedTags,
   onInclude,
   onExclude,
-  tagCatalog,
 }: {
   site: SiteEntry
   includedTags: string[]
   excludedTags: string[]
   onInclude: (tag: string) => void
   onExclude: (tag: string) => void
-  tagCatalog: CanonicalTag[]
 }) {
   const allTags = site.tags
 
@@ -773,7 +812,7 @@ function SiteRow({
           excludedTags={excludedTags}
           onInclude={onInclude}
           onExclude={onExclude}
-          catalog={tagCatalog}
+          labels={site.tagLabels || {}}
         />
         <div className="mt-1.5 flex gap-2 font-mono text-xs text-muted">
           <span>{site.visits} detail opens</span>
@@ -792,7 +831,7 @@ function CardTagPages({
   excludedTags,
   onInclude,
   onExclude,
-  catalog,
+  labels,
 }: {
   siteName: string
   tags: string[]
@@ -800,7 +839,7 @@ function CardTagPages({
   excludedTags: string[]
   onInclude: (tag: string) => void
   onExclude: (tag: string) => void
-  catalog: CanonicalTag[]
+  labels: Record<string, string>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tagsPerPage, setTagsPerPage] = useState(2)
@@ -830,21 +869,26 @@ function CardTagPages({
       <div className="flex min-w-0 flex-wrap gap-0.5">
         {visibleTags.map((siteTag) => (
           <span key={siteTag} className="inline-flex max-w-full">
+            <span className="inline-flex min-h-8 min-w-0 max-w-36 items-center border border-line bg-canvas px-2 font-mono text-xs leading-tight whitespace-normal [overflow-wrap:anywhere]">
+              {labels[siteTag] || siteTag.replace(/^~/, '')}
+            </span>
             <button
               type="button"
+              aria-label={`Include ${labels[siteTag] || siteTag.replace(/^~/, '')}`}
               aria-pressed={includedTags.includes(siteTag)}
+              title={`Include ${labels[siteTag] || siteTag.replace(/^~/, '')}`}
               onClick={() => onInclude(siteTag)}
-              className={`min-h-8 min-w-0 max-w-36 border px-2 font-mono text-xs leading-tight whitespace-normal [overflow-wrap:anywhere] ${includedTags.includes(siteTag) ? 'border-success bg-green-50 text-success' : excludedTags.includes(siteTag) ? 'border-danger bg-red-50 text-danger' : 'border-line bg-canvas hover:bg-brown hover:text-paper'}`}
+              className={`min-h-8 shrink-0 border border-l-0 px-2 font-mono text-xs ${includedTags.includes(siteTag) ? 'border-success bg-green-50 text-success' : 'border-brown bg-paper hover:bg-success hover:text-white'}`}
             >
-              {tagLabel(siteTag, catalog)}
+              +
             </button>
             <button
               type="button"
-              aria-label={`Exclude ${tagLabel(siteTag, catalog)}`}
+              aria-label={`Exclude ${labels[siteTag] || siteTag.replace(/^~/, '')}`}
               aria-pressed={excludedTags.includes(siteTag)}
-              title={`Exclude ${tagLabel(siteTag, catalog)}`}
+              title={`Exclude ${labels[siteTag] || siteTag.replace(/^~/, '')}`}
               onClick={() => onExclude(siteTag)}
-              className="min-h-8 shrink-0 border border-l-0 border-line bg-paper px-2 font-mono text-xs text-danger hover:bg-danger hover:text-white"
+              className="min-h-8 shrink-0 border border-l-0 border-brown bg-paper px-2 font-mono text-xs text-danger hover:bg-danger hover:text-white"
             >
               -
             </button>
@@ -858,7 +902,7 @@ function CardTagPages({
         >
           <button
             type="button"
-            className="grid min-h-8 min-w-8 place-items-center border border-line bg-paper disabled:opacity-40"
+            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
             disabled={safePage === 0}
             onClick={() => setPage(safePage - 1)}
             aria-label="Previous tag page"
@@ -870,7 +914,7 @@ function CardTagPages({
           </span>
           <button
             type="button"
-            className="grid min-h-8 min-w-8 place-items-center border border-line bg-paper disabled:opacity-40"
+            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
             disabled={safePage >= pageCount - 1}
             onClick={() => setPage(safePage + 1)}
             aria-label="Next tag page"

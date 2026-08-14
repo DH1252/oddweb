@@ -3,7 +3,14 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 
-const root = exec('git', ['rev-parse', '--show-toplevel'])
+const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+}).trim()
+run('npm', ['run', 'release:check'])
+run('npm', ['run', 'taxonomy:preflight:remote'])
+run('npm', ['run', 'verify'])
+
 const backupDirInput = process.env.BACKUP_DIR
 if (!backupDirInput || !isAbsolute(backupDirInput)) {
   throw new Error(
@@ -19,9 +26,6 @@ if (
 ) {
   throw new Error('BACKUP_DIR must be outside the repository.')
 }
-
-run('npm', ['run', 'verify'])
-run('npm', ['run', 'release:check'])
 
 const sha = exec('git', ['rev-parse', 'HEAD'])
 const releasedAt = new Date().toISOString()
@@ -88,40 +92,20 @@ run('npx', [
   '--var',
   `RELEASE_TIME:${releasedAt}`,
 ])
-let previousVersion = ''
+const previousVersion = currentVersionId()
 if (maintenanceRequired) {
-  previousVersion = currentVersionId()
-  run('npx', [
-    'wrangler',
-    'deploy',
-    'scripts/maintenance-worker.mjs',
-    '--config',
-    'wrangler.jsonc',
-    '--name',
-    'oddweb',
-    '--compatibility-date',
-    '2026-08-03',
-    '--no-bundle',
-    '--keep-vars',
-    '--message',
-    `${message} maintenance`,
-  ])
+  deployMaintenance(`${message} maintenance`)
 }
 
 try {
   run('npm', ['run', 'db:migrations:remote:check'])
   run('npm', ['run', 'db:migrate:remote'])
 } catch (error) {
-  if (maintenanceRequired && previousVersion) {
-    run('npx', [
-      'wrangler',
-      'versions',
-      'deploy',
-      `${previousVersion}@100`,
-      '--yes',
-      '--message',
-      `${message} migration failed; restored previous application`,
-    ])
+  if (maintenanceRequired) {
+    deployMaintenance(`${message} migration failed; maintenance remains active`)
+    console.error(
+      `The contract migration failed. Maintenance remains active because the previous application may no longer match the database. Inspect D1 and restore ${backupPath} before redeploying ${previousVersion}.`,
+    )
   }
   throw error
 }
@@ -136,9 +120,17 @@ try {
     '--message',
     message,
   ])
+  run('npx', ['wrangler', 'triggers', 'deploy'])
   run('node', ['scripts/smoke-test.mjs'], { ...process.env, RELEASE_SHA: sha })
 } catch (error) {
-  if (previousVersion) {
+  if (maintenanceRequired) {
+    deployMaintenance(
+      `${message} promotion or smoke test failed; maintenance remains active`,
+    )
+    console.error(
+      `The contract migration succeeded but the application failed verification. Maintenance remains active. Restore ${backupPath} before deploying ${previousVersion} if the new application cannot be fixed forward.`,
+    )
+  } else {
     run('npx', [
       'wrangler',
       'versions',
@@ -166,4 +158,22 @@ function currentVersionId() {
   const match = output.match(/\(100%\)\s+([0-9a-f-]{36})/i)
   if (!match) throw new Error('Could not determine the current Worker version.')
   return match[1]
+}
+
+function deployMaintenance(message) {
+  run('npx', [
+    'wrangler',
+    'deploy',
+    'scripts/maintenance-worker.mjs',
+    '--config',
+    'wrangler.jsonc',
+    '--name',
+    'oddweb',
+    '--compatibility-date',
+    '2026-08-03',
+    '--no-bundle',
+    '--keep-vars',
+    '--message',
+    message,
+  ])
 }

@@ -63,7 +63,7 @@ Do not place credentials or uploaded production objects in the repository.
 
 ## Production Release
 
-Production URL: <https://oddweb.oddweb.workers.dev>
+Canonical production URL: <https://oddweb.page>
 
 Authenticate Wrangler and configure secrets interactively:
 
@@ -81,9 +81,31 @@ export BACKUP_DIR=/absolute/path/to/secured/oddweb-backups
 npm run deploy
 ```
 
-The release command requires a clean worktree whose `HEAD` exactly matches its configured upstream. It runs all verification gates, records the commit SHA and UTC release time, uploads a strict inactive version tagged with that provenance, applies pending remote D1 migrations through either the additive or maintenance path, promotes the tagged version to 100%, and smoke-tests binding health, the home page, real 404 handling, and admin protection. Promotion or smoke-test failure restores the prior application version when the release used maintenance mode. Set `PRODUCTION_URL` only if the canonical URL changes. Do not run the final command from CI without an intentional production approval and Cloudflare credentials.
+The release command requires a clean worktree whose `HEAD` exactly matches its configured upstream. It runs all verification gates, records the commit SHA and UTC release time, uploads a strict inactive version tagged with that provenance, applies pending remote D1 migrations through either the additive or maintenance path, promotes the tagged version to 100%, and smoke-tests bindings, canonical metadata, robots, sitemap, structured data, real 404 handling, and private-route noindex controls. Additive-release smoke failures restore the previous Worker. Contract-migration failures keep maintenance active because old code may no longer match the database; restore the verified D1 backup or fix forward before serving traffic. `PRODUCTION_URL` must remain the canonical origin. Do not run the final command from CI without an intentional production approval and Cloudflare credentials.
 
-The production Worker uses `workers.dev`; per-version preview URLs are disabled. `/health` is an uncached deployment marker reporting environment, release SHA, and release time. Operational errors use structured object logs; invocation logs are sampled at 10% and traces at 1% in Cloudflare observability. Wrangler uploads generated source maps so persisted stack traces resolve to application source; source maps are not served as public static assets.
+The production Worker disables its `workers.dev` endpoint and per-version preview URLs. `oddweb.page` is the only indexable origin; `www` must permanently redirect to it. Production smoke tests require both alternate-host policies and fail if either regresses. `/health` is an uncached deployment marker reporting environment, release SHA, and release time. Operational errors use structured object logs; invocation logs are sampled at 10% and traces at 1% in Cloudflare observability. Wrangler uploads generated source maps so persisted stack traces resolve to application source; source maps are not served as public static assets.
+
+## SEO Operations
+
+The canonical host is `https://oddweb.page`. Before releasing, run `npm run verify`; after a production or staging release, run the applicable smoke command. For an already-running local server, use `node scripts/smoke-test.mjs --local` and optionally set `LOCAL_URL`. The release smoke gate validates `/robots.txt`, `/sitemap.xml`, homepage and detail metadata, JSON-LD parsing, and noindex controls for admin, login, health, and errors.
+
+Tag filtering remains dynamic and D1-driven. Search/filter query variants are noindex and canonicalize to their unfiltered directory page; the application does not publish hardcoded tag landing pages.
+
+After the custom domain is live:
+
+- Add `oddweb.page` as a Google Search Console Domain property using DNS verification. Import it into Bing Webmaster Tools or verify the same domain there.
+- Submit `https://oddweb.page/sitemap.xml` in both consoles. Inspect the homepage and representative detail URLs after the first release, then request indexing only after the live URL reports the intended canonical.
+- Monitor indexing, duplicate-canonical reports, crawl errors, Core Web Vitals, and sitemap processing after releases. Investigate unexpected indexed `/admin`, `/health`, filtered query, `www`, or `workers.dev` URLs.
+- Enable Cloudflare Web Analytics for the canonical hostname through the dashboard if desired. Treat its beacon or automatic injection as an operator setting and verify the Content Security Policy and browser console after enabling it; no analytics token belongs in this repository.
+- Review titles, descriptions, social previews, structured data, robots, and sitemap output whenever routes, the canonical host, or site records change.
+
+Manual DNS and Cloudflare setup is intentionally not automated by this repository:
+
+1. Add and activate `oddweb.page` in the intended Cloudflare zone.
+2. Attach `oddweb.page` as the Worker custom domain. Add `www.oddweb.page` only if it redirects permanently to `https://oddweb.page`; do not serve an independently indexable copy.
+3. Confirm DNS is proxied, Universal SSL is active, and HTTPS works before changing public links or submitting the sitemap.
+4. Configure a permanent `www` redirect and keep the `workers.dev` endpoint disabled.
+5. Run `PRODUCTION_URL=https://oddweb.page npm run release:smoke` after DNS and routing settle. The command always verifies `www.oddweb.page` and the disabled `oddweb.oddweb.workers.dev` endpoint; optional environment variables may override those diagnostic URLs. This command is read-only.
 
 ## Staging
 

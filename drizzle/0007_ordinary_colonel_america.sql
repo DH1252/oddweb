@@ -1,0 +1,1 @@
+ALTER TABLE `guestbook` ADD `hidden_at` integer;

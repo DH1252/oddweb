@@ -15,7 +15,7 @@ const config = defineConfig({
     devtools(),
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({ server: { entry: './server.ts' } }),
     viteReact(),
     babel({ presets: [reactCompilerPreset()] }),
   ],

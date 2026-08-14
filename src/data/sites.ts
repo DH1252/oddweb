@@ -10,6 +10,7 @@ export type SiteEntry = {
   description: string
   summary: string
   tags: string[]
+  tagLabels?: Record<string, string>
   categories: string[]
   poster: string
   notes: string[]

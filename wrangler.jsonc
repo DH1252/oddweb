@@ -7,11 +7,13 @@
   "name": "oddweb",
   "compatibility_date": "2026-08-03",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
-  "workers_dev": true,
+  "main": "src/server.ts",
+  "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "oddweb.page", "custom_domain": true }],
   "vars": {
     "ENVIRONMENT": "production",
+    "PUBLIC_SITE_URL": "https://oddweb.page",
     "RELEASE_SHA": "development",
     "RELEASE_TIME": "development",
   },
@@ -20,7 +22,28 @@
       "ADMIN_USERNAME",
       "ADMIN_PASSWORD_HASH",
       "ADMIN_SESSION_SECRET",
+      "TAXONOMY_MASTER_KEY_V1",
     ],
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "TAXONOMY_QUEUE",
+        "queue": "oddweb-taxonomy",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "oddweb-taxonomy",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "oddweb-taxonomy-dlq",
+      },
+    ],
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"],
   },
   "observability": {
     "enabled": true,

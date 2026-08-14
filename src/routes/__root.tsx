@@ -4,7 +4,14 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
+
 import { RouteError, RouteNotFound, RoutePending } from '../components/oddweb'
+import {
+  DEFAULT_DESCRIPTION,
+  isProduction,
+  seoHead,
+  websiteStructuredData,
+} from '../lib/seo'
 
 import appCss from '../styles.css?url'
 
@@ -57,56 +64,56 @@ const contentSecurityPolicy = [
 ].join('; ')
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
-  headers: ({ matches }) => ({
-    'Cache-Control': matches.some((match) =>
-      /^\/admin(?:\/|$)/.test(match.pathname),
+  headers: ({ matches }) => {
+    const privateOrError = matches.some(
+      (match) =>
+        /^\/(?:admin|health)(?:\/|$)/.test(match.pathname) ||
+        Boolean(
+          match.error &&
+          typeof match.error === 'object' &&
+          'isNotFound' in match.error,
+        ) ||
+        match.status === 'error' ||
+        match.status === 'notFound',
     )
-      ? 'no-store'
-      : 'no-cache',
-    'Content-Security-Policy': contentSecurityPolicy,
-    'Cross-Origin-Opener-Policy': 'same-origin',
-    'Cross-Origin-Resource-Policy': 'same-origin',
-    'Permissions-Policy':
-      'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-  }),
-  head: () => ({
-    meta: [
-      {
-        charSet: 'utf-8',
-      },
-      {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
-      },
-      {
-        title: "Oddweb - The web's odd corners",
-      },
-      {
-        name: 'description',
-        content:
-          'A hand-filed directory of unique, playful, and unexpected websites.',
-      },
-      {
-        name: 'theme-color',
-        content: '#2a1810',
-      },
-    ],
-    links: [
-      {
-        rel: 'icon',
-        href: '/favicon.svg',
-        type: 'image/svg+xml',
-      },
-      {
-        rel: 'stylesheet',
-        href: appCss,
-      },
-    ],
-  }),
+    return {
+      'Cache-Control': privateOrError ? 'no-store' : 'no-cache',
+      'Content-Security-Policy': contentSecurityPolicy,
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Permissions-Policy':
+        'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      ...(!isProduction || privateOrError
+        ? { 'X-Robots-Tag': 'noindex, nofollow' }
+        : undefined),
+    }
+  },
+  head: () => {
+    const defaults = seoHead({
+      title: "Oddweb - The web's odd corners",
+      description: DEFAULT_DESCRIPTION,
+      jsonLd: websiteStructuredData,
+    })
+    return {
+      meta: [
+        { charSet: 'utf-8' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'theme-color', content: '#2a1810' },
+        { name: 'color-scheme', content: 'light' },
+        ...defaults.meta.filter(
+          (entry) => !('name' in entry && entry.name === 'robots'),
+        ),
+      ],
+      links: [
+        { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+        { rel: 'stylesheet', href: appCss },
+      ],
+    }
+  },
   shellComponent: RootDocument,
   pendingComponent: RoutePending,
   errorComponent: RouteError,

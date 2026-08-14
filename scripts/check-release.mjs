@@ -2,6 +2,12 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import {
+  productionTaxonomyResources,
+  readJsonc,
+  validateTaxonomyConfig,
+} from './check-taxonomy-resources.mjs'
+
 const localOnly = process.argv.includes('--local')
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
   encoding: 'utf8',
@@ -13,6 +19,37 @@ const packageLock = JSON.parse(
   readFileSync(resolve(root, 'package-lock.json'), 'utf8'),
 )
 const failures = []
+const wranglerConfig = readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8')
+const parsedWranglerConfig = readJsonc(resolve(root, 'wrangler.jsonc'))
+
+failures.push(
+  ...validateTaxonomyConfig(parsedWranglerConfig, productionTaxonomyResources),
+)
+if (parsedWranglerConfig.main !== 'src/server.ts') {
+  failures.push(
+    'production Worker main must use the custom src/server.ts entry',
+  )
+}
+
+if (!wranglerConfig.includes('"PUBLIC_SITE_URL": "https://oddweb.page"')) {
+  failures.push('production PUBLIC_SITE_URL must be https://oddweb.page')
+}
+if (!wranglerConfig.includes('"pattern": "oddweb.page"')) {
+  failures.push('production custom domain must be oddweb.page')
+}
+if (!wranglerConfig.includes('"workers_dev": false')) {
+  failures.push('production workers_dev must be disabled')
+}
+const serverEntry = readFileSync(resolve(root, 'src/server.ts'), 'utf8')
+for (const handler of [
+  'processTaxonomyMessage',
+  'dispatchTaxonomyOutbox',
+  'runTaxonomyMaintenance',
+]) {
+  if (!serverEntry.includes(handler)) {
+    failures.push(`src/server.ts must wire ${handler}`)
+  }
+}
 
 if (packageJson.packageManager !== 'npm@11.9.0') {
   failures.push('packageManager must remain pinned to npm@11.9.0')
@@ -38,6 +75,16 @@ const journal = JSON.parse(
 const journalMigrations = new Set(
   journal.entries.map((entry) => `${entry.tag}.sql`),
 )
+const latestJournalIndex = Math.max(
+  ...journal.entries.map((entry) => entry.idx),
+)
+if (
+  !readdirSync(resolve(root, 'drizzle/meta')).includes(
+    `${String(latestJournalIndex).padStart(4, '0')}_snapshot.json`,
+  )
+) {
+  failures.push(`Drizzle snapshot ${latestJournalIndex} is missing`)
+}
 const sqlMigrations = readdirSync(resolve(root, 'drizzle')).filter((name) =>
   /^\d{4}_.+\.sql$/.test(name),
 )

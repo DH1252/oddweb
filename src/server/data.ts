@@ -12,18 +12,12 @@ import {
   consumePublicRateLimit,
   createSite,
   createSubmission,
-  deleteGuestbookEntry,
-  incrementSiteVisits,
-  isActiveSite,
-  isThumbnailReferenced,
-  mergeTagAsAlias,
+  setGuestbookVisibility,
   moderateSubmission,
-  readAdminData,
-  readDirectoryData,
   setSiteStatus,
-  saveTagDefinition,
   updateSite,
 } from '../db/repository'
+import { createTaxonomyService } from '../taxonomy'
 import { adminAuthMiddleware } from './auth'
 import {
   reconcileThumbnails,
@@ -32,9 +26,9 @@ import {
 } from './thumbnails'
 import { tagSlug } from '../data/tags'
 import { normalizeWebsiteUrl } from '../lib/website-url'
+import { deferVisitAccounting } from './visit-accounting'
 
 const daySeconds = 24 * 60 * 60
-const visitWindowSeconds = 6 * 60 * 60
 const maxUploadRequestBytes = 9 * 1024 * 1024
 
 const uploadSizeMiddleware = createMiddleware({ type: 'function' }).server(
@@ -72,9 +66,10 @@ const siteStatusInput = z.object({
   status: z.enum(['active', 'archived']),
 })
 
-const recordIdInput = z.object({ id: z.number().int().positive() })
-const reconcileInput = z.object({ deleteOrphans: z.boolean().default(false) })
-
+const guestbookVisibilityInput = z.object({
+  id: z.number().int().positive(),
+  hidden: z.boolean(),
+})
 const tagDefinitionInput = z.object({
   id: z.number().int().positive(),
   name: z.string().trim().min(1).max(80),
@@ -86,14 +81,6 @@ const tagMergeInput = z.object({
   sourceId: z.number().int().positive(),
   targetSlug: z.string().trim().min(1).max(80),
 })
-
-export const getDirectoryData = createServerFn({ method: 'GET' }).handler(
-  readDirectoryData,
-)
-
-export const getAdminData = createServerFn({ method: 'GET' })
-  .middleware([adminAuthMiddleware])
-  .handler(readAdminData)
 
 export const submitSite = createServerFn({ method: 'POST' })
   .middleware([uploadSizeMiddleware])
@@ -114,17 +101,10 @@ export const submitSite = createServerFn({ method: 'POST' })
         result.previousThumbnailKey &&
         result.previousThumbnailKey !== thumbnail.key
       ) {
-        try {
-          if (!(await isThumbnailReferenced(result.previousThumbnailKey))) {
-            await removeThumbnail(result.previousThumbnailKey)
-          }
-        } catch (error) {
-          console.error({
-            event: 'resubmission_thumbnail_cleanup_failed',
-            key: result.previousThumbnailKey,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
+        console.info({
+          event: 'thumbnail_retained_for_recovery',
+          key: result.previousThumbnailKey,
+        })
       }
       return { thumbnailKey: thumbnail.key, reused: result.reused }
     } catch (error) {
@@ -171,21 +151,9 @@ export const signGuestbook = createServerFn({ method: 'POST' })
 
 export const recordSiteVisit = createServerFn({ method: 'POST' })
   .validator((data) => visitInput.parse(data))
-  .handler(async ({ data }) => {
-    if (!(await isActiveSite(data.slug))) {
-      setResponseStatus(404)
-      throw new Error('Site not found.')
-    }
-    const allowed = await enforcePublicRateLimit(
-      `visit:${data.slug}`,
-      1,
-      visitWindowSeconds,
-      true,
-    )
-    if (!allowed) return { recorded: false as const }
-    await incrementSiteVisits(data.slug)
-    return { recorded: true as const }
-  })
+  .handler(({ data }) =>
+    deferVisitAccounting({ request: getRequest(), slug: data.slug }),
+  )
 
 export const reviewSubmission = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
@@ -201,17 +169,25 @@ export const updateSiteStatus = createServerFn({ method: 'POST' })
     await setSiteStatus(data.id, data.status)
   })
 
-export const removeGuestbookEntry = createServerFn({ method: 'POST' })
+export const setGuestbookEntryVisibility = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
-  .validator((data) => recordIdInput.parse(data))
+  .validator((data) => guestbookVisibilityInput.parse(data))
   .handler(async ({ data }) => {
-    await deleteGuestbookEntry(data.id)
+    await setGuestbookVisibility(data.id, data.hidden)
   })
 
 export const reconcileThumbnailStorage = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
-  .validator((data) => reconcileInput.parse(data))
-  .handler(({ data }) => reconcileThumbnails(data.deleteOrphans))
+  .validator((data) =>
+    z
+      .object({
+        cursor: z.string().max(8_192).optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      })
+      .optional()
+      .parse(data),
+  )
+  .handler(({ data }) => reconcileThumbnails(data))
 
 export const updateDirectorySite = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
@@ -225,10 +201,16 @@ export const updateDirectorySite = createServerFn({ method: 'POST' })
         name: data.name,
         url: data.url,
         description: data.description,
+        summary: data.summary,
+        categories: data.categories,
+        poster: data.poster,
+        notes: data.notes,
+        facts: data.facts,
+        accent: data.accent,
         tags: data.tags,
         status: data.status,
         thumbnailKey: thumbnail?.key,
-        thumbnailAlt: thumbnail ? `Preview of ${data.name}` : undefined,
+        thumbnailAlt: data.thumbnailAlt,
       })
     } catch (error) {
       if (thumbnail) await removeThumbnail(thumbnail.key)
@@ -240,17 +222,10 @@ export const updateDirectorySite = createServerFn({ method: 'POST' })
       result.previousThumbnailKey &&
       result.previousThumbnailKey !== thumbnail.key
     ) {
-      try {
-        if (!(await isThumbnailReferenced(result.previousThumbnailKey))) {
-          await removeThumbnail(result.previousThumbnailKey)
-        }
-      } catch (error) {
-        console.error({
-          event: 'thumbnail_cleanup_failed',
-          key: result.previousThumbnailKey,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+      console.info({
+        event: 'thumbnail_retained_for_recovery',
+        key: result.previousThumbnailKey,
+      })
     }
     return { id: data.id, thumbnailKey: result.thumbnailKey }
   })
@@ -258,15 +233,28 @@ export const updateDirectorySite = createServerFn({ method: 'POST' })
 export const saveTag = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => tagDefinitionInput.parse(data))
-  .handler(async ({ data }) => {
-    await saveTagDefinition(data)
+  .handler(async ({ data, context }) => {
+    return createTaxonomyService(env).correctTag({
+      ...data,
+      actorId: context.admin.username,
+    })
   })
 
 export const mergeTag = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => tagMergeInput.parse(data))
-  .handler(async ({ data }) => {
-    await mergeTagAsAlias(data.sourceId, data.targetSlug)
+  .handler(async ({ data, context }) => {
+    const target = await env.DB.prepare(
+      'SELECT id FROM tags WHERE slug = ? AND canonical = 1',
+    )
+      .bind(data.targetSlug)
+      .first<{ id: number }>()
+    if (!target) throw new Error('Valid source and target tags are required.')
+    return createTaxonomyService(env).correctMerge({
+      sourceId: data.sourceId,
+      targetId: target.id,
+      actorId: context.admin.username,
+    })
   })
 
 function validateSiteForm(data: unknown) {
@@ -283,6 +271,74 @@ function validateSiteForm(data: unknown) {
   }
 }
 
+function formList(
+  data: FormData,
+  key: string,
+  maxItems: number,
+  maxItemLength: number,
+) {
+  const values = formText(data, key, maxItems * (maxItemLength + 1))
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+  if (!values.length || values.length > maxItems)
+    throw new Error(`${key} must contain 1-${maxItems} values.`)
+  if (values.some((value) => value.length > maxItemLength))
+    throw new Error(
+      `${key} values must be ${maxItemLength} characters or fewer.`,
+    )
+  return [...new Set(values)]
+}
+
+function formLines(
+  data: FormData,
+  key: string,
+  maxItems: number,
+  maxItemLength: number,
+) {
+  const values = formText(data, key, maxItems * (maxItemLength + 1))
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+  if (!values.length || values.length > maxItems)
+    throw new Error(`${key} must contain 1-${maxItems} lines.`)
+  if (values.some((value) => value.length > maxItemLength))
+    throw new Error(
+      `${key} lines must be ${maxItemLength} characters or fewer.`,
+    )
+  return values
+}
+
+function formFacts(data: FormData) {
+  return formLines(data, 'facts', 12, 240).map((line) => {
+    const separator = line.indexOf(':')
+    if (separator < 1 || separator === line.length - 1)
+      throw new Error('Each fact must use Label: Value format.')
+    return {
+      label: line.slice(0, separator).trim(),
+      value: line.slice(separator + 1).trim(),
+    }
+  })
+}
+
+const siteAccents = new Set([
+  'from-[#63396d] to-[#d27a3e]',
+  'from-[#315c51] to-[#79a381]',
+  'from-[#38578d] to-[#eabc52]',
+  'from-[#527797] to-[#d8a866]',
+  'from-[#dc4f33] to-[#e9b640]',
+  'from-[#586f44] to-[#c4a866]',
+  'from-[#5b376b] to-[#b06970]',
+  'from-[#704d3f] to-[#d28f61]',
+  'from-[#42687c] to-[#8ca8aa]',
+  'from-[#8d3b2b] to-[#d37237]',
+])
+
+function validAccent(value: string) {
+  if (!siteAccents.has(value)) throw new Error('Choose a valid accent.')
+  return value
+}
+
 function validateSiteUpdateForm(data: unknown) {
   if (!(data instanceof FormData)) throw new Error('Expected a site form.')
   const id = Number(data.get('id'))
@@ -292,16 +348,25 @@ function validateSiteUpdateForm(data: unknown) {
   const image =
     imageValue instanceof File && imageValue.size > 0 ? imageValue : undefined
 
+  const statusValue = data.get('status')
+  if (statusValue !== 'active' && statusValue !== 'archived') {
+    throw new Error('A valid site status is required.')
+  }
+  const status: 'active' | 'archived' = statusValue
   return {
     id,
     name: formText(data, 'name', 60),
     url: validHttpUrl(formText(data, 'url', 500)),
     description: formText(data, 'description', 220),
+    summary: formText(data, 'summary', 400),
+    categories: formList(data, 'categories', 12, 60),
+    poster: formText(data, 'poster', 120),
+    notes: formLines(data, 'notes', 12, 600),
+    facts: formFacts(data),
+    accent: validAccent(formText(data, 'accent', 80)),
+    thumbnailAlt: formText(data, 'thumbnailAlt', 180),
     tags: formTags(data),
-    status:
-      data.get('status') === 'archived'
-        ? ('archived' as const)
-        : ('active' as const),
+    status,
     image,
   }
 }

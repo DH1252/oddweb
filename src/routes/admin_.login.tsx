@@ -34,8 +34,9 @@ export const Route = createFileRoute('/admin_/login')({
       { title: 'Admin login / Oddweb' },
       {
         name: 'description',
-        content: 'Sign in to the Oddweb operations desk.',
+        content: 'Oddweb admin sign-in.',
       },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   component: AdminLoginPage,
@@ -80,14 +81,11 @@ function AdminLoginPage() {
         <section className="w-full max-w-md border-2 border-ink bg-paper p-3 shadow-[6px_6px_0_#2a1810]">
           <div className="mb-3 border border-ink bg-rust px-4 py-3 text-white">
             <p className="mb-1 font-mono text-xs font-bold tracking-[0.08em] uppercase">
-              Restricted drawer
+              Restricted
             </p>
             <h1 className="m-0 font-mono text-3xl leading-none font-bold tracking-[-0.04em]">
               Admin login
             </h1>
-            <p className="mt-2 mb-0 text-sm">
-              Sign in to review submissions and maintain D1 records.
-            </p>
           </div>
 
           {!configured ? (
@@ -140,9 +138,7 @@ function AdminLoginPage() {
               className={primaryButtonClass}
               disabled={!configured || loginMutation.isPending}
             >
-              {loginMutation.isPending
-                ? 'Checking credentials...'
-                : 'Open operations desk'}
+              {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
         </section>

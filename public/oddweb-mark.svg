@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="630" height="630" viewBox="0 0 630 630" role="img" aria-labelledby="title desc">
+  <title id="title">Oddweb brand mark</title>
+  <desc id="desc">An exclamation mark and the Oddweb name in a filing-card design</desc>
+  <rect width="630" height="630" fill="#f2dfbd"/>
+  <path d="M0 70H630M0 140H630M0 210H630M0 280H630M0 350H630M0 420H630M0 490H630M0 560H630M70 0V630M140 0V630M210 0V630M280 0V630M350 0V630M420 0V630M490 0V630M560 0V630" stroke="#d9aa7a" stroke-width="2" opacity=".4"/>
+  <rect x="46" y="46" width="538" height="538" fill="#fff9e9" stroke="#2a1810" stroke-width="10"/>
+  <rect x="82" y="82" width="466" height="342" fill="#b74624" stroke="#2a1810" stroke-width="6"/>
+  <text x="315" y="351" fill="#fff9e9" font-family="ui-monospace, monospace" font-size="300" font-weight="700" text-anchor="middle">!</text>
+  <rect x="82" y="452" width="466" height="96" fill="#2a1810"/>
+  <text x="315" y="516" fill="#fff9e9" font-family="ui-monospace, monospace" font-size="54" font-weight="700" letter-spacing="8" text-anchor="middle">ODDWEB</text>
+</svg>

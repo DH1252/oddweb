@@ -14,7 +14,6 @@ const catalog: CanonicalTag[] = [
   {
     slug: 'listen',
     name: 'Listen',
-    category: 'Activity',
     aliases: ['audio'],
     parents: [],
     count: 1,
@@ -22,7 +21,6 @@ const catalog: CanonicalTag[] = [
   {
     slug: 'rain',
     name: 'Rain',
-    category: 'Topic',
     aliases: [],
     parents: ['listen'],
     count: 1,

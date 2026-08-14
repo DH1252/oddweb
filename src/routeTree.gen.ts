@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as HealthRouteImport } from './routes/health'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as AdminLoginRouteImport } from './routes/admin_.login'
 import { Route as SitesSlugRouteImport } from './routes/sites.$slug'
@@ -30,6 +32,16 @@ const AdminRoute = AdminRouteImport.update({
 const HealthRoute = HealthRouteImport.update({
   id: '/health',
   path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagsRoute = TagsRouteImport.update({
@@ -57,6 +69,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin/login': typeof AdminLoginRoute
   '/sites/$slug': typeof SitesSlugRoute
@@ -66,6 +80,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin/login': typeof AdminLoginRoute
   '/sites/$slug': typeof SitesSlugRoute
@@ -76,6 +92,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/health': typeof HealthRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tags': typeof TagsRoute
   '/admin_/login': typeof AdminLoginRoute
   '/sites/$slug': typeof SitesSlugRoute
@@ -87,6 +105,8 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/health'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/tags'
     | '/admin/login'
     | '/sites/$slug'
@@ -96,6 +116,8 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/health'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/tags'
     | '/admin/login'
     | '/sites/$slug'
@@ -105,6 +127,8 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/health'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/tags'
     | '/admin_/login'
     | '/sites/$slug'
@@ -115,6 +139,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   HealthRoute: typeof HealthRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TagsRoute: typeof TagsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   SitesSlugRoute: typeof SitesSlugRoute
@@ -142,6 +168,20 @@ declare module '@tanstack/react-router' {
       path: '/health'
       fullPath: '/health'
       preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tags': {
@@ -179,6 +219,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   HealthRoute: HealthRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   TagsRoute: TagsRoute,
   AdminLoginRoute: AdminLoginRoute,
   SitesSlugRoute: SitesSlugRoute,

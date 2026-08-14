@@ -1,58 +1,33 @@
 import { env } from 'cloudflare:workers'
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  exists,
-  getTableColumns,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { sites as seedSites } from '../data/sites'
-import {
-  canonicalTags,
-  normalizeTag,
-  resolveTagSlug,
-  tagSlug,
-} from '../data/tags'
+import { canonicalTags, resolveTagSlug, tagSlug } from '../data/tags'
 import { websiteUrlKey } from '../lib/website-url'
+import {
+  hashSiteTaxonomyMetadata,
+  prepareSiteTaxonomyLifecycle,
+  preserveRawTagHints,
+} from '../taxonomy/lifecycle'
 import { getDb } from './index'
 import {
   adminLoginAttemptsTable,
   adminSessionsTable,
   guestbookTable,
   publicRateLimitsTable,
-  siteTagsTable,
   sitesTable,
   submissionsTable,
-  tagAliasesTable,
-  tagParentsTable,
-  tagsTable,
 } from './schema'
 
 import type { RecentFiling, SiteEntry } from '../data/sites'
 import type { CanonicalTag } from '../data/tags'
-import type { SiteRow, SubmissionRow } from './schema'
 
 export type GuestbookEntry = {
   id: number
   name: string
   message: string
   date: string
-}
-
-export type DirectoryData = {
-  sites: SiteEntry[]
-  guestbook: GuestbookEntry[]
-  recentFilings: RecentFiling[]
-  tagCatalog: CanonicalTag[]
+  hidden?: boolean
 }
 
 export type AdminSite = SiteEntry & {
@@ -71,16 +46,8 @@ export type AdminTagRecord = CanonicalTag & {
   canonical: boolean
 }
 
-export type AdminData = {
-  sites: AdminSite[]
-  submissions: AdminSubmission[]
-  guestbook: GuestbookEntry[]
-  tagCatalog: CanonicalTag[]
-  tagRecords: AdminTagRecord[]
-}
-
 export async function ensureSeedData() {
-  const seedKey = 'catalog-seed-v1'
+  const seedKey = 'catalog-seed-v2'
   const seeded = await env.DB.prepare(
     'SELECT key FROM app_state WHERE key = ?1',
   )
@@ -99,9 +66,10 @@ export async function ensureSeedData() {
   )
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO tags (slug, name, category, canonical)
+      `INSERT INTO tags (slug, name, canonical)
        SELECT json_extract(value, '$.slug'), json_extract(value, '$.name'),
-              json_extract(value, '$.category'), 1 FROM json_each(?1)
+              1 FROM json_each(?1)
+       WHERE true
        ON CONFLICT(slug) DO NOTHING`,
     ).bind(tagsJson),
     env.DB.prepare(
@@ -110,6 +78,7 @@ export async function ensureSeedData() {
        FROM json_each(?1) definition
        JOIN tags ON tags.slug = json_extract(definition.value, '$.slug')
        JOIN json_each(json_extract(definition.value, '$.aliases')) alias
+       WHERE true
        ON CONFLICT(alias) DO NOTHING`,
     ).bind(tagsJson),
     env.DB.prepare(
@@ -119,6 +88,7 @@ export async function ensureSeedData() {
        JOIN tags child ON child.slug = json_extract(definition.value, '$.slug')
        JOIN json_each(json_extract(definition.value, '$.parents')) relation
        JOIN tags parent ON parent.slug = relation.value
+       WHERE true
        ON CONFLICT(parent_tag_id, child_tag_id) DO NOTHING`,
     ).bind(tagsJson),
     env.DB.prepare(
@@ -133,19 +103,21 @@ export async function ensureSeedData() {
          json_extract(value, '$.categories'), json_extract(value, '$.poster'),
          json_extract(value, '$.notes'), json_extract(value, '$.facts'),
          json_extract(value, '$.accent'), json_extract(value, '$.thumbnailKey'),
-         json_extract(value, '$.thumbnailAlt'), 0, 'active', 'Directory',
-         json_extract(value, '$.addedAt') FROM json_each(?1)
+          json_extract(value, '$.thumbnailAlt'), 0, 'active', 'Directory',
+          json_extract(value, '$.addedAt') FROM json_each(?1)
+       WHERE true
        ON CONFLICT DO NOTHING`,
     ).bind(sitesJson),
     env.DB.prepare(
-      `INSERT INTO site_tags (site_id, tag_id, raw_name)
-       SELECT sites.id, tags.id, tags.slug
-       FROM json_each(?1) definition
+      `INSERT INTO site_tags (site_id, tag_id, raw_name, source)
+       SELECT sites.id, tags.id, tags.slug, 'migration'
+        FROM json_each(?1) definition
         JOIN sites ON sites.slug = json_extract(definition.value, '$.slug')
-                  AND sites.url_key = json_extract(definition.value, '$.urlKey')
+                  AND sites.source = 'Directory'
        JOIN json_each(json_extract(definition.value, '$.tagSlugs')) raw_tag
        JOIN tags ON tags.slug = raw_tag.value
-       ON CONFLICT(site_id, raw_name) DO NOTHING`,
+       WHERE true
+       ON CONFLICT(site_id, tag_id) DO NOTHING`,
     ).bind(sitesJson),
   ])
   const seedComplete = await env.DB.prepare(
@@ -154,8 +126,18 @@ export async function ensureSeedData() {
         JOIN tags ON tags.slug = json_extract(definition.value, '$.slug')) = json_array_length(?1)
        AND
        (SELECT count(*) FROM json_each(?2) definition
+         JOIN sites ON sites.slug = json_extract(definition.value, '$.slug')
+                   AND sites.source = 'Directory') = json_array_length(?2)
+       AND
+       (SELECT count(*)
+        FROM json_each(?2) definition
         JOIN sites ON sites.slug = json_extract(definition.value, '$.slug')
-                  AND sites.url_key = json_extract(definition.value, '$.urlKey')) = json_array_length(?2)
+                  AND sites.source = 'Directory'
+        JOIN json_each(json_extract(definition.value, '$.tagSlugs')) raw_tag
+        JOIN site_tags ON site_tags.site_id = sites.id
+                      AND site_tags.raw_name = raw_tag.value)
+       = (SELECT coalesce(sum(json_array_length(json_extract(value, '$.tagSlugs'))), 0)
+          FROM json_each(?2))
        AS complete`,
   )
     .bind(tagsJson, sitesJson)
@@ -171,107 +153,6 @@ export async function ensureSeedData() {
   )
     .bind(seedKey, new Date().toISOString())
     .run()
-}
-
-export async function readDirectoryData(): Promise<DirectoryData> {
-  await ensureSeedData()
-  const db = getDb()
-  const rows = await db
-    .select()
-    .from(sitesTable)
-    .where(
-      and(
-        eq(sitesTable.status, 'active'),
-        or(
-          ne(sitesTable.source, 'Submission'),
-          exists(
-            db
-              .select({ id: submissionsTable.id })
-              .from(submissionsTable)
-              .where(
-                and(
-                  eq(submissionsTable.id, sitesTable.submissionId),
-                  eq(submissionsTable.status, 'approved'),
-                ),
-              ),
-          ),
-        ),
-      ),
-    )
-    .orderBy(desc(sitesTable.visits), asc(sitesTable.name))
-  const tagState = await loadTagState()
-  const sites = await hydrateSites(rows, tagState)
-  const guestbookRows = await db
-    .select()
-    .from(guestbookTable)
-    .orderBy(desc(guestbookTable.createdAt))
-    .limit(5)
-  const submissionRows = await db
-    .select(getTableColumns(submissionsTable))
-    .from(submissionsTable)
-    .innerJoin(
-      sitesTable,
-      and(
-        eq(sitesTable.submissionId, submissionsTable.id),
-        eq(sitesTable.status, 'active'),
-      ),
-    )
-    .where(eq(submissionsTable.status, 'approved'))
-    .orderBy(desc(submissionsTable.submittedAt))
-    .limit(6)
-
-  return {
-    sites,
-    guestbook: guestbookRows.map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      message: entry.message,
-      date: formatShortDate(entry.createdAt),
-    })),
-    recentFilings: submissionRows.map(mapSubmission),
-    tagCatalog: tagState.catalog,
-  }
-}
-
-export async function readAdminData(): Promise<AdminData> {
-  await ensureSeedData()
-  const db = getDb()
-  const siteRows = await db
-    .select()
-    .from(sitesTable)
-    .orderBy(desc(sitesTable.addedAt))
-  const tagState = await loadTagState()
-  const hydratedSites = await hydrateSites(siteRows, tagState)
-  const submissions = await db
-    .select()
-    .from(submissionsTable)
-    .orderBy(desc(submissionsTable.submittedAt))
-  const guestbook = await db
-    .select()
-    .from(guestbookTable)
-    .orderBy(desc(guestbookTable.createdAt))
-
-  return {
-    sites: hydratedSites.map((site, index) => ({
-      ...site,
-      id: siteRows[index].id,
-      status: siteRows[index].status,
-      source: siteRows[index].source,
-    })),
-    submissions: submissions.map((submission) => ({
-      ...mapSubmission(submission),
-      id: submission.id,
-      status: submission.status,
-    })),
-    guestbook: guestbook.map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      message: entry.message,
-      date: formatShortDate(entry.createdAt),
-    })),
-    tagCatalog: tagState.catalog,
-    tagRecords: tagState.records,
-  }
 }
 
 export async function createSubmission(input: {
@@ -308,9 +189,7 @@ export async function createSubmission(input: {
         input.name,
         input.url,
         input.description,
-        JSON.stringify([
-          ...new Set(input.tags.map(normalizeFreeformTag).filter(Boolean)),
-        ]),
+        JSON.stringify(preserveRawTagHints(input.tags)),
         input.thumbnailKey,
         input.thumbnailAlt,
       )
@@ -333,7 +212,7 @@ export async function createSubmission(input: {
     await db.insert(submissionsTable).values({
       ...input,
       urlKey,
-      tags: [...new Set(input.tags.map(normalizeFreeformTag).filter(Boolean))],
+      tags: preserveRawTagHints(input.tags),
     })
     return { reused: false as const, previousThumbnailKey: null }
   } catch (error) {
@@ -357,36 +236,52 @@ export async function createSite(input: {
   const db = getDb()
   const slug = await uniqueSiteSlug(input.name)
   const urlKey = websiteUrlKey(input.url)
-  const storedTags = await ensureStoredTags(input.tags)
+  const rawTagHints = preserveRawTagHints(input.tags)
+  const summary = input.description
+  const notes = [input.description]
+  const facts = [{ label: 'Address', value: new URL(input.url).hostname }]
+  const metadataHash = await hashSiteTaxonomyMetadata({
+    name: input.name,
+    description: input.description,
+    summary,
+    notes,
+    facts,
+    rawTagHints,
+  })
+  const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
+    target: { kind: 'slug', value: slug },
+    metadataHash,
+    contentVersion: 1,
+    rawTagHints,
+    assignmentSource: 'admin',
+    enqueueClassification: input.source === 'Manual',
+  })
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO sites (
          slug, name, url, url_key, description, summary, categories, poster, notes,
-         facts, thumbnail_key, thumbnail_alt, status, source
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
+         facts, thumbnail_key, thumbnail_alt, status, source, content_version,
+         classification_input_hash, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                  ?14, 1, ?15, unixepoch())`,
     ).bind(
       slug,
       input.name,
       input.url,
       urlKey,
       input.description,
+      summary,
       JSON.stringify(['New filing']),
       generatedPoster(input.name),
-      JSON.stringify([input.description]),
-      JSON.stringify([
-        { label: 'Address', value: new URL(input.url).hostname },
-      ]),
+      JSON.stringify(notes),
+      JSON.stringify(facts),
       input.thumbnailKey,
       input.thumbnailAlt,
       input.status,
       input.source,
+      metadataHash,
     ),
-    ...storedTags.map((tag) =>
-      env.DB.prepare(
-        `INSERT INTO site_tags (site_id, tag_id, raw_name)
-         SELECT id, ?1, ?2 FROM sites WHERE slug = ?3`,
-      ).bind(tag.id, tag.rawName, slug),
-    ),
+    ...lifecycle,
   ])
   const site = (
     await db
@@ -413,8 +308,11 @@ export async function addGuestbookEntry(input: {
   }
 }
 
-export async function deleteGuestbookEntry(id: number) {
-  await getDb().delete(guestbookTable).where(eq(guestbookTable.id, id))
+export async function setGuestbookVisibility(id: number, hidden: boolean) {
+  await getDb()
+    .update(guestbookTable)
+    .set({ hiddenAt: hidden ? new Date() : null })
+    .where(eq(guestbookTable.id, id))
 }
 
 export async function incrementSiteVisits(slug: string) {
@@ -451,75 +349,103 @@ export async function moderateSubmission(
   if (!submission) throw new Error('Submission not found.')
   const ownedSite = (
     await db
-      .select({ id: sitesTable.id })
+      .select()
       .from(sitesTable)
       .where(eq(sitesTable.submissionId, submission.id))
       .limit(1)
   ).at(0)
 
   if (status === 'approved') {
+    const rawTagHints = preserveRawTagHints(submission.tags)
+    if (ownedSite) {
+      const metadataHash = await hashSiteTaxonomyMetadata({
+        name: ownedSite.name,
+        description: ownedSite.description,
+        summary: ownedSite.summary,
+        notes: ownedSite.notes,
+        facts: ownedSite.facts,
+        rawTagHints,
+      })
+      const changed = metadataHash !== ownedSite.classificationInputHash
+      const contentVersion = ownedSite.contentVersion + Number(changed)
+      const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
+        target: { kind: 'id', value: ownedSite.id },
+        metadataHash,
+        contentVersion,
+        rawTagHints,
+        assignmentSource: 'deterministic',
+        preserveAdminAssignments: true,
+        enqueueClassification: changed,
+      })
+      await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE submissions
+           SET status = 'approved', reviewed_at = unixepoch()
+           WHERE id = ?1`,
+        ).bind(submission.id),
+        env.DB.prepare(
+          `UPDATE sites
+           SET status = 'active', content_version = ?2,
+               classification_input_hash = ?3,
+               updated_at = CASE WHEN ?4 = 1 THEN unixepoch() ELSE updated_at END
+           WHERE id = ?1 AND source = 'Submission'`,
+        ).bind(ownedSite.id, contentVersion, metadataHash, Number(changed)),
+        ...lifecycle,
+      ])
+      return
+    }
     const slug = await uniqueSiteSlug(submission.name)
-    const storedTags = await ensureStoredTags(submission.tags)
+    const summary = submission.description
+    const notes = [submission.description]
+    const facts = [
+      { label: 'Address', value: new URL(submission.url).hostname },
+    ]
+    const metadataHash = await hashSiteTaxonomyMetadata({
+      name: submission.name,
+      description: submission.description,
+      summary,
+      notes,
+      facts,
+      rawTagHints,
+    })
+    const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
+      target: { kind: 'submission', value: submission.id },
+      metadataHash,
+      contentVersion: 1,
+      rawTagHints,
+      assignmentSource: 'deterministic',
+      enqueueClassification: true,
+    })
     await env.DB.batch([
       env.DB.prepare(
         `UPDATE submissions
          SET status = 'approved', reviewed_at = unixepoch()
          WHERE id = ?1`,
       ).bind(submission.id),
-      ...(ownedSite
-        ? [
-            env.DB.prepare(
-              `DELETE FROM site_tags
-               WHERE site_id = (SELECT id FROM sites WHERE submission_id = ?1)`,
-            ).bind(submission.id),
-          ]
-        : []),
       env.DB.prepare(
         `INSERT INTO sites (
            slug, name, url, url_key, description, summary, categories, poster, notes,
-           facts, thumbnail_key, thumbnail_alt, status, source, submission_id
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'active', 'Submission', ?12)
-         ON CONFLICT(submission_id) DO UPDATE SET
-            name = excluded.name,
-            url = excluded.url,
-            url_key = excluded.url_key,
-           description = excluded.description,
-           summary = excluded.summary,
-           notes = excluded.notes,
-           facts = excluded.facts,
-           thumbnail_key = excluded.thumbnail_key,
-           thumbnail_alt = excluded.thumbnail_alt,
-           status = 'active'`,
+           facts, thumbnail_key, thumbnail_alt, status, source, submission_id,
+           content_version, classification_input_hash, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                    'active', 'Submission', ?13, 1, ?14, unixepoch())`,
       ).bind(
         slug,
         submission.name,
         submission.url,
         submission.urlKey,
         submission.description,
+        summary,
         JSON.stringify(['New filing']),
         generatedPoster(submission.name),
-        JSON.stringify([submission.description]),
-        JSON.stringify([
-          { label: 'Address', value: new URL(submission.url).hostname },
-        ]),
+        JSON.stringify(notes),
+        JSON.stringify(facts),
         submission.thumbnailKey,
         submission.thumbnailAlt || `Preview of ${submission.name}`,
         submission.id,
+        metadataHash,
       ),
-      ...(!ownedSite
-        ? [
-            env.DB.prepare(
-              `DELETE FROM site_tags
-               WHERE site_id = (SELECT id FROM sites WHERE submission_id = ?1)`,
-            ).bind(submission.id),
-          ]
-        : []),
-      ...storedTags.map((tag) =>
-        env.DB.prepare(
-          `INSERT INTO site_tags (site_id, tag_id, raw_name)
-           SELECT id, ?1, ?2 FROM sites WHERE submission_id = ?3`,
-        ).bind(tag.id, tag.rawName, submission.id),
-      ),
+      ...lifecycle,
     ])
   } else {
     await env.DB.batch([
@@ -560,10 +486,16 @@ export async function updateSite(input: {
   name: string
   url: string
   description: string
+  summary: string
+  categories: string[]
+  poster: string
+  notes: string[]
+  facts: { label: string; value: string }[]
+  accent: string
   tags: string[]
   status: 'active' | 'archived'
   thumbnailKey?: string
-  thumbnailAlt?: string
+  thumbnailAlt: string
 }) {
   const existing = (
     await getDb()
@@ -574,50 +506,56 @@ export async function updateSite(input: {
   ).at(0)
   if (!existing) throw new Error('Site not found.')
 
-  const storedTags = await ensureStoredTags(input.tags)
+  const rawTagHints = preserveRawTagHints(input.tags)
+  const metadataHash = await hashSiteTaxonomyMetadata({
+    name: input.name,
+    description: input.description,
+    summary: input.summary,
+    notes: input.notes,
+    facts: input.facts,
+    rawTagHints,
+  })
+  const changed = metadataHash !== existing.classificationInputHash
+  const contentVersion = existing.contentVersion + Number(changed)
+  const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
+    target: { kind: 'id', value: input.id },
+    metadataHash,
+    contentVersion,
+    rawTagHints,
+    assignmentSource: 'admin',
+    enqueueClassification: changed,
+  })
   const urlKey = websiteUrlKey(input.url)
-  const updateSummary = existing.summary === existing.description
-  const updateNotes =
-    existing.notes.length === 1 && existing.notes[0] === existing.description
-  const oldGeneratedPoster = generatedPoster(existing.name)
-  const facts = existing.facts.map((fact) =>
-    fact.label === 'Address'
-      ? { ...fact, value: new URL(input.url).hostname }
-      : fact,
-  )
   const thumbnailKey = input.thumbnailKey ?? existing.thumbnailKey
-  const thumbnailAlt = input.thumbnailKey
-    ? input.thumbnailAlt || `Preview of ${input.name}`
-    : existing.thumbnailAlt
   const statements = [
     env.DB.prepare(
       `UPDATE sites
-       SET name = ?1, url = ?2, url_key = ?3, description = ?4, summary = ?5,
-           notes = ?6, facts = ?7, poster = ?8, status = ?9,
-           thumbnail_key = ?10, thumbnail_alt = ?11
-       WHERE id = ?12`,
+        SET name = ?1, url = ?2, url_key = ?3, description = ?4, summary = ?5,
+            categories = ?6, poster = ?7, notes = ?8, facts = ?9, accent = ?10,
+            status = ?11, thumbnail_key = ?12, thumbnail_alt = ?13,
+            content_version = ?14, classification_input_hash = ?15,
+            updated_at = CASE WHEN ?16 = 1 THEN unixepoch() ELSE updated_at END
+        WHERE id = ?17`,
     ).bind(
       input.name,
       input.url,
       urlKey,
       input.description,
-      updateSummary ? input.description : existing.summary,
-      JSON.stringify(updateNotes ? [input.description] : existing.notes),
-      JSON.stringify(facts),
-      existing.poster === oldGeneratedPoster
-        ? generatedPoster(input.name)
-        : existing.poster,
+      input.summary,
+      JSON.stringify(input.categories),
+      input.poster,
+      JSON.stringify(input.notes),
+      JSON.stringify(input.facts),
+      input.accent,
       input.status,
       thumbnailKey,
-      thumbnailAlt,
+      input.thumbnailAlt,
+      contentVersion,
+      metadataHash,
+      Number(changed),
       input.id,
     ),
-    env.DB.prepare('DELETE FROM site_tags WHERE site_id = ?1').bind(input.id),
-    ...storedTags.map((tag) =>
-      env.DB.prepare(
-        'INSERT INTO site_tags (site_id, tag_id, raw_name) VALUES (?1, ?2, ?3)',
-      ).bind(input.id, tag.id, tag.rawName),
-    ),
+    ...lifecycle,
   ]
   await env.DB.batch(statements)
   return {
@@ -639,13 +577,40 @@ export async function isThumbnailReferenced(key: string) {
   return row?.referenced === 1
 }
 
-export async function listReferencedThumbnailKeys() {
+export async function findReferencedThumbnailKeys(keys: string[]) {
+  if (keys.length === 0) return new Set<string>()
   const result = await env.DB.prepare(
-    `SELECT thumbnail_key AS key FROM sites WHERE thumbnail_key IS NOT NULL
-     UNION
-     SELECT thumbnail_key AS key FROM submissions WHERE thumbnail_key IS NOT NULL`,
-  ).all<{ key: string }>()
+    `SELECT DISTINCT candidate.value AS key
+     FROM json_each(?1) candidate
+     WHERE EXISTS(SELECT 1 FROM sites WHERE thumbnail_key = candidate.value)
+        OR EXISTS(SELECT 1 FROM submissions WHERE thumbnail_key = candidate.value)`,
+  )
+    .bind(JSON.stringify(keys))
+    .all<{ key: string }>()
   return new Set(result.results.map((row) => row.key))
+}
+
+export async function listReferencedThumbnailKeyBatch(
+  afterKey: string | undefined,
+  limit: number,
+) {
+  const result = await env.DB.prepare(
+    `SELECT key FROM (
+       SELECT thumbnail_key AS key FROM sites
+       WHERE thumbnail_key IS NOT NULL AND thumbnail_key > ?1
+       UNION
+       SELECT thumbnail_key AS key FROM submissions
+       WHERE thumbnail_key IS NOT NULL AND thumbnail_key > ?1
+     )
+     ORDER BY key
+     LIMIT ?2`,
+  )
+    .bind(afterKey ?? '', limit + 1)
+    .all<{ key: string }>()
+  return {
+    keys: result.results.slice(0, limit).map((row) => row.key),
+    hasMore: result.results.length > limit,
+  }
 }
 
 export async function saveTagDefinition(input: {
@@ -654,106 +619,26 @@ export async function saveTagDefinition(input: {
   aliases: string[]
   parents: string[]
 }) {
-  const db = getDb()
-  const [tags, aliases, relations] = await Promise.all([
-    db.select().from(tagsTable),
-    db.select().from(tagAliasesTable),
-    db.select().from(tagParentsTable),
-  ])
-  const current = tags.find((tag) => tag.id === input.id)
-  if (!current) throw new Error('Tag not found.')
-  const normalizedAliases = [
-    ...new Set(input.aliases.map(normalizeTag).filter(Boolean)),
-  ]
-  const parentRows = input.parents.map((slug) => {
-    const parent = tags.find((tag) => tag.slug === slug && tag.canonical)
-    if (!parent) throw new Error(`Canonical parent not found: ${slug}`)
-    if (parent.id === current.id) throw new Error('A tag cannot parent itself.')
-    return parent
+  const { createTaxonomyService } = await import('../taxonomy')
+  return createTaxonomyService(env).correctTag({
+    ...input,
+    actorId: 'legacy-admin',
   })
-  for (const alias of normalizedAliases) {
-    const slugCollision = tags.find(
-      (tag) => tag.id !== current.id && tag.slug === tagSlug(alias),
-    )
-    const aliasCollision = aliases.find(
-      (entry) => entry.alias === alias && entry.tagId !== current.id,
-    )
-    if (slugCollision || aliasCollision) {
-      throw new Error(`Alias is already in use: ${alias}`)
-    }
-  }
-  const parentsByChild = new Map<number, number[]>()
-  for (const relation of relations) {
-    const values = parentsByChild.get(relation.childTagId) || []
-    values.push(relation.parentTagId)
-    parentsByChild.set(relation.childTagId, values)
-  }
-  for (const parent of parentRows) {
-    const pending = [parent.id]
-    const visited = new Set<number>()
-    while (pending.length) {
-      const id = pending.pop()
-      if (!id || visited.has(id)) continue
-      if (id === current.id)
-        throw new Error('Parent relationship would create a cycle.')
-      visited.add(id)
-      pending.push(...(parentsByChild.get(id) || []))
-    }
-  }
-  await env.DB.batch([
-    env.DB.prepare(
-      'UPDATE tags SET name = ?1, canonical = 1 WHERE id = ?2',
-    ).bind(input.name, input.id),
-    env.DB.prepare('DELETE FROM tag_aliases WHERE tag_id = ?1').bind(input.id),
-    env.DB.prepare('DELETE FROM tag_parents WHERE child_tag_id = ?1').bind(
-      input.id,
-    ),
-    ...normalizedAliases.map((alias) =>
-      env.DB.prepare(
-        'INSERT INTO tag_aliases (alias, tag_id) VALUES (?1, ?2)',
-      ).bind(alias, input.id),
-    ),
-    ...parentRows.map((parent) =>
-      env.DB.prepare(
-        'INSERT INTO tag_parents (parent_tag_id, child_tag_id) VALUES (?1, ?2)',
-      ).bind(parent.id, input.id),
-    ),
-  ])
 }
 
 export async function mergeTagAsAlias(sourceId: number, targetSlug: string) {
-  const db = getDb()
-  const tags = await db.select().from(tagsTable)
-  const source = tags.find((tag) => tag.id === sourceId && !tag.canonical)
-  const target = tags.find((tag) => tag.slug === targetSlug && tag.canonical)
-  if (!source || !target)
-    throw new Error('Valid source and target tags are required.')
-  const alias = normalizeTag(source.name)
-  const existingAlias = (
-    await db
-      .select()
-      .from(tagAliasesTable)
-      .where(eq(tagAliasesTable.alias, alias))
-      .limit(1)
-  ).at(0)
-  if (existingAlias && existingAlias.tagId !== target.id) {
-    throw new Error('That alias already belongs to another canonical tag.')
-  }
-  const statements = [
-    env.DB.prepare('UPDATE site_tags SET tag_id = ?1 WHERE tag_id = ?2').bind(
-      target.id,
-      source.id,
-    ),
-    ...(existingAlias
-      ? []
-      : [
-          env.DB.prepare(
-            'INSERT INTO tag_aliases (alias, tag_id) VALUES (?1, ?2)',
-          ).bind(alias, target.id),
-        ]),
-    env.DB.prepare('DELETE FROM tags WHERE id = ?1').bind(source.id),
-  ]
-  await env.DB.batch(statements)
+  const { createTaxonomyService } = await import('../taxonomy')
+  const target = await env.DB.prepare(
+    'SELECT id FROM tags WHERE slug = ? AND canonical = 1',
+  )
+    .bind(targetSlug)
+    .first<{ id: number }>()
+  if (!target) throw new Error('Valid source and target tags are required.')
+  return createTaxonomyService(env).correctMerge({
+    sourceId,
+    targetId: target.id,
+    actorId: 'legacy-admin',
+  })
 }
 
 export async function consumeLoginLimit(
@@ -927,178 +812,6 @@ export async function cleanupAuthRecords() {
     .where(lt(publicRateLimitsTable.windowStarted, staleAttempts))
 }
 
-async function loadTagState() {
-  const db = getDb()
-  const [tagRows, aliasRows, parentRows, assignments] = await Promise.all([
-    db.select().from(tagsTable),
-    db.select().from(tagAliasesTable),
-    db.select().from(tagParentsTable),
-    db
-      .select({
-        siteId: siteTagsTable.siteId,
-        tagId: siteTagsTable.tagId,
-        status: sitesTable.status,
-        source: sitesTable.source,
-        submissionStatus: submissionsTable.status,
-      })
-      .from(siteTagsTable)
-      .innerJoin(sitesTable, eq(siteTagsTable.siteId, sitesTable.id))
-      .leftJoin(
-        submissionsTable,
-        eq(sitesTable.submissionId, submissionsTable.id),
-      ),
-  ])
-  const byId = new Map(tagRows.map((tag) => [tag.id, tag]))
-  const aliasesById = new Map<number, string[]>()
-  for (const alias of aliasRows) {
-    const values = aliasesById.get(alias.tagId) || []
-    values.push(alias.alias)
-    aliasesById.set(alias.tagId, values)
-  }
-  const parentsById = new Map<number, number[]>()
-  for (const relation of parentRows) {
-    const values = parentsById.get(relation.childTagId) || []
-    values.push(relation.parentTagId)
-    parentsById.set(relation.childTagId, values)
-  }
-  const directSites = new Map<number, Set<number>>()
-  const inheritedSites = new Map<number, Set<number>>()
-  for (const assignment of assignments) {
-    if (
-      assignment.status !== 'active' ||
-      (assignment.source === 'Submission' &&
-        assignment.submissionStatus !== 'approved')
-    )
-      continue
-    const direct = directSites.get(assignment.tagId) || new Set<number>()
-    direct.add(assignment.siteId)
-    directSites.set(assignment.tagId, direct)
-    const pending = [assignment.tagId]
-    const visited = new Set<number>()
-    while (pending.length) {
-      const id = pending.pop()
-      if (!id || visited.has(id)) continue
-      visited.add(id)
-      const sites = inheritedSites.get(id) || new Set<number>()
-      sites.add(assignment.siteId)
-      inheritedSites.set(id, sites)
-      pending.push(...(parentsById.get(id) || []))
-    }
-  }
-  const records: AdminTagRecord[] = tagRows.map((tag) => ({
-    id: tag.id,
-    slug: tag.slug,
-    name: tag.name,
-    category: isTagCategory(tag.category) ? tag.category : 'Topic',
-    canonical: tag.canonical,
-    aliases: aliasesById.get(tag.id) || [],
-    parents: (parentsById.get(tag.id) || [])
-      .map((id) => byId.get(id)?.slug)
-      .filter((slug): slug is string => Boolean(slug)),
-    directCount: directSites.get(tag.id)?.size || 0,
-    count: inheritedSites.get(tag.id)?.size || 0,
-  }))
-  return {
-    catalog: records.filter((tag) => tag.canonical),
-    records,
-    tokenById: new Map(
-      records.map((tag) => [
-        tag.id,
-        tag.canonical ? tag.slug : normalizeFreeformTag(tag.name),
-      ]),
-    ),
-  }
-}
-
-async function hydrateSites(
-  rows: SiteRow[],
-  tagState: Awaited<ReturnType<typeof loadTagState>>,
-): Promise<SiteEntry[]> {
-  if (!rows.length) return []
-  const tagRows = await getDb()
-    .select()
-    .from(siteTagsTable)
-    .where(
-      inArray(
-        siteTagsTable.siteId,
-        rows.map((row) => row.id),
-      ),
-    )
-  const tagsBySite = new Map<number, string[]>()
-  for (const tag of tagRows) {
-    const values = tagsBySite.get(tag.siteId) || []
-    const token = tagState.tokenById.get(tag.tagId)
-    if (token && !values.includes(token)) values.push(token)
-    tagsBySite.set(tag.siteId, values)
-  }
-  return rows.map((row) => mapSite(row, tagsBySite.get(row.id) || []))
-}
-
-async function ensureStoredTags(rawTags: string[]) {
-  const db = getDb()
-  const result: Array<{ id: number; rawName: string }> = []
-  let [storedTags, aliases] = await Promise.all([
-    db.select().from(tagsTable),
-    db.select().from(tagAliasesTable),
-  ])
-  const normalizedTags = [
-    ...new Set(rawTags.map(normalizeFreeformTag).filter(Boolean)),
-  ]
-  for (const rawTag of normalizedTags) {
-    if (!tagSlug(rawTag)) {
-      throw new Error(`Tag must contain a letter or number: ${rawTag}`)
-    }
-  }
-  const knownSlugs = new Set(storedTags.map((tag) => tag.slug))
-  const aliasNames = new Set(aliases.map((alias) => alias.alias))
-  const missing = normalizedTags
-    .filter(
-      (rawTag) => !knownSlugs.has(tagSlug(rawTag)) && !aliasNames.has(rawTag),
-    )
-    .map((rawTag) => ({ slug: tagSlug(rawTag), name: rawTag }))
-  if (missing.length) {
-    await env.DB.prepare(
-      `INSERT INTO tags (slug, name, category, canonical)
-       SELECT json_extract(value, '$.slug'), json_extract(value, '$.name'),
-              'Topic', 0 FROM json_each(?1)
-       ON CONFLICT(slug) DO NOTHING`,
-    )
-      .bind(JSON.stringify(missing))
-      .run()
-    ;[storedTags, aliases] = await Promise.all([
-      db.select().from(tagsTable),
-      db.select().from(tagAliasesTable),
-    ])
-  }
-  const bySlug = new Map(storedTags.map((tag) => [tag.slug, tag]))
-  const aliasTargets = new Map(
-    aliases.map((alias) => [alias.alias, alias.tagId]),
-  )
-  const byId = new Map(storedTags.map((tag) => [tag.id, tag]))
-  const seenIds = new Set<number>()
-  for (const rawTag of normalizedTags) {
-    const slug = tagSlug(rawTag)
-    let storedTag = bySlug.get(slug)
-    if (!storedTag) {
-      const aliasTarget = aliasTargets.get(rawTag)
-      storedTag = aliasTarget ? byId.get(aliasTarget) : undefined
-    }
-    if (!storedTag) {
-      storedTag = storedTags.find(
-        (tag) => tag.canonical && normalizeTag(tag.name) === rawTag,
-      )
-    }
-    if (!storedTag) throw new Error(`Could not create tag: ${rawTag}`)
-    if (seenIds.has(storedTag.id)) continue
-    seenIds.add(storedTag.id)
-    result.push({
-      id: storedTag.id,
-      rawName: storedTag.canonical ? storedTag.slug : rawTag,
-    })
-  }
-  return result
-}
-
 async function uniqueSiteSlug(name: string) {
   const db = getDb()
   const base = tagSlug(name) || `site-${crypto.randomUUID()}`
@@ -1118,55 +831,6 @@ async function uniqueSiteSlug(name: string) {
   return slug
 }
 
-function mapSite(row: SiteRow, tags: string[]): SiteEntry {
-  return {
-    slug: row.slug,
-    name: row.name,
-    externalUrl: row.url,
-    description: row.description,
-    summary: row.summary,
-    tags,
-    categories: row.categories,
-    poster: row.poster,
-    notes: row.notes,
-    facts: row.facts,
-    visits: row.visits,
-    added: row.addedAt.toISOString().slice(0, 10),
-    addedLabel: formatShortDate(row.addedAt),
-    accent: row.accent,
-    thumbnailKey: row.thumbnailKey || undefined,
-    thumbnailAlt: row.thumbnailAlt || undefined,
-  }
-}
-
-function mapSubmission(row: SubmissionRow): RecentFiling {
-  return {
-    name: row.name,
-    url: row.url,
-    description: row.description,
-    tags: row.tags,
-    date: formatShortDate(row.submittedAt),
-    thumbnailKey: row.thumbnailKey || undefined,
-    thumbnailAlt: row.thumbnailAlt || undefined,
-  }
-}
-
-function formatShortDate(date: Date) {
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(date)
-}
-
 function generatedPoster(name: string) {
   return name.split(/\s+/).slice(0, 2).join(' ').toUpperCase()
-}
-
-function normalizeFreeformTag(value: string) {
-  return normalizeTag(value).replace(/^~+/, '').trim()
-}
-
-function isTagCategory(value: string): value is CanonicalTag['category'] {
-  return ['Activity', 'Medium', 'Mood', 'Topic'].includes(value)
 }

@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 import type { SiteEntry } from '../data/sites'
 
 export const buttonClass =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink bg-paper px-3 text-sm font-bold text-ink no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] hover:bg-warm active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:opacity-45'
+  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink bg-paper px-3 text-sm font-bold text-ink no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] hover:bg-warm active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown disabled:shadow-none'
 
 export const primaryButtonClass = `${buttonClass} bg-rust text-white hover:bg-[#9f3516]`
 
@@ -35,25 +35,17 @@ export function SiteHeader({
           </span>
           <span>ODDWEB</span>
         </Link>
-        <div className="flex items-center gap-1 font-mono text-xs text-ink">
-          {directoryLink ? (
+        {directoryLink ? (
+          <div className="flex items-center gap-1 font-mono text-xs text-ink">
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center border border-line bg-paper px-2 no-underline hover:bg-brown hover:text-paper"
+              className="inline-flex min-h-11 items-center border border-brown bg-paper px-2 no-underline hover:bg-brown hover:text-paper"
               data-od-id="directory-link"
             >
               &larr; Directory
             </Link>
-          ) : (
-            <Link
-              to="/admin"
-              className="inline-flex min-h-11 items-center border border-line bg-paper px-2 no-underline hover:bg-brown hover:text-paper"
-              data-od-id="admin-link"
-            >
-              Admin
-            </Link>
-          )}
-        </div>
+          </div>
+        ) : null}
       </nav>
     </header>
   )
@@ -259,35 +251,42 @@ export function RouteError({
   reset: () => void
 }) {
   return (
-    <RouteState
-      eyebrow="Drawer jammed"
-      title="This page could not be opened."
-      action={
-        <button type="button" className={primaryButtonClass} onClick={reset}>
-          Try again
-        </button>
-      }
-    >
-      {import.meta.env.DEV
-        ? error.message || 'An unexpected runtime error interrupted this page.'
-        : 'An unexpected runtime error interrupted this page.'}
-    </RouteState>
+    <>
+      <meta name="robots" content="noindex, nofollow" />
+      <RouteState
+        eyebrow="Drawer jammed"
+        title="This page could not be opened."
+        action={
+          <button type="button" className={primaryButtonClass} onClick={reset}>
+            Try again
+          </button>
+        }
+      >
+        {import.meta.env.DEV
+          ? error.message ||
+            'An unexpected runtime error interrupted this page.'
+          : 'An unexpected runtime error interrupted this page.'}
+      </RouteState>
+    </>
   )
 }
 
 export function RouteNotFound() {
   return (
-    <RouteState
-      eyebrow="File not found"
-      title="That drawer is empty."
-      action={
-        <Link to="/" className={primaryButtonClass}>
-          Return to directory
-        </Link>
-      }
-    >
-      The requested Oddweb record does not exist.
-    </RouteState>
+    <>
+      <meta name="robots" content="noindex, nofollow" />
+      <RouteState
+        eyebrow="File not found"
+        title="That drawer is empty."
+        action={
+          <Link to="/" className={primaryButtonClass}>
+            Return to directory
+          </Link>
+        }
+      >
+        The requested Oddweb record does not exist.
+      </RouteState>
+    </>
   )
 }
 

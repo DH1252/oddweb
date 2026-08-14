@@ -1,17 +1,10 @@
 import { useDeferredValue, useId, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
-import {
-  getCanonicalTag,
-  normalizeTag,
-  resolveTagSlug,
-  tagLabel,
-  tagsForForm,
-} from '../data/tags'
-
-import type { CanonicalTag } from '../data/tags'
+import { normalizeTag, tagsForForm } from '../data/tags'
+import { tagSuggestionsQueryOptions } from '../queries/oddweb'
 
 type TagInputProps = {
-  catalog: CanonicalTag[]
   label: string
   name?: string
   value?: string[]
@@ -22,10 +15,10 @@ type TagInputProps = {
   tone?: 'include' | 'exclude' | 'neutral'
   required?: boolean
   maxTags?: number
+  initialLabels?: Record<string, string>
 }
 
 export function TagInput({
-  catalog,
   label,
   name,
   value,
@@ -36,6 +29,7 @@ export function TagInput({
   tone = 'neutral',
   required = false,
   maxTags = 20,
+  initialLabels = {},
 }: TagInputProps) {
   const id = useId()
   const [internalValue, setInternalValue] = useState(defaultValue)
@@ -45,21 +39,30 @@ export function TagInput({
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const atLimit = selected.length >= maxTags
-  const selectedCanonical = new Set(
-    selected
-      .filter((tag) => !tag.startsWith('~'))
-      .map((tag) => resolveTagSlug(tag, catalog)),
+  const { data } = useQuery(
+    tagSuggestionsQueryOptions({
+      query: deferredQuery,
+      selected,
+      limit: 8,
+    }),
   )
-  const suggestions = deferredQuery
-    ? catalog
-        .filter(
-          (tag) =>
-            !selectedCanonical.has(tag.slug) &&
-            (normalizeTag(tag.name).includes(deferredQuery) ||
-              tag.aliases.some((alias) => alias.includes(deferredQuery))),
-        )
-        .slice(0, 8)
-    : []
+  const selectedMetadata = data?.selected || []
+  const suggestions = deferredQuery ? data?.suggestions || [] : []
+
+  function metadataFor(token: string) {
+    const normalized = normalizeTag(token)
+    return selectedMetadata.find(
+      (tag) =>
+        tag.slug === normalized ||
+        normalizeTag(tag.name) === normalized ||
+        tag.aliases.includes(normalized),
+    )
+  }
+
+  function labelFor(token: string) {
+    if (token.startsWith('~')) return token.slice(1)
+    return metadataFor(token)?.name || initialLabels[token] || token
+  }
 
   function update(next: string[]) {
     if (value === undefined) setInternalValue(next)
@@ -70,7 +73,12 @@ export function TagInput({
     if (atLimit) return
     const input = normalizeTag(rawValue ?? query)
     if (!input) return
-    const canonical = getCanonicalTag(input, catalog)
+    const canonical = [...suggestions, ...selectedMetadata].find(
+      (tag) =>
+        tag.slug === input ||
+        normalizeTag(tag.name) === input ||
+        tag.aliases.includes(input),
+    )
     const token = canonical?.slug || (allowFreeform ? `~${input}` : undefined)
     if (!token || selected.includes(token)) return
     update([...selected, token])
@@ -88,7 +96,7 @@ export function TagInput({
       ? 'border-danger bg-red-50 text-danger'
       : tone === 'include'
         ? 'border-success bg-green-50 text-success'
-        : 'border-line bg-canvas text-ink'
+        : 'border-brown bg-canvas text-ink'
 
   return (
     <div>
@@ -111,9 +119,7 @@ export function TagInput({
                   key={token}
                   className={`inline-flex min-h-9 items-center border pl-2 font-mono text-xs ${chipClass}`}
                 >
-                  <span>
-                    {freeform ? token.slice(1) : tagLabel(token, catalog)}
-                  </span>
+                  <span>{labelFor(token)}</span>
                   {freeform ? (
                     <span className="ml-1 text-[10px] uppercase opacity-70">
                       unwrangled
@@ -123,7 +129,7 @@ export function TagInput({
                     type="button"
                     className="ml-1 grid min-h-9 min-w-9 place-items-center border-0 bg-transparent text-current hover:bg-ink/10"
                     onClick={() => removeTag(token)}
-                    aria-label={`Remove ${freeform ? token.slice(1) : tagLabel(token, catalog)}`}
+                    aria-label={`Remove ${labelFor(token)}`}
                   >
                     X
                   </button>
