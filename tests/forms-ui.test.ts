@@ -86,10 +86,10 @@ test('suspense-backed result controls update inside transitions', async () => {
   assert.match(tags, /createFileRoute\('\/tags'\)\(\{\s*shouldReload: false/)
   assert.match(
     directory,
-    /useQuery\(\{[\s\S]*directoryQueryOptions[\s\S]*placeholderData: keepPreviousData/,
+    /useQuery\(\{[\s\S]*directoryQueryOptions[\s\S]*placeholderData: keepPreviousData[\s\S]*initialDirectory/,
   )
   assert.match(
     tags,
-    /useQuery\(\{[\s\S]*tagPageQueryOptions[\s\S]*placeholderData: keepPreviousData/,
+    /useQuery\(\{[\s\S]*tagPageQueryOptions[\s\S]*placeholderData: keepPreviousData[\s\S]*initialTagPage/,
   )
 })

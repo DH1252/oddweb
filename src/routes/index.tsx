@@ -172,10 +172,12 @@ function DirectoryPage() {
     sort,
     page,
   }
-  const directoryData = useQuery({
-    ...directoryQueryOptions(directoryInput),
-    placeholderData: keepPreviousData,
-  }).data!
+  const initialDirectory = Route.useLoaderData()
+  const directoryData =
+    useQuery({
+      ...directoryQueryOptions(directoryInput),
+      placeholderData: keepPreviousData,
+    }).data ?? initialDirectory
   const popularData = useQuery({
     ...popularQueryOptions(popularPage),
     placeholderData: keepPreviousData,

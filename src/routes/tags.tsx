@@ -70,7 +70,6 @@ export const Route = createFileRoute('/tags')({
 })
 
 function TagsPage() {
-  const initialTagPage = Route.useLoaderData()
   const { include: rawInclude = [], exclude: rawExclude = [] } =
     Route.useSearch()
   const navigate = useNavigate({ from: '/tags' })
@@ -79,6 +78,7 @@ function TagsPage() {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
   const [page, setPage] = useState(0)
+  const initialTagPage = Route.useLoaderData()
   const tagPage =
     useQuery({
       ...tagPageQueryOptions({
