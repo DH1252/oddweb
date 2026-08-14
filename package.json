@@ -40,7 +40,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply oddweb --local",
     "db:migrations:remote:check": "wrangler d1 migrations list oddweb --remote",
-    "db:migrate:remote": "wrangler d1 migrations apply oddweb --remote",
+    "db:migrate:remote": "node scripts/apply-remote-migrations.mjs",
     "db:execute": "wrangler d1 execute oddweb --local",
     "db:execute:remote": "wrangler d1 execute oddweb --remote",
     "auth:hash": "node scripts/hash-admin-password.mjs",
