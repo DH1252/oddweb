@@ -296,7 +296,7 @@ export async function readPublicTagPage(input: {
 
 export async function readPublicSiteDetail(
   slug: string,
-): Promise<PublicSiteDetail | undefined> {
+): Promise<PublicSiteDetail | null> {
   await ensureSeedData()
   const current = await env.DB.prepare(
     `SELECT ${siteColumns} FROM sites s
@@ -304,7 +304,7 @@ export async function readPublicSiteDetail(
   )
     .bind(slug)
     .first<SiteSqlRow>()
-  if (!current) return undefined
+  if (!current) return null
 
   const adjacentColumns = 's.slug, s.name'
   const [previous, next, first, last, sites] = await Promise.all([
@@ -333,7 +333,7 @@ export async function readPublicSiteDetail(
     hydrateSiteRows([current]),
   ])
   const site = sites[0]
-  if (!first || !last) return undefined
+  if (!first || !last) return null
   return {
     site,
     previous: previous || last,
