@@ -264,8 +264,8 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
               binding.name === 'DB' && binding.id === resources.databaseId,
           )
         )
-          failures.push(
-            'active Worker does not expose the configured DB binding',
+          warnings.push(
+            'active Worker does not currently expose the configured DB binding; post-deploy smoke will verify the promoted version',
           )
         if (
           !bindings.some(
