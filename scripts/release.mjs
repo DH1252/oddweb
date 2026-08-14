@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 
+import { readJsonc } from './check-taxonomy-resources.mjs'
+
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
   cwd: process.cwd(),
   encoding: 'utf8',
@@ -59,6 +61,9 @@ writeFileSync(
 )
 
 const message = `Oddweb ${sha} ${releasedAt}`
+const directDeployRequired = Boolean(
+  readJsonc(resolve(root, 'wrangler.jsonc')).migrations?.length,
+)
 const pendingMigrations = exec('npx', [
   'wrangler',
   'd1',
@@ -76,23 +81,25 @@ const maintenanceRequired = pendingMigrations
       'release: maintenance-required',
     ),
   )
-run('npx', [
-  'wrangler',
-  'versions',
-  'upload',
-  '--strict',
-  '--tag',
-  tag,
-  '--message',
-  message,
-  '--var',
-  `ENVIRONMENT:production`,
-  '--var',
-  `RELEASE_SHA:${sha}`,
-  '--var',
-  `RELEASE_TIME:${releasedAt}`,
-])
 const previousVersion = currentVersionId()
+if (!directDeployRequired) {
+  run('npx', [
+    'wrangler',
+    'versions',
+    'upload',
+    '--strict',
+    '--tag',
+    tag,
+    '--message',
+    message,
+    '--var',
+    `ENVIRONMENT:production`,
+    '--var',
+    `RELEASE_SHA:${sha}`,
+    '--var',
+    `RELEASE_TIME:${releasedAt}`,
+  ])
+}
 if (maintenanceRequired) {
   deployMaintenance(`${message} maintenance`)
 }
@@ -110,16 +117,32 @@ try {
   throw error
 }
 try {
-  run('npx', [
-    'wrangler',
-    'versions',
-    'deploy',
-    '--version-tag',
-    `${tag}@100`,
-    '--yes',
-    '--message',
-    message,
-  ])
+  if (directDeployRequired) {
+    run('npx', [
+      'wrangler',
+      'deploy',
+      '--strict',
+      '--message',
+      message,
+      '--var',
+      `ENVIRONMENT:production`,
+      '--var',
+      `RELEASE_SHA:${sha}`,
+      '--var',
+      `RELEASE_TIME:${releasedAt}`,
+    ])
+  } else {
+    run('npx', [
+      'wrangler',
+      'versions',
+      'deploy',
+      '--version-tag',
+      `${tag}@100`,
+      '--yes',
+      '--message',
+      message,
+    ])
+  }
   run('npx', ['wrangler', 'triggers', 'deploy'])
   run('node', ['scripts/smoke-test.mjs'], { ...process.env, RELEASE_SHA: sha })
 } catch (error) {
