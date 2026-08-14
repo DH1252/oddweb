@@ -132,17 +132,21 @@ CREATE TRIGGER `tag_parents_cycle_insert_check`
 BEFORE INSERT ON `tag_parents`
 BEGIN
 	SELECT CASE WHEN NEW.`parent_tag_id` = NEW.`child_tag_id` THEN RAISE(ABORT, 'tag parent cycle') END;
-	WITH RECURSIVE descendants(`id`) AS (
-		SELECT NEW.`child_tag_id` UNION SELECT `child_tag_id` FROM `tag_parents` JOIN descendants ON `parent_tag_id` = descendants.`id`
-	) SELECT CASE WHEN EXISTS (SELECT 1 FROM descendants WHERE `id` = NEW.`parent_tag_id`) THEN RAISE(ABORT, 'tag parent cycle') END;
+	SELECT CASE WHEN EXISTS (
+		WITH RECURSIVE descendants(`id`) AS (
+			SELECT NEW.`child_tag_id` UNION SELECT `child_tag_id` FROM `tag_parents` JOIN descendants ON `parent_tag_id` = descendants.`id`
+		) SELECT 1 FROM descendants WHERE `id` = NEW.`parent_tag_id`
+	) THEN RAISE(ABORT, 'tag parent cycle') END;
 END;--> statement-breakpoint
 CREATE TRIGGER `tag_parents_cycle_update_check`
 BEFORE UPDATE OF `parent_tag_id`, `child_tag_id` ON `tag_parents`
 BEGIN
 	SELECT CASE WHEN NEW.`parent_tag_id` = NEW.`child_tag_id` THEN RAISE(ABORT, 'tag parent cycle') END;
-	WITH RECURSIVE descendants(`id`) AS (
-		SELECT NEW.`child_tag_id` UNION SELECT `child_tag_id` FROM `tag_parents` JOIN descendants ON `parent_tag_id` = descendants.`id` WHERE NOT (`parent_tag_id` = OLD.`parent_tag_id` AND `child_tag_id` = OLD.`child_tag_id`)
-	) SELECT CASE WHEN EXISTS (SELECT 1 FROM descendants WHERE `id` = NEW.`parent_tag_id`) THEN RAISE(ABORT, 'tag parent cycle') END;
+	SELECT CASE WHEN EXISTS (
+		WITH RECURSIVE descendants(`id`) AS (
+			SELECT NEW.`child_tag_id` UNION SELECT `child_tag_id` FROM `tag_parents` JOIN descendants ON `parent_tag_id` = descendants.`id` WHERE NOT (`parent_tag_id` = OLD.`parent_tag_id` AND `child_tag_id` = OLD.`child_tag_id`)
+		) SELECT 1 FROM descendants WHERE `id` = NEW.`parent_tag_id`
+	) THEN RAISE(ABORT, 'tag parent cycle') END;
 END;--> statement-breakpoint
 DELETE FROM `admin_sessions` WHERE `revoked_at` IS NULL AND `id` NOT IN (SELECT `id` FROM `admin_sessions` current WHERE current.`revoked_at` IS NULL AND current.`username` = `admin_sessions`.`username` ORDER BY current.`created_at` DESC LIMIT 1);--> statement-breakpoint
 CREATE UNIQUE INDEX `admin_sessions_one_live_username_unique` ON `admin_sessions` (`username`) WHERE `revoked_at` IS NULL;--> statement-breakpoint
