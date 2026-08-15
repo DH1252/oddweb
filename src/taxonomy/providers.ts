@@ -115,8 +115,11 @@ const emptyUsage: ProviderUsage = {
 }
 
 function resolveRuntime(options: ProviderRuntimeOptions): ResolvedRuntime {
+  const customFetch = options.fetch
   return {
-    fetch: options.fetch ?? fetch,
+    fetch: customFetch
+      ? (input, init) => customFetch(input, init)
+      : (input, init) => fetch(input, init),
     now: options.now ?? Date.now,
     sleep:
       options.sleep ??

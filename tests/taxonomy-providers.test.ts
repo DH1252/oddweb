@@ -345,6 +345,28 @@ test('network failures expose bounded diagnostics without changing error metadat
   )
 })
 
+test('provider fetch is invoked without the runtime object as its receiver', async () => {
+  let receiver: unknown
+  const provider = createOpenAICompatibleProvider(
+    {
+      apiKey: 'secret',
+      model: 'model',
+      dialect: 'responses',
+      maxRetries: 0,
+    },
+    {
+      fetch: function (this: unknown) {
+        receiver = this
+        return Promise.resolve(
+          Response.json({ output_text: JSON.stringify(decision) }),
+        )
+      },
+    },
+  )
+  await provider.generateStructured(request)
+  assert.equal(receiver, undefined)
+})
+
 test('unsafe custom endpoints fail before fetch is called', () => {
   let called = false
   assert.throws(
