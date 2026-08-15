@@ -59,7 +59,7 @@ test('OpenAI Responses sends strict JSON schema and normalizes output and usage'
     (capturedInit?.headers as Record<string, string>).authorization,
     'Bearer openai-secret',
   )
-  assert.equal(capturedInit?.redirect, 'error')
+  assert.equal(capturedInit?.redirect, 'manual')
   const sent = JSON.parse(String(capturedInit.body)) as Record<string, unknown>
   const text = sent.text as {
     format: { strict: boolean; schema: Record<string, unknown> }
@@ -365,6 +365,38 @@ test('provider fetch is invoked without the runtime object as its receiver', asy
   )
   await provider.generateStructured(request)
   assert.equal(receiver, undefined)
+})
+
+test('provider redirects are exposed manually and rejected without following', async () => {
+  let capturedRedirect: RequestRedirect | undefined
+  const provider = createOpenAICompatibleProvider(
+    {
+      apiKey: 'secret',
+      model: 'model',
+      dialect: 'responses',
+      maxRetries: 0,
+    },
+    {
+      fetch: async (_input, init) => {
+        capturedRedirect = init?.redirect
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://redirect.example/collect' },
+        })
+      },
+    },
+  )
+  await assert.rejects(
+    provider.generateStructured(request),
+    (error: unknown) => {
+      assert.ok(error instanceof TaxonomyProviderError)
+      assert.equal(error.code, 'invalid_response')
+      assert.equal(error.status, 302)
+      assert.equal(error.retryable, false)
+      return true
+    },
+  )
+  assert.equal(capturedRedirect, 'manual')
 })
 
 test('unsafe custom endpoints fail before fetch is called', () => {

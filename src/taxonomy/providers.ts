@@ -289,7 +289,7 @@ async function executeRequest(
     try {
       response = await runtime.fetch(url, {
         ...init,
-        redirect: 'error',
+        redirect: 'manual',
         signal: controller.signal,
       })
       const text = await readBoundedResponse(response, limits.maxResponseBytes)
