@@ -243,6 +243,18 @@ function retryDelay(response: Response | undefined, attempt: number): number {
   return Math.min(250 * 2 ** (attempt - 1), 5_000)
 }
 
+function networkErrorMessage(cause: unknown): string {
+  if (!(cause instanceof Error)) return 'Provider network request failed'
+  const detail = `${cause.name}: ${cause.message}`
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200)
+  return detail
+    ? `Provider network request failed (${detail})`
+    : 'Provider network request failed'
+}
+
 async function executeRequest(
   url: URL,
   init: RequestInit,
@@ -299,7 +311,11 @@ async function executeRequest(
     } catch (cause) {
       if (cause instanceof TaxonomyProviderError) {
         lastError = cause
-      } else if (controller.signal.reason === timeoutReason) {
+      } else if (
+        controller.signal.aborted &&
+        controller.signal.reason instanceof DOMException &&
+        controller.signal.reason.name === 'TimeoutError'
+      ) {
         lastError = new TaxonomyProviderError('Provider request timed out', {
           code: 'timeout',
           retryable: true,
@@ -312,14 +328,11 @@ async function executeRequest(
           cause,
         })
       } else {
-        lastError = new TaxonomyProviderError(
-          'Provider network request failed',
-          {
-            code: 'network',
-            retryable: true,
-            cause,
-          },
-        )
+        lastError = new TaxonomyProviderError(networkErrorMessage(cause), {
+          code: 'network',
+          retryable: true,
+          cause,
+        })
       }
       if (!lastError.retryable || attempt > limits.maxRetries) {
         throw new TaxonomyProviderError(lastError.message, {
@@ -628,8 +641,11 @@ export function createGeminiProvider(
           schema: z.toJSONSchema(request.schema),
         },
       }
+      const interactionUrl = baseUrl.pathname.endsWith('/interactions')
+        ? baseUrl
+        : providerUrl(baseUrl, 'interactions')
       const result = await executeRequest(
-        providerUrl(baseUrl, 'interactions'),
+        interactionUrl,
         {
           method: 'POST',
           headers: {

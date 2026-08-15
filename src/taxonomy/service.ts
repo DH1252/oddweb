@@ -650,7 +650,7 @@ export class TaxonomyService {
       model: config.model,
       endpoint: config.endpoint,
       allowedHosts,
-      timeoutMs: Math.min(config.timeoutMs, 15_000),
+      timeoutMs: Math.min(config.timeoutMs, 60_000),
       maxResponseBytes: 16_384,
       maxRetries: 0,
     }

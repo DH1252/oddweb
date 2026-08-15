@@ -173,6 +173,37 @@ test('Gemini uses the Interactions API with structured output schema', async () 
   })
 })
 
+test('Gemini accepts a complete Interactions endpoint without duplicating it', async () => {
+  let capturedUrl = ''
+  const provider = createGeminiProvider(
+    {
+      apiKey: 'gemini-secret',
+      model: 'gemini-test',
+      endpoint: 'https://generativelanguage.googleapis.com/v1beta/interactions',
+      maxRetries: 0,
+    },
+    {
+      fetch: async (input) => {
+        capturedUrl = String(input)
+        return Response.json({
+          id: 'interaction-2',
+          steps: [
+            {
+              type: 'model_output',
+              content: [{ type: 'text', text: JSON.stringify(decision) }],
+            },
+          ],
+        })
+      },
+    },
+  )
+  await provider.generateStructured(request)
+  assert.equal(
+    capturedUrl,
+    'https://generativelanguage.googleapis.com/v1beta/interactions',
+  )
+})
+
 test('retryable status is retried and normalized with Retry-After', async () => {
   let calls = 0
   const sleeps: number[] = []
@@ -282,6 +313,33 @@ test('timeouts abort fetch and expose normalized retry metadata', async () => {
       assert.equal(error.retryable, true)
       assert.equal(error.attempts, 1)
       assert.ok(error.latencyMs >= 90)
+      return true
+    },
+  )
+})
+
+test('network failures expose bounded diagnostics without changing error metadata', async () => {
+  const provider = createOpenAICompatibleProvider(
+    {
+      apiKey: 'secret',
+      model: 'model',
+      dialect: 'responses',
+      maxRetries: 0,
+    },
+    {
+      fetch: async () => {
+        throw new TypeError('fetch failed: TLS certificate rejected')
+      },
+    },
+  )
+  await assert.rejects(
+    provider.generateStructured(request),
+    (error: unknown) => {
+      assert.ok(error instanceof TaxonomyProviderError)
+      assert.equal(error.code, 'network')
+      assert.equal(error.retryable, true)
+      assert.match(error.message, /TypeError: fetch failed: TLS certificate/)
+      assert.equal(error.message.includes('secret'), false)
       return true
     },
   )
