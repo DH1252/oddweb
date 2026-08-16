@@ -37,12 +37,17 @@ export async function readQueueDeliveryState(
   )
   const paused = queue.result?.settings?.delivery_paused
   const modifiedOn = queue.result?.modified_on
-  if (typeof paused !== 'boolean' || typeof modifiedOn !== 'string') {
+  if (typeof paused === 'boolean' && typeof modifiedOn === 'string') {
+    return { state: paused ? 'paused' : 'running', modifiedOn }
+  }
+
+  const declaredState = env.RELEASE_TAXONOMY_QUEUE_INITIAL_STATE
+  if (!['running', 'paused'].includes(declaredState)) {
     throw new Error(
-      `Queue ${queueName} did not expose delivery_paused and modified_on state.`,
+      `Queue ${queueName} did not expose delivery_paused and modified_on state. Set RELEASE_TAXONOMY_QUEUE_INITIAL_STATE to running or paused after verifying the production queue state.`,
     )
   }
-  return { state: paused ? 'paused' : 'running', modifiedOn }
+  return { state: declaredState, modifiedOn: null, source: 'operator' }
 }
 
 async function cloudflareJson(request, url, headers) {

@@ -1078,6 +1078,44 @@ test('queue state helper reads the authoritative API field and fails closed', as
   )
 })
 
+test('queue state helper requires an operator state when the API omits optional state fields', async () => {
+  let calls = 0
+  const request = async () => {
+    calls += 1
+    return new Response(
+      JSON.stringify({
+        success: true,
+        result:
+          calls % 2 === 1
+            ? [{ queue_name: 'queue', queue_id: 'id' }]
+            : { queue_name: 'queue', queue_id: 'id', settings: {} },
+      }),
+      { headers: { 'content-type': 'application/json' } },
+    )
+  }
+  const env = {
+    CLOUDFLARE_ACCOUNT_ID: 'account',
+    CLOUDFLARE_API_TOKEN: 'token',
+    RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'running',
+  }
+  assert.deepEqual(await readQueueDeliveryState('queue', env, request), {
+    state: 'running',
+    modifiedOn: null,
+    source: 'operator',
+  })
+  await assert.rejects(
+    readQueueDeliveryState(
+      'queue',
+      {
+        CLOUDFLARE_ACCOUNT_ID: 'account',
+        CLOUDFLARE_API_TOKEN: 'token',
+      },
+      request,
+    ),
+    /RELEASE_TAXONOMY_QUEUE_INITIAL_STATE/,
+  )
+})
+
 test('first staging deploy validates and dry-runs before applying migrations', () => {
   const harness = stagingHarness()
   harness.execute()

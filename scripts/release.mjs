@@ -1092,7 +1092,10 @@ function queryQueueDeliveryState(io, env) {
   )
   if (
     !['running', 'paused'].includes(output?.state) ||
-    typeof output.modifiedOn !== 'string'
+    !(
+      typeof output.modifiedOn === 'string' ||
+      (output.modifiedOn === null && output.source === 'operator')
+    )
   ) {
     throw new Error('Queue delivery state helper returned an ambiguous result.')
   }
@@ -1110,6 +1113,9 @@ function requireQueueDeliveryState(io, env, expected) {
 }
 
 function sameQueueDeliverySnapshot(left, right) {
+  if (left.source === 'operator' || right.source === 'operator') {
+    return left.state === right.state && left.source === right.source
+  }
   return left.state === right.state && left.modifiedOn === right.modifiedOn
 }
 
