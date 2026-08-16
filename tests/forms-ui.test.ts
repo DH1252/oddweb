@@ -115,6 +115,26 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.match(login, /data-od-id="admin-login"/)
 })
 
+test('automation jobs expose every server-retryable terminal status', async () => {
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(
+    admin,
+    /function isRetryableJobStatus[\s\S]*status === 'dead'[\s\S]*status === 'settled'[\s\S]*status === 'degraded'/,
+  )
+  assert.equal(
+    [
+      ...admin.matchAll(
+        /const retryable = isRetryableJobStatus\(job\.status\)/g,
+      ),
+    ].length,
+    2,
+  )
+})
+
 test('suspense-backed result controls update inside transitions', async () => {
   const directory = await readFile(
     new URL('../src/routes/index.tsx', import.meta.url),

@@ -2638,8 +2638,7 @@ function AutomationSection({
               <ul className="m-0 grid list-none gap-2 p-0 md:hidden">
                 {jobs.items.map((job) => {
                   const id = String(job.id)
-                  const retryable =
-                    job.status === 'dead' || job.status === 'settled'
+                  const retryable = isRetryableJobStatus(job.status)
                   return (
                     <li key={id} className="border border-line bg-paper p-2">
                       <div className="flex items-start gap-2">
@@ -2711,8 +2710,7 @@ function AutomationSection({
                   <tbody>
                     {jobs.items.map((job) => {
                       const id = String(job.id)
-                      const retryable =
-                        job.status === 'dead' || job.status === 'settled'
+                      const retryable = isRetryableJobStatus(job.status)
                       return (
                         <tr
                           key={id}
@@ -4527,6 +4525,10 @@ const jobStatusOptions: TaxonomyJobStatus[] = [
   'cancelled',
   'degraded',
 ]
+
+function isRetryableJobStatus(status: unknown): boolean {
+  return status === 'dead' || status === 'settled' || status === 'degraded'
+}
 
 const jobKindOptions: TaxonomyJobKind[] = [
   'classify_site',
