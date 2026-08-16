@@ -325,11 +325,19 @@ async function executeRequest(
           cause,
         })
       } else if (signal?.aborted) {
-        lastError = new TaxonomyProviderError('Provider request was aborted', {
-          code: 'network',
-          retryable: false,
-          cause,
-        })
+        const deadlineExceeded =
+          signal.reason instanceof DOMException &&
+          signal.reason.name === 'TimeoutError'
+        lastError = new TaxonomyProviderError(
+          deadlineExceeded
+            ? 'Taxonomy job provider deadline exceeded'
+            : 'Provider request was aborted',
+          {
+            code: deadlineExceeded ? 'timeout' : 'network',
+            retryable: deadlineExceeded,
+            cause,
+          },
+        )
       } else {
         lastError = new TaxonomyProviderError(networkErrorMessage(cause), {
           code: 'network',

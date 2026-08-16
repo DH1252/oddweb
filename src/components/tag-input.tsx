@@ -1,8 +1,11 @@
 import { useDeferredValue, useId, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { normalizeTag, tagsForForm } from '../data/tags'
+import { normalizeTag, tagInputMaxLength, tagsForForm } from '../data/tags'
 import { tagSuggestionsQueryOptions } from '../queries/oddweb'
+
+const tagLookupErrorMessage =
+  'Could not check tags. Your entered text is still available; try again.'
 
 type TagInputProps = {
   label: string
@@ -41,16 +44,26 @@ export function TagInput({
   const [activeIndex, setActiveIndex] = useState(0)
   const [resolvingTag, setResolvingTag] = useState(false)
   const [requiredError, setRequiredError] = useState(false)
+  const [lookupError, setLookupError] = useState<{
+    query: string
+    message: string
+  }>()
   const atLimit = selected.length >= maxTags
-  const { data } = useQuery(
+  const suggestionQuery = useQuery(
     tagSuggestionsQueryOptions({
       query: deferredQuery,
       selected,
       limit: 8,
     }),
   )
+  const { data } = suggestionQuery
   const selectedMetadata = data?.selected || []
   const suggestions = deferredQuery ? data?.suggestions || [] : []
+  const recoveredLookup =
+    lookupError?.query === deferredQuery && suggestionQuery.isSuccess
+  const visibleLookupError =
+    (recoveredLookup ? '' : lookupError?.message) ||
+    (deferredQuery && suggestionQuery.isError ? tagLookupErrorMessage : '')
 
   function metadataFor(token: string) {
     const normalized = normalizeTag(token)
@@ -91,6 +104,7 @@ export function TagInput({
   function addToken(token: string) {
     if (atLimit || selected.includes(token)) return
     update([...selected, token])
+    setLookupError(undefined)
     setQuery('')
     setOpen(false)
     setActiveIndex(0)
@@ -107,14 +121,23 @@ export function TagInput({
       return
     }
 
+    setLookupError(undefined)
     setResolvingTag(true)
     try {
       const result = await queryClient.fetchQuery(
         tagSuggestionsQueryOptions({ query: input, selected, limit: 8 }),
       )
-      const suggestion = result.suggestions.at(0)
+      const suggestion =
+        result.suggestions.find(
+          (tag) =>
+            tag.slug === input ||
+            normalizeTag(tag.name) === input ||
+            tag.aliases.includes(input),
+        ) || result.suggestions.at(0)
       if (suggestion) addToken(suggestion.slug)
       else addTag(input)
+    } catch {
+      setLookupError({ query: input, message: tagLookupErrorMessage })
     } finally {
       setResolvingTag(false)
     }
@@ -177,7 +200,7 @@ export function TagInput({
             role="combobox"
             aria-autocomplete="list"
             aria-required={required || undefined}
-            aria-describedby={`${id}-instructions${requiredError ? ` ${id}-error` : ''}`}
+            aria-describedby={`${id}-instructions${requiredError ? ` ${id}-error` : ''}${visibleLookupError ? ` ${id}-lookup-error` : ''}`}
             aria-haspopup="listbox"
             aria-expanded={open && suggestions.length > 0}
             aria-controls={
@@ -190,8 +213,10 @@ export function TagInput({
             }
             autoComplete="off"
             value={query}
+            maxLength={tagInputMaxLength}
             onChange={(event) => {
               setQuery(event.target.value)
+              setLookupError(undefined)
               setOpen(true)
               setActiveIndex(0)
             }}
@@ -226,7 +251,9 @@ export function TagInput({
               }
             }}
             className="min-h-10 w-full border-0 bg-transparent px-1.5 py-1 text-[15px] outline-none placeholder:text-muted"
-            aria-invalid={requiredError || undefined}
+            aria-invalid={
+              requiredError || Boolean(visibleLookupError) || undefined
+            }
             placeholder={
               atLimit ? `Maximum of ${maxTags} tags reached` : placeholder
             }
@@ -308,6 +335,15 @@ export function TagInput({
           role="alert"
         >
           Add at least one tag before submitting.
+        </p>
+      ) : null}
+      {visibleLookupError ? (
+        <p
+          id={`${id}-lookup-error`}
+          className="mt-1 mb-0 border-l-4 border-danger bg-red-50 px-2 py-1 text-sm font-bold text-danger"
+          role="alert"
+        >
+          {visibleLookupError}
         </p>
       ) : null}
       <p

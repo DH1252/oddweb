@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
@@ -17,7 +17,7 @@ import {
 
 export const Route = createFileRoute('/sites/$slug')({
   loader: async ({ context, params }) => {
-    const data = await context.queryClient.ensureQueryData(
+    const data = await context.queryClient.fetchQuery(
       siteDetailQueryOptions(params.slug),
     )
     if (!data) throw notFound({ headers: notFoundHeaders })
@@ -103,9 +103,8 @@ export const Route = createFileRoute('/sites/$slug')({
 
 function SiteDetailPage() {
   const { slug } = Route.useParams()
-  const data = Route.useLoaderData()
+  const { data } = useSuspenseQuery(siteDetailQueryOptions(slug))
   const [imageFailed, setImageFailed] = useState(false)
-  const { site } = data
   const visitMutation = useMutation({
     mutationFn: (entrySlug: string) =>
       recordSiteVisit({ data: { slug: entrySlug } }),
@@ -119,6 +118,9 @@ function SiteDetailPage() {
     recordEntry(slug)
   }, [slug])
 
+  if (!data) throw notFound({ headers: notFoundHeaders })
+
+  const { site } = data
   const { previous, next } = data
 
   return (

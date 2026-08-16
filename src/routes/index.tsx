@@ -28,7 +28,11 @@ import {
   fieldClass,
   primaryButtonClass,
 } from '../components/oddweb'
-import { normalizeFilterTagList } from '../data/tags'
+import {
+  normalizePublicFilterSearch,
+  publicDirectorySearchMaxLength,
+  publicFilterLoaderDeps,
+} from '../data/tags'
 import {
   directoryQueryOptions,
   popularQueryOptions,
@@ -46,11 +50,6 @@ import {
 
 import type { FormEvent } from 'react'
 import type { SiteEntry } from '../data/sites'
-
-type DirectorySearch = {
-  include?: string[]
-  exclude?: string[]
-}
 
 type SortMode = 'popular' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
@@ -70,29 +69,21 @@ const sortModes: SortMode[] = [
 
 export const Route = createFileRoute('/')({
   shouldReload: false,
-  loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(publicSupportQueryOptions())
-    const directory = await context.queryClient.ensureQueryData(
+  validateSearch: normalizePublicFilterSearch,
+  loaderDeps: ({ search }) => publicFilterLoaderDeps(search),
+  loader: async ({ context, deps }) => {
+    await context.queryClient.fetchQuery(publicSupportQueryOptions())
+    const directory = await context.queryClient.fetchQuery(
       directoryQueryOptions({
         query: '',
-        include: [],
-        exclude: [],
+        include: deps.include,
+        exclude: deps.exclude,
         sort: 'popular',
         page: 0,
       }),
     )
-    await context.queryClient.ensureQueryData(popularQueryOptions(0))
+    await context.queryClient.fetchQuery(popularQueryOptions(0))
     return directory
-  },
-  validateSearch: (search): DirectorySearch => {
-    const include = normalizeFilterTagList(search.include)
-    const exclude = normalizeFilterTagList(search.exclude).filter(
-      (tag) => !include.includes(tag),
-    )
-    return {
-      include: include.length ? include : undefined,
-      exclude: exclude.length ? exclude : undefined,
-    }
   },
   head: ({ loaderData, match }) => ({
     meta: [
@@ -355,6 +346,7 @@ function DirectoryPage() {
               id="search"
               type="search"
               value={query}
+              maxLength={publicDirectorySearchMaxLength}
               onChange={(event) => {
                 setQuery(event.target.value)
                 setPage(0)

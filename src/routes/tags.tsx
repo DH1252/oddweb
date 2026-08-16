@@ -10,7 +10,11 @@ import {
   buttonClass,
   fieldClass,
 } from '../components/oddweb'
-import { normalizeFilterTagList } from '../data/tags'
+import {
+  normalizePublicFilterSearch,
+  publicFilterLoaderDeps,
+  publicTagSearchMaxLength,
+} from '../data/tags'
 import { tagPageQueryOptions } from '../queries/oddweb'
 import {
   absoluteUrl,
@@ -19,27 +23,14 @@ import {
   socialMeta,
 } from '../lib/seo'
 
-type TagsSearch = {
-  include?: string[]
-  exclude?: string[]
-}
-
 const tagsTitle = 'Browse Website Tags | Oddweb'
 const tagsDescription =
   'Browse the tags Oddweb uses to organize unusual, playful, and interactive websites by mood, medium, and activity.'
 
 export const Route = createFileRoute('/tags')({
   shouldReload: false,
-  validateSearch: (search): TagsSearch => {
-    const include = normalizeFilterTagList(search.include)
-    const exclude = normalizeFilterTagList(search.exclude).filter(
-      (tag) => !include.includes(tag),
-    )
-    return {
-      include: include.length ? include : undefined,
-      exclude: exclude.length ? exclude : undefined,
-    }
-  },
+  validateSearch: normalizePublicFilterSearch,
+  loaderDeps: ({ search }) => publicFilterLoaderDeps(search),
   head: ({ match }) => ({
     meta: [
       { title: tagsTitle },
@@ -62,9 +53,14 @@ export const Route = createFileRoute('/tags')({
     ],
     links: [{ rel: 'canonical', href: absoluteUrl('/tags') }],
   }),
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(
-      tagPageQueryOptions({ query: '', include: [], exclude: [], page: 0 }),
+  loader: ({ context, deps }) =>
+    context.queryClient.fetchQuery(
+      tagPageQueryOptions({
+        query: '',
+        include: deps.include,
+        exclude: deps.exclude,
+        page: 0,
+      }),
     ),
   component: TagsPage,
 })
@@ -211,6 +207,7 @@ function TagsPage() {
             id="tag-search"
             type="search"
             value={query}
+            maxLength={publicTagSearchMaxLength}
             onChange={(event) => {
               setQuery(event.target.value)
               setPage(0)

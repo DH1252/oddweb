@@ -2,6 +2,12 @@ import { env } from 'cloudflare:workers'
 
 import { normalizeTag } from '../data/tags'
 import { ensureSeedData } from './repository'
+import {
+  buildPublicSiteFilter,
+  d1ExactAndFuzzySearch,
+  publicTagClosureCte as tagClosureCte,
+  publicVisibleSiteSql as visibleSiteSql,
+} from './public-query'
 
 import type { RecentFiling, SiteEntry } from '../data/sites'
 import type { CanonicalTag } from '../data/tags'
@@ -90,20 +96,6 @@ type TagSqlRow = {
   parentLabels: string
 }
 
-const visibleSiteSql = `s.status = 'active'
-  AND (s.source <> 'Submission' OR EXISTS (
-    SELECT 1 FROM submissions submission
-    WHERE submission.id = s.submission_id AND submission.status = 'approved'
-  ))`
-
-const tagClosureCte = `WITH RECURSIVE tag_descendants(root_id, tag_id) AS (
-  SELECT id, id FROM tags
-  UNION
-  SELECT closure.root_id, relation.child_tag_id
-  FROM tag_descendants closure
-  JOIN tag_parents relation ON relation.parent_tag_id = closure.tag_id
-)`
-
 const siteColumns = `s.id, s.slug, s.name, s.url, s.description, s.summary,
   s.categories, s.poster, s.notes, s.facts, s.accent,
   s.thumbnail_key AS thumbnailKey, s.thumbnail_alt AS thumbnailAlt,
@@ -113,7 +105,7 @@ export async function readPublicDirectoryPage(
   input: PublicDirectoryInput,
 ): Promise<PublicDirectoryPage> {
   await ensureSeedData()
-  const filter = buildSiteFilter(input)
+  const filter = buildPublicSiteFilter(input)
   const order = directoryOrder[input.sort]
   const offset = input.page * publicDirectoryPageSize
   const [countResult, siteResult, surpriseResult] = await Promise.all([
@@ -219,21 +211,26 @@ export async function readPublicTagPage(input: {
   page: number
 }): Promise<PublicTagPage> {
   await ensureSeedData()
-  const query = normalizeTag(input.query)
-  const search = query ? `%${escapeLike(query)}%` : ''
-  const tagWhere = query
-    ? `AND (lower(tag.name) LIKE ? ESCAPE '\\' OR lower(tag.slug) LIKE ? ESCAPE '\\' OR EXISTS (
+  const search = d1ExactAndFuzzySearch(input.query)
+  const tagWhere =
+    search.exact && !search.fuzzy
+      ? `AND (lower(tag.name) = ? OR lower(tag.slug) = ? OR EXISTS (
+           SELECT 1 FROM tag_aliases searched_alias
+           WHERE searched_alias.tag_id = tag.id AND lower(searched_alias.alias) = ?
+         ))`
+      : search.fuzzy
+        ? `AND (lower(tag.name) LIKE ? ESCAPE '\\' OR lower(tag.slug) LIKE ? ESCAPE '\\' OR EXISTS (
          SELECT 1 FROM tag_aliases searched_alias
          WHERE searched_alias.tag_id = tag.id AND lower(searched_alias.alias) LIKE ? ESCAPE '\\'
        ))`
-    : ''
-  const tagBindings = query ? [search, search, search] : []
-  const filter = buildSiteFilter({
+        : ''
+  const tagBindings = search.exact
+    ? Array<string>(3).fill(search.fuzzy || search.exact)
+    : []
+  const filter = buildPublicSiteFilter({
     query: '',
     include: input.include,
     exclude: input.exclude,
-    sort: 'popular',
-    page: 0,
   })
   const [count, tagCount, tags] = await Promise.all([
     env.DB.prepare(
@@ -347,13 +344,12 @@ export async function readTagSuggestions(input: {
   limit: number
 }): Promise<TagSuggestionResult> {
   await ensureSeedData()
-  const query = normalizeTag(input.query)
+  const search = d1ExactAndFuzzySearch(input.query)
   const selected = input.selected
     .filter((token) => !token.startsWith('~'))
     .map((token) => normalizeTag(token))
     .slice(0, 20)
   const selectedJson = JSON.stringify(selected)
-  const search = `%${escapeLike(query)}%`
   const rows = await env.DB.prepare(
     `SELECT tag.id, tag.slug, tag.name, 0 AS count,
        coalesce((SELECT json_group_array(alias.alias) FROM tag_aliases alias WHERE alias.tag_id = tag.id), '[]') AS aliases,
@@ -372,14 +368,19 @@ export async function readTagSuggestions(input: {
             OR lower(selected_token.value) = lower(tag.name)
             OR EXISTS (SELECT 1 FROM tag_aliases selected_alias WHERE selected_alias.tag_id = tag.id AND lower(selected_alias.alias) = lower(selected_token.value))
        )
-       OR (?2 <> '' AND (lower(tag.name) LIKE ?3 ESCAPE '\\' OR lower(tag.slug) LIKE ?3 ESCAPE '\\' OR EXISTS (
-         SELECT 1 FROM tag_aliases searched_alias WHERE searched_alias.tag_id = tag.id AND lower(searched_alias.alias) LIKE ?3 ESCAPE '\\'
-       )))
+        OR (?2 <> '' AND (
+          lower(tag.slug) = ?2 OR lower(tag.name) = ?2 OR EXISTS (
+            SELECT 1 FROM tag_aliases exact_alias WHERE exact_alias.tag_id = tag.id AND lower(exact_alias.alias) = ?2
+          )
+        ))
+        OR (?3 <> '' AND (lower(tag.name) LIKE ?3 ESCAPE '\\' OR lower(tag.slug) LIKE ?3 ESCAPE '\\' OR EXISTS (
+          SELECT 1 FROM tag_aliases searched_alias WHERE searched_alias.tag_id = tag.id AND lower(searched_alias.alias) LIKE ?3 ESCAPE '\\'
+        )))
      )
      ORDER BY isSelected DESC, CASE WHEN lower(tag.slug) = ?2 OR lower(tag.name) = ?2 THEN 0 ELSE 1 END, lower(tag.name)
      LIMIT ?4`,
   )
-    .bind(selectedJson, query, search, 20)
+    .bind(selectedJson, search.exact, search.fuzzy, 20)
     .all<TagSqlRow & { isSelected: number }>()
   const mapped = rows.results.map((tag) => ({
     id: tag.id,
@@ -418,61 +419,6 @@ export async function readPublicSitemapBatch(input: {
     slug: row.slug,
     added: formatIsoDate(row.addedAt),
   }))
-}
-
-function buildSiteFilter(input: PublicDirectoryInput) {
-  const clauses = [visibleSiteSql]
-  const bindings: unknown[] = []
-  if (input.query) {
-    clauses.push(`(
-      lower(s.name || ' ' || s.description) LIKE ? ESCAPE '\\'
-      OR EXISTS (
-        SELECT 1 FROM site_tags searched_assignment
-        JOIN tags searched_tag ON searched_tag.id = searched_assignment.tag_id
-        WHERE searched_assignment.site_id = s.id AND (
-          lower(searched_assignment.raw_name) LIKE ? ESCAPE '\\'
-          OR lower(searched_tag.name) LIKE ? ESCAPE '\\'
-          OR EXISTS (
-            SELECT 1 FROM tag_aliases searched_alias
-            WHERE searched_alias.tag_id = searched_tag.id
-              AND searched_alias.alias LIKE ? ESCAPE '\\'
-          )
-        )
-      )
-    )`)
-    const query = `%${escapeLike(normalizeTag(input.query))}%`
-    bindings.push(query, query, query, query)
-  }
-  for (const tag of input.include) clauses.push(tagMatchSql(tag, bindings))
-  if (input.exclude.length) {
-    clauses.push(
-      `NOT (${input.exclude.map((tag) => tagMatchSql(tag, bindings)).join(' OR ')})`,
-    )
-  }
-  return { sql: clauses.join(' AND '), bindings }
-}
-
-function tagMatchSql(tag: string, bindings: unknown[]) {
-  if (tag.startsWith('~')) {
-    bindings.push(normalizeTag(tag.slice(1)))
-    return `EXISTS (
-      SELECT 1 FROM site_tags assignment WHERE assignment.site_id = s.id
-        AND lower(trim(assignment.raw_name, '~')) = ?
-    )`
-  }
-  const normalized = normalizeTag(tag)
-  bindings.push(normalized, normalized, normalized)
-  return `EXISTS (
-    SELECT 1 FROM site_tags assignment
-    JOIN tags target ON target.canonical = 1 AND (
-      lower(target.slug) = ? OR lower(target.name) = ? OR EXISTS (
-        SELECT 1 FROM tag_aliases target_alias WHERE target_alias.tag_id = target.id AND lower(target_alias.alias) = ?
-      )
-    )
-    JOIN tag_descendants closure
-      ON closure.root_id = target.id AND closure.tag_id = assignment.tag_id
-    WHERE assignment.site_id = s.id
-  )`
 }
 
 const directoryOrder: Record<PublicSortMode, string> = {
@@ -564,10 +510,6 @@ function parseJson<TValue>(value: string, fallback: TValue): TValue {
   } catch {
     return fallback
   }
-}
-
-function escapeLike(value: string) {
-  return value.replace(/[\\%_]/g, '\\$&')
 }
 
 function formatIsoDate(timestamp: number) {

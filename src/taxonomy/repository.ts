@@ -1,4 +1,4 @@
-import { stableJson } from './normalize'
+import { sha256Hex, stableJson } from './normalize'
 import type {
   CandidateSnapshot,
   ProviderConfig,
@@ -187,6 +187,31 @@ interface OntologyApplication {
   job: TaxonomyJob
 }
 
+interface AssignmentSettlementInput {
+  job: TaxonomyJob
+  site: SiteSnapshot
+  tag: TagSnapshot
+  candidateId: string
+  attemptId: string
+  candidateKey: string
+  payload: Record<string, unknown>
+  marginMicros: number
+  rank: number
+  decisionId: string
+  batchId: string
+  eventId: string
+  action: 'add' | 'remove'
+  outcome:
+    'applied' | 'rejected' | 'shadow' | 'locked' | 'obsolete' | 'conservative'
+  confidenceMicros: number
+  reason: string
+  providerConfigId: number
+  providerModel: string
+  policy: RuntimePolicy
+  releaseSha: string
+  now: number
+}
+
 export class TaxonomyRepository {
   readonly db: D1Database
 
@@ -342,6 +367,41 @@ export class TaxonomyRepository {
     )
   }
 
+  async settleRolloutExcludedCandidate(
+    candidateId: string,
+    job: TaxonomyJob,
+    now: number,
+  ): Promise<boolean> {
+    return Boolean(
+      await changes(
+        this.db,
+        `UPDATE taxonomy_jobs SET status = 'settled', lease_owner = NULL,
+         lease_token = NULL, leased_until = NULL, completed_at = ?, updated_at = ?,
+         last_error_code = 'rollout_excluded',
+         last_error_summary = 'Ontology candidate remains proposed for explicit admin review.'
+         WHERE id = ? AND status = 'leased' AND lease_token = ?
+           AND EXISTS (SELECT 1 FROM taxonomy_candidates
+                       WHERE id = ? AND status = 'proposed')`,
+        [now, now, job.id, job.leaseToken, candidateId],
+      ),
+    )
+  }
+
+  async renewJobLease(
+    job: TaxonomyJob,
+    now: number,
+    leaseSeconds: number,
+  ): Promise<boolean> {
+    return Boolean(
+      await changes(
+        this.db,
+        `UPDATE taxonomy_jobs SET leased_until = ?, updated_at = ?
+         WHERE id = ? AND status = 'leased' AND lease_token = ?`,
+        [now + leaseSeconds, now, job.id, job.leaseToken],
+      ),
+    )
+  }
+
   async retryJob(
     job: TaxonomyJob,
     availableAt: number,
@@ -390,31 +450,61 @@ export class TaxonomyRepository {
       [job.siteId],
     )
     if (!siteRow) return null
-    const [assignedRows, tagRows, aliasRows, parentRows] = await Promise.all([
-      all(
-        this.db,
-        'SELECT tag_id, source FROM site_tags WHERE site_id = ? ORDER BY tag_id',
-        [job.siteId],
-      ),
-      all(
-        this.db,
-        `SELECT id, slug, name, canonical, revision, automation_locked FROM tags
-         WHERE status = 'active' ORDER BY canonical DESC, id ASC LIMIT ?`,
-        [limit],
-      ),
-      all(
-        this.db,
-        `SELECT a.tag_id, a.alias FROM tag_aliases a JOIN tags t ON t.id = a.tag_id
-         WHERE t.status = 'active' ORDER BY a.tag_id, a.alias LIMIT ?`,
-        [limit * 4],
-      ),
-      all(
-        this.db,
-        `SELECT parent_tag_id, child_tag_id FROM tag_parents
-         ORDER BY child_tag_id, parent_tag_id LIMIT ?`,
-        [limit * 4],
-      ),
-    ])
+    const relevantTags = `WITH relevant_tags AS (
+      SELECT id FROM (
+        SELECT id FROM tags WHERE status = 'active'
+        ORDER BY canonical DESC, id ASC LIMIT ?
+      )
+      UNION
+      SELECT tag.id FROM site_tags assignment
+      JOIN tags tag ON tag.id = assignment.tag_id
+      WHERE assignment.site_id = ? AND tag.status = 'active'
+    )`
+    const [assignedRows, tagRows, aliasRows, parentRows, lockRows] =
+      await Promise.all([
+        all(
+          this.db,
+          `SELECT tag_id, raw_name, source, decision_id, revision, created_at, updated_at
+         FROM site_tags WHERE site_id = ? ORDER BY tag_id`,
+          [job.siteId],
+        ),
+        all(
+          this.db,
+          `${relevantTags}
+           SELECT tag.id, tag.slug, tag.name, tag.canonical, tag.revision,
+                  tag.automation_locked FROM tags tag
+           JOIN relevant_tags relevant ON relevant.id = tag.id
+           ORDER BY tag.canonical DESC, tag.id ASC`,
+          [limit, job.siteId],
+        ),
+        all(
+          this.db,
+          `${relevantTags}
+           SELECT alias.tag_id, alias.alias FROM tag_aliases alias
+           JOIN relevant_tags relevant ON relevant.id = alias.tag_id
+           ORDER BY alias.tag_id, alias.alias`,
+          [limit, job.siteId],
+        ),
+        all(
+          this.db,
+          `${relevantTags}
+           SELECT parent.parent_tag_id, parent.child_tag_id FROM tag_parents parent
+           JOIN relevant_tags relevant ON relevant.id = parent.child_tag_id
+           ORDER BY parent.child_tag_id, parent.parent_tag_id`,
+          [limit, job.siteId],
+        ),
+        all(
+          this.db,
+          `${relevantTags}
+           SELECT lock.resource_key FROM taxonomy_locks lock
+           JOIN relevant_tags relevant ON relevant.id = lock.tag_id
+           WHERE lock.released_at IS NULL
+             AND (lock.scope = 'tag'
+                  OR (lock.scope = 'site_assignment' AND lock.site_id = ?))
+           ORDER BY lock.resource_key`,
+          [limit, job.siteId, job.siteId],
+        ),
+      ])
     const aliases = new Map<number, string[]>()
     for (const row of aliasRows) {
       const tagId = integer(row, 'tag_id')
@@ -442,6 +532,18 @@ export class TaxonomyRepository {
       automationAssignedTagIds: assignedRows
         .filter((row) => text(row, 'source') === 'automation')
         .map((row) => integer(row, 'tag_id')),
+      assignments: assignedRows.map((row) => ({
+        tagId: integer(row, 'tag_id'),
+        rawName: text(row, 'raw_name'),
+        source: text(
+          row,
+          'source',
+        ) as SiteSnapshot['assignments'][number]['source'],
+        decisionId: nullableText(row, 'decision_id'),
+        revision: integer(row, 'revision'),
+        createdAt: integer(row, 'created_at'),
+        updatedAt: integer(row, 'updated_at'),
+      })),
     }
     const tags: TagSnapshot[] = tagRows.map((row) => {
       const id = integer(row, 'id')
@@ -456,7 +558,24 @@ export class TaxonomyRepository {
         parentIds: parents.get(id) ?? [],
       }
     })
-    return { site, tags }
+    return {
+      site,
+      tags,
+      activeLockKeys: lockRows.map((row) => text(row, 'resource_key')),
+    }
+  }
+
+  async classificationInputCurrent(job: TaxonomyJob): Promise<boolean> {
+    if (job.siteId === null || job.siteContentVersion === null) return false
+    return Boolean(
+      await first(
+        this.db,
+        `SELECT 1 AS present FROM sites
+         WHERE id = ? AND status = 'active' AND content_version = ?
+           AND classification_input_hash = ?`,
+        [job.siteId, job.siteContentVersion, job.inputHash],
+      ),
+    )
   }
 
   async ontologyContext(
@@ -557,8 +676,22 @@ export class TaxonomyRepository {
          (id, job_key, kind, site_id, concept_key, input_hash, site_content_version,
           taxonomy_version, provider_config_id, policy_config_id, batch_id, priority,
           max_attempts, available_at, created_at, updated_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status = 'accepted')`,
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status = 'accepted')
+          ON CONFLICT(job_key) DO UPDATE SET
+            kind = excluded.kind, site_id = excluded.site_id,
+            concept_key = excluded.concept_key, input_hash = excluded.input_hash,
+            site_content_version = excluded.site_content_version,
+            taxonomy_version = excluded.taxonomy_version,
+            provider_config_id = excluded.provider_config_id,
+            policy_config_id = excluded.policy_config_id, batch_id = excluded.batch_id,
+            priority = excluded.priority, max_attempts = excluded.max_attempts,
+            status = 'pending', available_at = excluded.available_at,
+            lease_owner = NULL, lease_token = NULL, leased_until = NULL,
+            attempt_count = 0, completed_at = NULL, updated_at = excluded.updated_at,
+            last_error_code = NULL, last_error_summary = NULL
+          WHERE taxonomy_jobs.id = excluded.id
+            AND taxonomy_jobs.status IN ('leased','settled','obsolete','dead','cancelled','degraded')`,
         [
           input.job.id,
           input.job.jobKey,
@@ -581,16 +714,29 @@ export class TaxonomyRepository {
       ),
       statement(
         this.db,
-        `INSERT INTO taxonomy_outbox (id, job_id, payload, available_at, created_at)
-         SELECT ?, id, ?, ?, ? FROM taxonomy_jobs WHERE id = ?`,
+        `INSERT OR IGNORE INTO taxonomy_outbox (id, job_id, payload, available_at, created_at)
+          SELECT ?, id, ?, ?, ? FROM taxonomy_jobs WHERE id = ?`,
         [`outbox:${input.job.id}`, payload, input.now, input.now, input.job.id],
       ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+         lease_token = NULL, leased_until = NULL, last_error = NULL
+         WHERE job_id = ? AND EXISTS (SELECT 1 FROM taxonomy_jobs
+                                      WHERE id = ? AND status IN ('pending','retry_wait'))`,
+        [input.now, input.job.id, input.job.id],
+      ),
+      statement(
+        this.db,
+        `SELECT CASE WHEN
+          EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status = 'accepted')
+          AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ?
+                      AND status IN ('pending','retry_wait'))
+          THEN 1 ELSE json_extract('candidate acceptance enqueue failed', '$') END`,
+        [input.candidateId, input.job.id],
+      ),
     ])
-    return (
-      (result[1]?.meta.changes ?? 0) === 1 &&
-      (result[2]?.meta.changes ?? 0) === 1 &&
-      (result[3]?.meta.changes ?? 0) === 1
-    )
+    return (result[1]?.meta.changes ?? 0) === 1
   }
 
   async settleAlreadyAppliedCandidate(
@@ -738,32 +884,64 @@ export class TaxonomyRepository {
     marginMicros?: number | null
     rank: number
     now: number
+    supersedesKey?: string
   }): Promise<void> {
-    await changes(
-      this.db,
-      `INSERT OR IGNORE INTO taxonomy_candidates
-       (id, job_id, attempt_id, candidate_key, kind, tag_id, related_tag_id,
-        normalized_concept, proposed_name, proposed_slug, payload, confidence_micros,
-        margin_micros, rank, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.id,
-        input.jobId,
-        input.attemptId,
-        input.candidateKey,
-        input.kind,
-        input.tagId ?? null,
-        input.relatedTagId ?? null,
-        input.normalizedConcept ?? null,
-        input.proposedName ?? null,
-        input.proposedSlug ?? null,
-        stableJson(input.payload),
-        input.confidenceMicros,
-        input.marginMicros ?? null,
-        input.rank,
-        input.now,
-      ],
+    const statements: D1PreparedStatement[] = []
+    if (input.supersedesKey) {
+      statements.push(
+        statement(
+          this.db,
+          `UPDATE taxonomy_candidates SET status = 'deferred',
+           decision_reason = 'Superseded by a later provider attempt.', decided_at = ?
+           WHERE job_id = ? AND status = 'proposed' AND
+             (candidate_key = ? OR substr(candidate_key, 1, length(? || ':attempt:')) = ? || ':attempt:')`,
+          [
+            input.now,
+            input.jobId,
+            input.supersedesKey,
+            input.supersedesKey,
+            input.supersedesKey,
+          ],
+        ),
+      )
+    }
+    statements.push(
+      statement(
+        this.db,
+        `INSERT INTO taxonomy_candidates
+         (id, job_id, attempt_id, candidate_key, kind, tag_id, related_tag_id,
+          normalized_concept, proposed_name, proposed_slug, payload, confidence_micros,
+          margin_micros, rank, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(job_id, candidate_key) DO UPDATE SET
+           attempt_id = excluded.attempt_id, kind = excluded.kind,
+           tag_id = excluded.tag_id, related_tag_id = excluded.related_tag_id,
+           normalized_concept = excluded.normalized_concept,
+           proposed_name = excluded.proposed_name,
+           proposed_slug = excluded.proposed_slug, payload = excluded.payload,
+           confidence_micros = excluded.confidence_micros,
+           margin_micros = excluded.margin_micros, rank = excluded.rank
+         WHERE taxonomy_candidates.status = 'proposed'`,
+        [
+          input.id,
+          input.jobId,
+          input.attemptId,
+          input.candidateKey,
+          input.kind,
+          input.tagId ?? null,
+          input.relatedTagId ?? null,
+          input.normalizedConcept ?? null,
+          input.proposedName ?? null,
+          input.proposedSlug ?? null,
+          stableJson(input.payload),
+          input.confidenceMicros,
+          input.marginMicros ?? null,
+          input.rank,
+          input.now,
+        ],
+      ),
     )
+    await this.db.batch(statements)
   }
 
   async recordEvidence(input: {
@@ -781,33 +959,138 @@ export class TaxonomyRepository {
     evidenceSnippet: string
     confidenceMicros: number
     accepted: boolean
+    materiallyNewSupport?: boolean
     now: number
   }): Promise<void> {
-    await changes(
-      this.db,
-      `INSERT OR IGNORE INTO taxonomy_concept_evidence
-       (id, normalized_concept, site_id, input_hash, source_key, source,
-        provider_config_id, policy_config_id, job_id, attempt_id, evidence_hash,
-        evidence_snippet, confidence_micros, accepted, observed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.id,
-        input.concept,
-        input.siteId,
-        input.inputHash,
-        input.sourceKey,
-        input.source,
-        input.providerConfigId ?? null,
-        input.policyConfigId ?? null,
-        input.jobId ?? null,
-        input.attemptId ?? null,
-        input.evidenceHash,
-        input.evidenceSnippet.slice(0, 500),
-        input.confidenceMicros,
-        input.accepted ? 1 : 0,
-        input.now,
-      ],
+    const conceptInputHash = await sha256Hex(
+      stableJson({ concept: input.concept }),
     )
+    const jobKeyPrefix = `concept:${encodeURIComponent(input.concept)}:input:${conceptInputHash}:taxonomy:`
+    const jobId = `tax:${crypto.randomUUID()}`
+    await this.db.batch([
+      statement(
+        this.db,
+        `INSERT OR IGNORE INTO taxonomy_concept_evidence
+         (id, normalized_concept, site_id, input_hash, source_key, source,
+          provider_config_id, policy_config_id, job_id, attempt_id, evidence_hash,
+          evidence_snippet, confidence_micros, accepted, observed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          input.id,
+          input.concept,
+          input.siteId,
+          input.inputHash,
+          input.sourceKey,
+          input.source,
+          input.providerConfigId ?? null,
+          input.policyConfigId ?? null,
+          input.jobId ?? null,
+          input.attemptId ?? null,
+          input.evidenceHash,
+          input.evidenceSnippet.slice(0, 500),
+          input.confidenceMicros,
+          input.accepted ? 1 : 0,
+          input.now,
+        ],
+      ),
+      statement(
+        this.db,
+        `INSERT INTO taxonomy_jobs
+         (id, job_key, kind, concept_key, input_hash, taxonomy_version,
+           provider_config_id, policy_config_id, priority, max_attempts,
+           available_at, created_at, updated_at)
+         SELECT ?, ? || state.published_version || ':provider:' ||
+                   coalesce(state.active_provider_config_id, 0),
+                'reassess_concept', ?, ?, state.published_version,
+                state.active_provider_config_id, policy.id, 0,
+                max(1, policy.retry_budget + 1), ?, ?, ?
+         FROM taxonomy_state state
+         JOIN taxonomy_policy_configs policy ON policy.id = state.active_policy_config_id
+           WHERE state.id = 1 AND ? = 1 AND changes() > 0
+             AND (SELECT count(DISTINCT site_id)
+                 FROM taxonomy_concept_evidence
+                 WHERE normalized_concept = ? AND accepted = 1) >=
+                policy.novel_evidence_site_threshold
+           ON CONFLICT(job_key) DO UPDATE SET
+            concept_key = excluded.concept_key,
+            input_hash = excluded.input_hash,
+            taxonomy_version = excluded.taxonomy_version,
+            provider_config_id = excluded.provider_config_id,
+            policy_config_id = excluded.policy_config_id,
+            priority = excluded.priority,
+            max_attempts = excluded.max_attempts,
+            status = 'pending', available_at = excluded.available_at,
+            lease_owner = NULL, lease_token = NULL, leased_until = NULL,
+            attempt_count = 0, completed_at = NULL,
+            updated_at = excluded.updated_at,
+            last_error_code = NULL, last_error_summary = NULL
+           WHERE taxonomy_jobs.kind = 'reassess_concept'
+             AND taxonomy_jobs.status IN
+                 ('succeeded','settled','obsolete','dead','cancelled','degraded')
+             AND (
+               ? > 0 OR
+                EXISTS (
+                  SELECT 1 FROM taxonomy_concept_evidence evidence
+                  WHERE evidence.normalized_concept = ? AND evidence.accepted = 1
+                    AND evidence.id = ?
+                    AND NOT EXISTS (
+                      SELECT 1 FROM taxonomy_concept_evidence prior
+                      WHERE prior.normalized_concept = evidence.normalized_concept
+                        AND prior.site_id = evidence.site_id
+                        AND prior.id <> evidence.id
+                        AND prior.observed_at <= coalesce(taxonomy_jobs.completed_at,
+                                                         taxonomy_jobs.updated_at)
+                    )
+                )
+              )`,
+        [
+          jobId,
+          jobKeyPrefix,
+          input.concept,
+          conceptInputHash,
+          input.now,
+          input.now,
+          input.now,
+          input.accepted ? 1 : 0,
+          input.concept,
+          input.materiallyNewSupport ? 1 : 0,
+          input.concept,
+          input.id,
+        ],
+      ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+         lease_token = NULL, leased_until = NULL, last_error = NULL
+         WHERE changes() > 0 AND job_id IN (
+           SELECT job.id FROM taxonomy_state state
+           JOIN taxonomy_jobs job
+             ON job.job_key = ? || state.published_version || ':provider:' ||
+                              coalesce(state.active_provider_config_id, 0)
+           WHERE state.id = 1 AND job.kind = 'reassess_concept'
+             AND job.status = 'pending'
+         )`,
+        [input.now, jobKeyPrefix],
+      ),
+      statement(
+        this.db,
+        `INSERT OR IGNORE INTO taxonomy_outbox
+         (id, job_id, payload, available_at, created_at)
+         SELECT ?, job.id, json_object('jobId', job.id), ?, ?
+         FROM taxonomy_state state
+         JOIN taxonomy_jobs job
+           ON job.job_key = ? || state.published_version || ':provider:' ||
+                            coalesce(state.active_provider_config_id, 0)
+         WHERE state.id = 1 AND ? = 1`,
+        [
+          `outbox:${crypto.randomUUID()}`,
+          input.now,
+          input.now,
+          jobKeyPrefix,
+          input.accepted ? 1 : 0,
+        ],
+      ),
+    ])
   }
 
   async evidenceSiteCount(concept: string): Promise<number> {
@@ -883,10 +1166,15 @@ export class TaxonomyRepository {
        (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
        AND (SELECT count(DISTINCT site_id) FROM taxonomy_concept_evidence
             WHERE normalized_concept = ? AND accepted = 1) >= ?
-       AND NOT EXISTS (SELECT 1 FROM tags WHERE slug = ?)
+       AND (NOT EXISTS (SELECT 1 FROM tags WHERE slug = ?)
+            OR EXISTS (SELECT 1 FROM tags WHERE slug = ? AND status = 'active'
+                       AND canonical = 0 AND automation_locked = 0))
        AND NOT EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ?)
-       AND NOT EXISTS (SELECT 1 FROM taxonomy_locks
-                       WHERE released_at IS NULL AND resource_key = ?)
+        AND NOT EXISTS (SELECT 1 FROM taxonomy_locks
+                        WHERE released_at IS NULL
+                          AND scope <> 'site_assignment'
+                          AND (resource_key = ? OR tag_id =
+                               (SELECT id FROM tags WHERE slug = ?)))
        AND NOT EXISTS (SELECT 1 FROM taxonomy_candidates
                        WHERE status = 'proposed' AND id <> coalesce(?, '')
                        AND (proposed_slug = ? OR normalized_concept = ?))
@@ -901,7 +1189,9 @@ export class TaxonomyRepository {
         input.evidenceThreshold,
         input.slug,
         input.slug,
+        input.slug,
         `alias:${input.slug}`,
+        input.slug,
         input.application?.candidateId ?? null,
         input.slug,
         input.normalizedConcept,
@@ -911,6 +1201,7 @@ export class TaxonomyRepository {
         input.application?.job.leaseToken ?? null,
       ],
     )
+    const identityIndex = 3
     const statements = [
       guard,
       statement(
@@ -933,9 +1224,22 @@ export class TaxonomyRepository {
       statement(
         this.db,
         `INSERT INTO tags
-         (slug, name, canonical, status, revision, automation_locked, created_at, updated_at)
-         VALUES (?, ?, 1, 'active', 1, 0, ?, ?)`,
+          (slug, name, canonical, status, revision, automation_locked, created_at, updated_at)
+          VALUES (?, ?, 1, 'active', 1, 0, ?, ?)
+          ON CONFLICT(slug) DO UPDATE SET
+            name = excluded.name, canonical = 1,
+            revision = tags.revision + 1, updated_at = excluded.updated_at
+          WHERE tags.status = 'active' AND tags.canonical = 0
+            AND tags.automation_locked = 0`,
         [input.slug, input.name, input.now, input.now],
+      ),
+      statement(
+        this.db,
+        `SELECT CASE WHEN EXISTS (
+           SELECT 1 FROM tags WHERE slug = ? AND status = 'active' AND canonical = 1
+         ) THEN (SELECT id FROM tags WHERE slug = ? AND status = 'active' AND canonical = 1)
+         ELSE json_extract('canonical tag identity missing', '$') END AS id`,
+        [input.slug, input.slug],
       ),
       statement(
         this.db,
@@ -970,7 +1274,10 @@ export class TaxonomyRepository {
     ]
     this.appendOntologyApplication(statements, input.application, input.now)
     const results = await this.db.batch(statements)
-    return results[2]?.meta.last_row_id ?? 0
+    const identity = results[identityIndex]?.results[0] as Row | undefined
+    if (!identity)
+      throw new Error('Canonical tag publication returned no identity')
+    return integer(identity, 'id')
   }
 
   async publishAlias(input: {
@@ -1319,6 +1626,36 @@ export class TaxonomyRepository {
       ),
       statement(
         this.db,
+        `UPDATE taxonomy_locks SET
+           tag_id = CASE WHEN tag_id = ? THEN ? ELSE tag_id END,
+           related_tag_id = CASE WHEN related_tag_id = ? THEN ? ELSE related_tag_id END,
+           resource_key = printf('parent:%d:%d',
+             CASE WHEN tag_id = ? THEN ? ELSE tag_id END,
+             CASE WHEN related_tag_id = ? THEN ? ELSE related_tag_id END),
+           revision = revision + 1
+         WHERE released_at IS NULL AND scope = 'parent_edge'
+           AND (tag_id = ? OR related_tag_id = ?)
+           AND CASE WHEN tag_id = ? THEN ? ELSE tag_id END <>
+               CASE WHEN related_tag_id = ? THEN ? ELSE related_tag_id END`,
+        [
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.sourceTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+        ],
+      ),
+      statement(
+        this.db,
         `UPDATE tags SET status = 'merged', canonical = 0, merged_into_tag_id = ?,
          deprecated_at = ?, revision = revision + 1, updated_at = ? WHERE id = ?`,
         [input.targetTagId, input.now, input.now, input.sourceTagId],
@@ -1459,7 +1796,7 @@ export class TaxonomyRepository {
         `INSERT INTO taxonomy_locks
          (id, scope, resource_key, tag_id, related_tag_id, alias, reason,
           revision, created_by, created_at)
-         SELECT 'taxonomy-lock:' || lower(hex(randomblob(16))),
+          SELECT 'taxonomy-lock:' || lower(hex(randomblob(16))),
                 CASE WHEN value LIKE 'alias:%' THEN 'alias'
                      WHEN value LIKE 'parent:%' THEN 'parent_edge' ELSE 'tag' END,
                 value,
@@ -1522,7 +1859,7 @@ export class TaxonomyRepository {
     expectedSourceRevision: number
     expectedTargetRevision: number
     expectedVersion: number
-    alias: string
+    alias: string | null
     lockResourceKeys: string[]
     batchId: string
     eventId: string
@@ -1541,10 +1878,14 @@ export class TaxonomyRepository {
          AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active')
          AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND canonical = 1)
          AND NOT EXISTS (SELECT 1 FROM taxonomy_locks lock
-                         JOIN json_each(?) requested ON requested.value = lock.resource_key
-                         WHERE lock.released_at IS NULL)
-         AND NOT EXISTS (SELECT 1 FROM tags WHERE slug = ? AND id NOT IN (?, ?))
-         AND NOT EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ? AND tag_id NOT IN (?, ?))
+                          JOIN json_each(?) requested ON requested.value = lock.resource_key
+                          WHERE lock.released_at IS NULL
+                            AND NOT (lock.scope = 'parent_edge'
+                                     AND (lock.tag_id = ? OR lock.related_tag_id = ?)))
+         AND (? IS NULL OR NOT EXISTS
+              (SELECT 1 FROM tags WHERE slug = ? AND id NOT IN (?, ?)))
+         AND (? IS NULL OR NOT EXISTS
+              (SELECT 1 FROM tag_aliases WHERE alias = ? AND tag_id NOT IN (?, ?)))
          AND ((SELECT count(*) FROM site_tags WHERE tag_id = ?)
             + (SELECT count(*) FROM tag_aliases WHERE tag_id = ?)
             + (SELECT count(*) FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?)) <= 500
@@ -1556,9 +1897,13 @@ export class TaxonomyRepository {
           input.targetTagId,
           input.expectedTargetRevision,
           lockJson,
+          input.sourceTagId,
+          input.sourceTagId,
+          input.alias,
           input.alias,
           input.sourceTagId,
           input.targetTagId,
+          input.alias,
           input.alias,
           input.sourceTagId,
           input.targetTagId,
@@ -1622,10 +1967,11 @@ export class TaxonomyRepository {
       ]),
       statement(
         this.db,
-        `INSERT INTO tag_aliases (alias, tag_id) VALUES (?, ?)
-         ON CONFLICT(alias) DO UPDATE SET tag_id = excluded.tag_id
-         WHERE tag_aliases.tag_id = ?`,
-        [input.alias, input.targetTagId, input.sourceTagId],
+        `INSERT INTO tag_aliases (alias, tag_id)
+         SELECT ?, ? WHERE ? IS NOT NULL
+          ON CONFLICT(alias) DO UPDATE SET tag_id = excluded.tag_id
+          WHERE tag_aliases.tag_id = ?`,
+        [input.alias, input.targetTagId, input.alias, input.sourceTagId],
       ),
       statement(
         this.db,
@@ -1652,6 +1998,30 @@ export class TaxonomyRepository {
         this.db,
         'DELETE FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?',
         [input.sourceTagId, input.sourceTagId],
+      ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_locks SET
+           tag_id = CASE WHEN tag_id = ? THEN ? ELSE tag_id END,
+           related_tag_id = CASE WHEN related_tag_id = ? THEN ? ELSE related_tag_id END,
+           resource_key = printf('parent:%d:%d',
+             CASE WHEN tag_id = ? THEN ? ELSE tag_id END,
+             CASE WHEN related_tag_id = ? THEN ? ELSE related_tag_id END),
+           revision = revision + 1
+         WHERE released_at IS NULL AND scope = 'parent_edge'
+           AND (tag_id = ? OR related_tag_id = ?)`,
+        [
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.targetTagId,
+          input.sourceTagId,
+          input.sourceTagId,
+        ],
       ),
       statement(
         this.db,
@@ -1689,7 +2059,10 @@ export class TaxonomyRepository {
                      THEN CAST(substr(value, 8 + instr(substr(value, 8), ':')) AS INTEGER)
                      WHEN value LIKE 'merge:%' THEN ? END,
                 CASE WHEN value LIKE 'alias:%' THEN substr(value, 7) END,
-                'Durable admin taxonomy merge', 1, ?, ? FROM json_each(?)`,
+                 'Durable admin taxonomy merge', 1, ?, ? FROM json_each(?)
+          WHERE NOT EXISTS (SELECT 1 FROM taxonomy_locks existing
+                            WHERE existing.resource_key = value
+                              AND existing.released_at IS NULL)`,
         [
           `tag:${input.targetTagId}`,
           input.targetTagId,
@@ -1819,57 +2192,146 @@ export class TaxonomyRepository {
     )
   }
 
-  async applyAssignment(input: {
-    job: TaxonomyJob
-    site: SiteSnapshot
-    tag: TagSnapshot
-    candidateId: string
-    decisionId: string
-    batchId: string
-    eventId: string
-    action: 'add' | 'remove'
-    outcome:
-      'applied' | 'rejected' | 'shadow' | 'locked' | 'obsolete' | 'conservative'
-    confidenceMicros: number
-    reason: string
-    providerConfigId: number
-    providerModel: string
-    policy: RuntimePolicy
-    releaseSha: string
-    now: number
-  }): Promise<boolean> {
-    const wasAssigned = input.site.assignedTagIds.includes(input.tag.id)
-    const shouldAssign = input.action === 'add'
-    const removable = input.site.automationAssignedTagIds.includes(input.tag.id)
-    const mutates =
-      input.outcome === 'applied' &&
-      wasAssigned !== shouldAssign &&
-      (shouldAssign || removable)
-    const before = stableJson({ assigned: wasAssigned, tagId: input.tag.id })
-    const after = stableJson({
-      assigned: mutates ? shouldAssign : wasAssigned,
-      tagId: input.tag.id,
+  async applyAssignments(
+    inputs: readonly AssignmentSettlementInput[],
+    settleJob: boolean,
+  ): Promise<number> {
+    if (!inputs.length) return 0
+    const firstInput = inputs[0]
+    const rows = inputs.map((input) => {
+      if (
+        input.job.id !== firstInput.job.id ||
+        input.job.leaseToken !== firstInput.job.leaseToken ||
+        input.site.id !== firstInput.site.id ||
+        input.batchId !== firstInput.batchId
+      ) {
+        throw new Error('Assignment settlements must share one job and site')
+      }
+      const assignment = input.site.assignments.find(
+        ({ tagId }) => tagId === input.tag.id,
+      )
+      const wasAssigned = Boolean(assignment)
+      const shouldAssign = input.action === 'add'
+      const mutates =
+        input.outcome === 'applied' &&
+        wasAssigned !== shouldAssign &&
+        (shouldAssign || assignment?.source === 'automation')
+      const addedAssignment = {
+        rawName: input.tag.name,
+        source: 'automation' as const,
+        decisionId: input.decisionId,
+        revision: 1,
+        createdAt: input.now,
+        updatedAt: input.now,
+      }
+      const tagProvenance = {
+        id: input.tag.id,
+        status: 'active' as const,
+        revision: input.tag.revision,
+      }
+      const before = {
+        assigned: wasAssigned,
+        tagId: input.tag.id,
+        tag: tagProvenance,
+        ...(assignment ? { assignment } : {}),
+      }
+      const resultingAssignment = mutates
+        ? shouldAssign
+          ? addedAssignment
+          : null
+        : assignment
+      const after = {
+        assigned: mutates ? shouldAssign : wasAssigned,
+        tagId: input.tag.id,
+        tag: tagProvenance,
+        ...(resultingAssignment ? { assignment: resultingAssignment } : {}),
+      }
+      return {
+        candidateId: input.candidateId,
+        attemptId: input.attemptId,
+        candidateKey: input.candidateKey,
+        tagId: input.tag.id,
+        tagRevision: input.tag.revision,
+        payload: stableJson(input.payload),
+        confidenceMicros: input.confidenceMicros,
+        marginMicros: input.marginMicros,
+        rank: input.rank,
+        decisionId: input.decisionId,
+        action: input.action,
+        outcome: input.outcome,
+        wasAssigned,
+        isAssigned: mutates ? shouldAssign : wasAssigned,
+        reason: input.reason.slice(0, 500),
+        expectedAssignment: assignment ?? null,
+        mutates,
+        rawName: resultingAssignment?.rawName ?? input.tag.name,
+        assignment: resultingAssignment,
+        eventId: input.eventId,
+        eventType: mutates
+          ? `assignment_${input.action}`
+          : 'assignment_evaluated',
+        before: stableJson(before),
+        after: stableJson(after),
+      }
     })
-    const statements: D1PreparedStatement[] = [
+    const decisions = stableJson(rows)
+    const statements = [
       statement(
         this.db,
         `SELECT CASE WHEN
-         EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)
-         AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND content_version = ?)
-         AND (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
-         AND (? <> 'applied' OR NOT EXISTS
-              (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
-               AND resource_key IN (?, ?)))
+           EXISTS (SELECT 1 FROM taxonomy_jobs
+                   WHERE id = ?1 AND status = 'leased' AND lease_token = ?2)
+           AND EXISTS (SELECT 1 FROM sites
+                       WHERE id = ?3 AND status = 'active' AND content_version = ?4
+                         AND classification_input_hash = ?5)
+           AND (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?6
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(?7) decision
+             WHERE NOT EXISTS (
+               SELECT 1 FROM tags tag
+               WHERE tag.id = json_extract(decision.value, '$.tagId')
+                 AND tag.status = 'active'
+                 AND tag.revision = json_extract(decision.value, '$.tagRevision')
+                 AND (json_extract(decision.value, '$.outcome') <> 'applied'
+                      OR tag.automation_locked = 0)
+             ) OR (
+               json_type(decision.value, '$.expectedAssignment') = 'null'
+               AND EXISTS (SELECT 1 FROM site_tags assignment
+                           WHERE assignment.site_id = ?3
+                             AND assignment.tag_id = json_extract(decision.value, '$.tagId'))
+             ) OR (
+               json_type(decision.value, '$.expectedAssignment') <> 'null'
+               AND NOT EXISTS (
+                 SELECT 1 FROM site_tags assignment
+                 WHERE assignment.site_id = ?3
+                   AND assignment.tag_id = json_extract(decision.value, '$.tagId')
+                   AND assignment.raw_name = json_extract(decision.value, '$.expectedAssignment.rawName')
+                   AND assignment.source = json_extract(decision.value, '$.expectedAssignment.source')
+                   AND assignment.decision_id IS json_extract(decision.value, '$.expectedAssignment.decisionId')
+                   AND assignment.revision = json_extract(decision.value, '$.expectedAssignment.revision')
+                   AND assignment.created_at = json_extract(decision.value, '$.expectedAssignment.createdAt')
+                   AND assignment.updated_at = json_extract(decision.value, '$.expectedAssignment.updatedAt')
+               )
+             ) OR (
+               json_extract(decision.value, '$.outcome') = 'applied'
+               AND EXISTS (
+                 SELECT 1 FROM taxonomy_locks active
+                 WHERE active.released_at IS NULL AND active.resource_key IN (
+                   'site:' || ?3 || ':tag:' || json_extract(decision.value, '$.tagId'),
+                   'tag:' || json_extract(decision.value, '$.tagId')
+                 )
+               )
+             )
+           )
          THEN 1 ELSE json_extract('assignment settlement guard failed', '$') END`,
         [
-          input.job.id,
-          input.job.leaseToken,
-          input.site.id,
-          input.site.contentVersion,
-          input.job.taxonomyVersion,
-          input.outcome,
-          `site:${input.site.id}:tag:${input.tag.id}`,
-          `tag:${input.tag.id}`,
+          firstInput.job.id,
+          firstInput.job.leaseToken,
+          firstInput.site.id,
+          firstInput.site.contentVersion,
+          firstInput.job.inputHash,
+          firstInput.job.taxonomyVersion,
+          decisions,
         ],
       ),
       statement(
@@ -1879,64 +2341,83 @@ export class TaxonomyRepository {
           resulting_taxonomy_version, summary, applied_at, completed_at, created_at)
          VALUES (?, 'classification', 'applied', 'system', ?, ?, ?, ?, ?, ?)`,
         [
-          input.batchId,
-          input.job.taxonomyVersion,
-          input.job.taxonomyVersion,
-          `Classification settlement for job ${input.job.id}`,
-          input.now,
-          input.now,
-          input.now,
+          firstInput.batchId,
+          firstInput.job.taxonomyVersion,
+          firstInput.job.taxonomyVersion,
+          `Classification settlement for job ${firstInput.job.id}`,
+          firstInput.now,
+          firstInput.now,
+          firstInput.now,
         ],
+      ),
+      statement(
+        this.db,
+        `INSERT OR IGNORE INTO taxonomy_candidates
+         (id, job_id, attempt_id, candidate_key, kind, tag_id, payload,
+          confidence_micros, margin_micros, rank, status, decision_reason,
+          created_at, decided_at)
+         SELECT json_extract(value, '$.candidateId'), ?,
+                json_extract(value, '$.attemptId'), json_extract(value, '$.candidateKey'),
+                'existing_tag', json_extract(value, '$.tagId'),
+                json_extract(value, '$.payload'), json_extract(value, '$.confidenceMicros'),
+                json_extract(value, '$.marginMicros'), json_extract(value, '$.rank'),
+                CASE WHEN json_extract(value, '$.outcome') = 'applied'
+                     THEN 'accepted' ELSE 'deferred' END,
+                json_extract(value, '$.reason'), ?, ?
+         FROM json_each(?)`,
+        [firstInput.job.id, firstInput.now, firstInput.now, decisions],
       ),
       statement(
         this.db,
         `INSERT OR IGNORE INTO tag_assignment_decisions
          (id, site_id, tag_id, job_id, candidate_id, action, outcome, source,
           confidence_micros, was_assigned, is_assigned, reason, input_hash,
-          taxonomy_version, site_content_version, provider_config_id, policy_config_id,
-          created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'provider', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          taxonomy_version, site_content_version, provider_config_id,
+          policy_config_id, created_at)
+         SELECT json_extract(value, '$.decisionId'), ?, json_extract(value, '$.tagId'),
+                ?, json_extract(value, '$.candidateId'), json_extract(value, '$.action'),
+                json_extract(value, '$.outcome'), 'provider',
+                json_extract(value, '$.confidenceMicros'),
+                json_extract(value, '$.wasAssigned'), json_extract(value, '$.isAssigned'),
+                json_extract(value, '$.reason'), ?, ?, ?, ?, ?, ?
+         FROM json_each(?)`,
         [
-          input.decisionId,
-          input.site.id,
-          input.tag.id,
-          input.job.id,
-          input.candidateId,
-          input.action,
-          input.outcome,
-          input.confidenceMicros,
-          wasAssigned ? 1 : 0,
-          mutates ? (shouldAssign ? 1 : 0) : wasAssigned ? 1 : 0,
-          input.reason,
-          input.job.inputHash,
-          input.job.taxonomyVersion,
-          input.site.contentVersion,
-          input.providerConfigId,
-          input.policy.id,
-          input.now,
+          firstInput.site.id,
+          firstInput.job.id,
+          firstInput.job.inputHash,
+          firstInput.job.taxonomyVersion,
+          firstInput.site.contentVersion,
+          firstInput.providerConfigId,
+          firstInput.policy.id,
+          firstInput.now,
+          decisions,
         ],
       ),
-    ]
-    if (mutates && shouldAssign) {
-      statements.push(
-        statement(
-          this.db,
-          `INSERT OR IGNORE INTO site_tags
-           (site_id, tag_id, raw_name, source, decision_id, revision, created_at, updated_at)
-           SELECT ?, id, name, 'automation', ?, 1, ?, ? FROM tags
-           WHERE id = ? AND status = 'active' AND automation_locked = 0`,
-          [input.site.id, input.decisionId, input.now, input.now, input.tag.id],
-        ),
-      )
-    } else if (mutates) {
-      statements.push(
-        statement(
-          this.db,
-          `DELETE FROM site_tags WHERE site_id = ? AND tag_id = ? AND source = 'automation'`,
-          [input.site.id, input.tag.id],
-        ),
-      )
-    }
-    statements.push(
+      statement(
+        this.db,
+        `INSERT INTO site_tags
+         (site_id, tag_id, raw_name, source, decision_id, revision, created_at, updated_at)
+         SELECT ?, json_extract(value, '$.tagId'), json_extract(value, '$.assignment.rawName'),
+                'automation', json_extract(value, '$.decisionId'),
+                json_extract(value, '$.assignment.revision'),
+                json_extract(value, '$.assignment.createdAt'),
+                json_extract(value, '$.assignment.updatedAt')
+         FROM json_each(?)
+         WHERE json_extract(value, '$.mutates') = 1
+           AND json_extract(value, '$.action') = 'add'`,
+        [firstInput.site.id, decisions],
+      ),
+      statement(
+        this.db,
+        `DELETE FROM site_tags
+         WHERE site_id = ? AND EXISTS (
+           SELECT 1 FROM json_each(?) decision
+           WHERE json_extract(decision.value, '$.mutates') = 1
+             AND json_extract(decision.value, '$.action') = 'remove'
+             AND json_extract(decision.value, '$.tagId') = site_tags.tag_id
+         )`,
+        [firstInput.site.id, decisions],
+      ),
       statement(
         this.db,
         `INSERT OR IGNORE INTO taxonomy_audit_events
@@ -1944,58 +2425,88 @@ export class TaxonomyRepository {
           actor_type, actor_id, provider_config_id, provider_model, policy_config_id,
           prompt_hash, schema_hash, input_hash, taxonomy_version_before,
           taxonomy_version_after, scores, evidence, before, after, release_sha, created_at)
-         VALUES (?, ?, ?, ?, ?, 'site_assignment', ?, 'provider', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         SELECT json_extract(value, '$.eventId'), ?, ?,
+                json_extract(value, '$.decisionId'), json_extract(value, '$.eventType'),
+                'site_assignment', ? || ':' || json_extract(value, '$.tagId'),
+                'provider', ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                json_object('confidenceMicros', json_extract(value, '$.confidenceMicros')),
+                json_extract(value, '$.reason'), json_extract(value, '$.before'),
+                json_extract(value, '$.after'), ?, ?
+         FROM json_each(?)`,
         [
-          input.eventId,
-          input.batchId,
-          input.job.id,
-          input.decisionId,
-          mutates ? `assignment_${input.action}` : 'assignment_evaluated',
-          `${input.site.id}:${input.tag.id}`,
-          String(input.providerConfigId),
-          input.providerConfigId,
-          input.providerModel,
-          input.policy.id,
-          input.policy.promptHash,
-          input.policy.schemaHash,
-          input.job.inputHash,
-          input.job.taxonomyVersion,
-          input.job.taxonomyVersion,
-          stableJson({ confidenceMicros: input.confidenceMicros }),
-          input.reason.slice(0, 500),
-          before,
-          after,
-          input.releaseSha,
-          input.now,
+          firstInput.batchId,
+          firstInput.job.id,
+          String(firstInput.site.id),
+          String(firstInput.providerConfigId),
+          firstInput.providerConfigId,
+          firstInput.providerModel,
+          firstInput.policy.id,
+          firstInput.policy.promptHash,
+          firstInput.policy.schemaHash,
+          firstInput.job.inputHash,
+          firstInput.job.taxonomyVersion,
+          firstInput.job.taxonomyVersion,
+          firstInput.releaseSha,
+          firstInput.now,
+          decisions,
         ],
       ),
       statement(
         this.db,
-        `UPDATE taxonomy_candidates SET status = ?, decision_reason = ?, decided_at = ?
-         WHERE id = ? AND status = 'proposed'`,
+        `UPDATE taxonomy_jobs SET status = 'settled', lease_owner = NULL,
+         lease_token = NULL, leased_until = NULL, completed_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'leased' AND lease_token = ? AND ? = 1
+           AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND content_version = ?
+                       AND classification_input_hash = ?)`,
         [
-          input.outcome === 'applied' ? 'accepted' : 'deferred',
-          input.reason,
-          input.now,
-          input.candidateId,
+          firstInput.now,
+          firstInput.now,
+          firstInput.job.id,
+          firstInput.job.leaseToken,
+          settleJob ? 1 : 0,
+          firstInput.site.id,
+          firstInput.site.contentVersion,
+          firstInput.job.inputHash,
         ],
       ),
-    )
-    const results = await this.db.batch(statements)
-    return mutates && (results[3]?.meta.changes ?? 0) > 0
+    ]
+    await this.db.batch(statements)
+    return rows.filter(({ mutates }) => mutates).length
   }
 
-  async markSiteClassified(
-    siteId: number,
-    inputHash: string,
-    contentVersion: number,
+  async settleClassification(
+    job: TaxonomyJob,
+    site: SiteSnapshot,
+    now: number,
   ): Promise<void> {
-    await changes(
-      this.db,
-      `UPDATE sites SET classification_input_hash = ?
-       WHERE id = ? AND content_version = ?`,
-      [inputHash, siteId, contentVersion],
-    )
+    await this.db.batch([
+      statement(
+        this.db,
+        `SELECT CASE WHEN
+           EXISTS (SELECT 1 FROM taxonomy_jobs
+                   WHERE id = ? AND status = 'leased' AND lease_token = ?)
+           AND EXISTS (SELECT 1 FROM sites
+                       WHERE id = ? AND status = 'active' AND content_version = ?
+                         AND classification_input_hash = ?)
+           AND (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
+         THEN 1 ELSE json_extract('classification settlement guard failed', '$') END`,
+        [
+          job.id,
+          job.leaseToken,
+          site.id,
+          site.contentVersion,
+          job.inputHash,
+          job.taxonomyVersion,
+        ],
+      ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_jobs SET status = 'settled', lease_owner = NULL,
+         lease_token = NULL, leased_until = NULL, completed_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'leased' AND lease_token = ?`,
+        [now, now, job.id, job.leaseToken],
+      ),
+    ])
   }
 
   async leaseOutbox(limit: number, now: number, leaseSeconds: number) {
@@ -2078,9 +2589,10 @@ export class TaxonomyRepository {
         `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
          lease_token = NULL, leased_until = NULL, last_error = 'Runnable job queue delivery reconciled.'
          WHERE job_id IN (SELECT id FROM taxonomy_jobs
-                          WHERE status IN ('pending', 'retry_wait')
-                          ORDER BY updated_at, id LIMIT 500)`,
-        [now],
+                           WHERE status IN ('pending', 'retry_wait')
+                           ORDER BY updated_at, id LIMIT 500)
+           AND dispatched_at IS NOT NULL AND dispatched_at <= ?`,
+        [now, now - 300],
       ),
       statement(
         this.db,
@@ -2343,7 +2855,7 @@ export class TaxonomyRepository {
   async backfillSites(cursor: number, limit: number) {
     return all(
       this.db,
-      `SELECT id, name, url, description, content_version FROM sites
+      `SELECT id, name, url, description, content_version, classification_input_hash FROM sites
        WHERE status = 'active' AND id > ? ORDER BY id LIMIT ?`,
       [cursor, limit],
     ).then((rows) =>
@@ -2353,6 +2865,7 @@ export class TaxonomyRepository {
         url: text(row, 'url'),
         description: text(row, 'description'),
         contentVersion: integer(row, 'content_version'),
+        classificationInputHash: nullableText(row, 'classification_input_hash'),
       })),
     )
   }

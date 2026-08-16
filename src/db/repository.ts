@@ -5,10 +5,12 @@ import { sites as seedSites } from '../data/sites'
 import { canonicalTags, resolveTagSlug, tagSlug } from '../data/tags'
 import { websiteUrlKey } from '../lib/website-url'
 import {
+  commitSubmissionReapproval,
   hashSiteTaxonomyMetadata,
   prepareSiteTaxonomyLifecycle,
   preserveRawTagHints,
 } from '../taxonomy/lifecycle'
+import { updateSiteFromSnapshot } from '../taxonomy/site-update'
 import { getDb } from './index'
 import {
   adminLoginAttemptsTable,
@@ -242,14 +244,17 @@ export async function createSite(input: {
   const facts = [{ label: 'Address', value: new URL(input.url).hostname }]
   const metadataHash = await hashSiteTaxonomyMetadata({
     name: input.name,
+    url: input.url,
     description: input.description,
     summary,
     notes,
     facts,
     rawTagHints,
   })
+  const expectedTaxonomyVersion = await taxonomyPublishedVersion()
   const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
     target: { kind: 'slug', value: slug },
+    expectedTaxonomyVersion,
     metadataHash,
     contentVersion: 1,
     rawTagHints,
@@ -360,6 +365,7 @@ export async function moderateSubmission(
     if (ownedSite) {
       const metadataHash = await hashSiteTaxonomyMetadata({
         name: ownedSite.name,
+        url: ownedSite.url,
         description: ownedSite.description,
         summary: ownedSite.summary,
         notes: ownedSite.notes,
@@ -368,8 +374,10 @@ export async function moderateSubmission(
       })
       const changed = metadataHash !== ownedSite.classificationInputHash
       const contentVersion = ownedSite.contentVersion + Number(changed)
+      const expectedTaxonomyVersion = await taxonomyPublishedVersion()
       const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
         target: { kind: 'id', value: ownedSite.id },
+        expectedTaxonomyVersion,
         metadataHash,
         contentVersion,
         rawTagHints,
@@ -377,21 +385,17 @@ export async function moderateSubmission(
         preserveAdminAssignments: true,
         enqueueClassification: changed,
       })
-      await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE submissions
-           SET status = 'approved', reviewed_at = unixepoch()
-           WHERE id = ?1`,
-        ).bind(submission.id),
-        env.DB.prepare(
-          `UPDATE sites
-           SET status = 'active', content_version = ?2,
-               classification_input_hash = ?3,
-               updated_at = CASE WHEN ?4 = 1 THEN unixepoch() ELSE updated_at END
-           WHERE id = ?1 AND source = 'Submission'`,
-        ).bind(ownedSite.id, contentVersion, metadataHash, Number(changed)),
-        ...lifecycle,
-      ])
+      await commitSubmissionReapproval(env.DB, {
+        submissionId: submission.id,
+        siteId: ownedSite.id,
+        expectedContentVersion: ownedSite.contentVersion,
+        expectedInputHash: ownedSite.classificationInputHash,
+        expectedSubmission: submission,
+        contentVersion,
+        metadataHash,
+        changed,
+        lifecycle,
+      })
       return
     }
     const slug = await uniqueSiteSlug(submission.name)
@@ -402,14 +406,17 @@ export async function moderateSubmission(
     ]
     const metadataHash = await hashSiteTaxonomyMetadata({
       name: submission.name,
+      url: submission.url,
       description: submission.description,
       summary,
       notes,
       facts,
       rawTagHints,
     })
+    const expectedTaxonomyVersion = await taxonomyPublishedVersion()
     const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
       target: { kind: 'submission', value: submission.id },
+      expectedTaxonomyVersion,
       metadataHash,
       contentVersion: 1,
       rawTagHints,
@@ -506,62 +513,17 @@ export async function updateSite(input: {
   ).at(0)
   if (!existing) throw new Error('Site not found.')
 
-  const rawTagHints = preserveRawTagHints(input.tags)
-  const metadataHash = await hashSiteTaxonomyMetadata({
-    name: input.name,
-    description: input.description,
-    summary: input.summary,
-    notes: input.notes,
-    facts: input.facts,
-    rawTagHints,
-  })
-  const changed = metadataHash !== existing.classificationInputHash
-  const contentVersion = existing.contentVersion + Number(changed)
-  const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
-    target: { kind: 'id', value: input.id },
-    metadataHash,
-    contentVersion,
-    rawTagHints,
-    assignmentSource: 'admin',
-    enqueueClassification: changed,
-  })
-  const urlKey = websiteUrlKey(input.url)
-  const thumbnailKey = input.thumbnailKey ?? existing.thumbnailKey
-  const statements = [
-    env.DB.prepare(
-      `UPDATE sites
-        SET name = ?1, url = ?2, url_key = ?3, description = ?4, summary = ?5,
-            categories = ?6, poster = ?7, notes = ?8, facts = ?9, accent = ?10,
-            status = ?11, thumbnail_key = ?12, thumbnail_alt = ?13,
-            content_version = ?14, classification_input_hash = ?15,
-            updated_at = CASE WHEN ?16 = 1 THEN unixepoch() ELSE updated_at END
-        WHERE id = ?17`,
-    ).bind(
-      input.name,
-      input.url,
-      urlKey,
-      input.description,
-      input.summary,
-      JSON.stringify(input.categories),
-      input.poster,
-      JSON.stringify(input.notes),
-      JSON.stringify(input.facts),
-      input.accent,
-      input.status,
-      thumbnailKey,
-      input.thumbnailAlt,
-      contentVersion,
-      metadataHash,
-      Number(changed),
-      input.id,
-    ),
-    ...lifecycle,
-  ]
-  await env.DB.batch(statements)
-  return {
-    previousThumbnailKey: existing.thumbnailKey,
-    thumbnailKey,
+  return updateSiteFromSnapshot(env.DB, input, existing)
+}
+
+async function taxonomyPublishedVersion(db: D1Database = env.DB) {
+  const version = await db
+    .prepare('SELECT published_version FROM taxonomy_state WHERE id = 1')
+    .first<number>('published_version')
+  if (!Number.isSafeInteger(version) || Number(version) < 1) {
+    throw new Error('Taxonomy state is unavailable.')
   }
+  return Number(version)
 }
 
 export async function isThumbnailReferenced(key: string) {

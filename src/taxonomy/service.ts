@@ -38,6 +38,97 @@ function releaseSha(env: TaxonomyServiceEnv): string {
   return env.RELEASE_SHA
 }
 
+type AssignmentProvenance = {
+  rawName: string
+  source: 'automation'
+  decisionId: string | null
+  revision: number
+  createdAt: number
+  updatedAt: number
+}
+
+type AssignmentTagProvenance = {
+  id: number
+  status: 'active'
+  revision: number
+}
+
+function assignmentProvenance(
+  value: Record<string, unknown>,
+  label: string,
+): AssignmentProvenance {
+  const assignment = value.assignment
+  if (!assignment || typeof assignment !== 'object') {
+    throw new Error(`Assignment audit event lacks ${label} provenance metadata`)
+  }
+  const row = assignment as Record<string, unknown>
+  if (
+    typeof row.rawName !== 'string' ||
+    !row.rawName.trim() ||
+    row.source !== 'automation' ||
+    !(row.decisionId === null || typeof row.decisionId === 'string') ||
+    !Number.isSafeInteger(row.revision) ||
+    Number(row.revision) < 1 ||
+    !Number.isSafeInteger(row.createdAt) ||
+    !Number.isSafeInteger(row.updatedAt)
+  ) {
+    throw new Error(
+      `Assignment audit event has invalid ${label} provenance metadata`,
+    )
+  }
+  return {
+    rawName: row.rawName,
+    source: 'automation',
+    decisionId: row.decisionId,
+    revision: Number(row.revision),
+    createdAt: Number(row.createdAt),
+    updatedAt: Number(row.updatedAt),
+  }
+}
+
+function assignmentMatches(
+  current: Record<string, unknown> | null,
+  expected: AssignmentProvenance,
+): boolean {
+  return (
+    current?.rawName === expected.rawName &&
+    current.source === expected.source &&
+    current.decisionId === expected.decisionId &&
+    current.revision === expected.revision &&
+    current.createdAt === expected.createdAt &&
+    current.updatedAt === expected.updatedAt
+  )
+}
+
+function assignmentTagProvenance(
+  value: Record<string, unknown>,
+  label: string,
+  expectedTagId: number,
+): AssignmentTagProvenance {
+  const tag = value.tag
+  if (!tag || typeof tag !== 'object') {
+    throw new Error(
+      `Assignment audit event lacks ${label} tag provenance metadata`,
+    )
+  }
+  const row = tag as Record<string, unknown>
+  if (
+    row.id !== expectedTagId ||
+    row.status !== 'active' ||
+    !Number.isSafeInteger(row.revision) ||
+    Number(row.revision) < 1
+  ) {
+    throw new Error(
+      `Assignment audit event has invalid ${label} tag provenance metadata`,
+    )
+  }
+  return {
+    id: expectedTagId,
+    status: 'active',
+    revision: Number(row.revision),
+  }
+}
+
 export class TaxonomyService {
   readonly repository: TaxonomyRepository
   readonly env: TaxonomyServiceEnv
@@ -793,14 +884,26 @@ export class TaxonomyService {
     const sites = await this.repository.backfillSites(siteId - 1, 1)
     const site = sites.find((value) => value.id === siteId)
     if (!site) return null
-    const inputHash = await hashTaxonomyInput({
-      siteId: site.id,
-      name: site.name,
-      url: site.url,
-      description: site.description,
-      tags: [],
-    })
-    const classifierVersion = state.activeProviderConfigId ?? 'none'
+    const inputHash =
+      site.classificationInputHash ??
+      (await hashTaxonomyInput({
+        siteId: site.id,
+        name: site.name,
+        url: site.url,
+        description: site.description,
+        tags: [],
+      }))
+    if (!site.classificationInputHash) {
+      const initialized = await this.repository.db
+        .prepare(
+          `UPDATE sites SET classification_input_hash = ?
+           WHERE id = ? AND content_version = ? AND classification_input_hash IS NULL`,
+        )
+        .bind(inputHash, site.id, site.contentVersion)
+        .run()
+      if (!initialized.meta.changes) return null
+    }
+    const classifierVersion = `${policy.id}-${state.activeProviderConfigId ?? 0}`
     const jobKey = taxonomyJobKey({
       siteId,
       inputHash,
@@ -847,25 +950,34 @@ export class TaxonomyService {
     const now = nowSeconds(this.options)
     let retried = 0
     for (const id of ids) {
-      const updated = await this.repository.db
-        .prepare(
-          `UPDATE taxonomy_jobs SET status = 'pending', attempt_count = 0,
-           available_at = ?, lease_owner = NULL, lease_token = NULL,
-           leased_until = NULL, completed_at = NULL, updated_at = ?,
-           last_error_code = NULL, last_error_summary = NULL
-           WHERE id = ? AND status IN ('dead', 'settled')`,
-        )
-        .bind(now, now, id)
-        .run()
-      if (!updated.meta.changes) continue
-      await this.repository.db
-        .prepare(
-          `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
-           lease_token = NULL, leased_until = NULL, last_error = NULL
-           WHERE job_id = ?`,
-        )
-        .bind(now, id)
-        .run()
+      const results = await this.repository.db.batch([
+        this.repository.db
+          .prepare(
+            `UPDATE taxonomy_jobs SET status = 'pending', attempt_count = 0,
+             available_at = ?, lease_owner = NULL, lease_token = NULL,
+             leased_until = NULL, completed_at = NULL, updated_at = ?,
+             last_error_code = NULL, last_error_summary = NULL
+             WHERE id = ? AND status IN ('dead', 'settled', 'degraded')`,
+          )
+          .bind(now, now, id),
+        this.repository.db
+          .prepare(
+            `INSERT OR IGNORE INTO taxonomy_outbox
+             (id, job_id, payload, available_at, created_at)
+             SELECT 'outbox:' || id, id, json_object('jobId', id), ?, ?
+             FROM taxonomy_jobs WHERE id = ? AND status = 'pending'`,
+          )
+          .bind(now, now, id),
+        this.repository.db
+          .prepare(
+            `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+             lease_token = NULL, leased_until = NULL, last_error = NULL
+             WHERE job_id = ? AND EXISTS (SELECT 1 FROM taxonomy_jobs
+                                          WHERE id = ? AND status = 'pending')`,
+          )
+          .bind(now, id, id),
+      ])
+      if (!(results[0]?.meta.changes ?? 0)) continue
       retried += 1
     }
     return retried
@@ -1226,34 +1338,50 @@ export class TaxonomyService {
       throw new Error('Cannot merge a tag into itself.')
     const now = nowSeconds(this.options)
     const state = await this.repository.loadState()
-    const [source, target, aliases, sourceEdges, affectedRows] =
-      await Promise.all([
-        this.repository.tagRecord(input.sourceId),
-        this.repository.tagRecord(input.targetId),
-        this.repository.db
-          .prepare(
-            'SELECT alias FROM tag_aliases WHERE tag_id = ? ORDER BY alias LIMIT 501',
-          )
-          .bind(input.sourceId)
-          .all<{ alias: string }>(),
-        this.repository.db
-          .prepare(
-            `SELECT parent_tag_id AS parentId, child_tag_id AS childId
+    const [
+      source,
+      target,
+      aliases,
+      sourceEdges,
+      sourceEdgeLocks,
+      affectedRows,
+    ] = await Promise.all([
+      this.repository.tagRecord(input.sourceId),
+      this.repository.tagRecord(input.targetId),
+      this.repository.db
+        .prepare(
+          'SELECT alias FROM tag_aliases WHERE tag_id = ? ORDER BY alias LIMIT 501',
+        )
+        .bind(input.sourceId)
+        .all<{ alias: string }>(),
+      this.repository.db
+        .prepare(
+          `SELECT parent_tag_id AS parentId, child_tag_id AS childId
            FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?
            ORDER BY parent_tag_id, child_tag_id LIMIT 501`,
-          )
-          .bind(input.sourceId, input.sourceId)
-          .all<{ parentId: number; childId: number }>(),
-        this.repository.db
-          .prepare(
-            `SELECT (SELECT count(*) FROM site_tags WHERE tag_id = ?)
+        )
+        .bind(input.sourceId, input.sourceId)
+        .all<{ parentId: number; childId: number }>(),
+      this.repository.db
+        .prepare(
+          `SELECT resource_key AS resourceKey, tag_id AS tagId,
+                    related_tag_id AS relatedTagId FROM taxonomy_locks
+             WHERE released_at IS NULL AND scope = 'parent_edge'
+               AND (tag_id = ? OR related_tag_id = ?)
+             ORDER BY resource_key LIMIT 501`,
+        )
+        .bind(input.sourceId, input.sourceId)
+        .all<{ resourceKey: string; tagId: number; relatedTagId: number }>(),
+      this.repository.db
+        .prepare(
+          `SELECT (SELECT count(*) FROM site_tags WHERE tag_id = ?)
                 + (SELECT count(*) FROM tag_aliases WHERE tag_id = ?)
                 + (SELECT count(*) FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?)
              AS count`,
-          )
-          .bind(input.sourceId, input.sourceId, input.sourceId, input.sourceId)
-          .first<{ count: number }>(),
-      ])
+        )
+        .bind(input.sourceId, input.sourceId, input.sourceId, input.sourceId)
+        .first<{ count: number }>(),
+    ])
     if (
       !source ||
       source.status !== 'active' ||
@@ -1287,12 +1415,17 @@ export class TaxonomyService {
         )
       accepted = [...accepted, edge]
     }
-    const alias = normalizeTaxonomyTag(source.name)
+    const normalizedSourceName = normalizeTaxonomyTag(source.name)
+    const alias =
+      normalizedSourceName === source.slug ||
+      normalizedSourceName === target.slug
+        ? null
+        : normalizedSourceName
     const lockResourceKeys = [
       `merge:${input.sourceId}:${input.targetId}`,
       `tag:${input.sourceId}`,
       `tag:${input.targetId}`,
-      `alias:${alias}`,
+      ...(alias ? [`alias:${alias}`] : []),
       ...aliases.results.map((row) => `alias:${row.alias}`),
       ...sourceEdges.results
         .map((edge) => ({
@@ -1304,7 +1437,21 @@ export class TaxonomyService {
         .filter((edge) => edge.parentId !== edge.childId)
         .map((edge) => `parent:${edge.parentId}:${edge.childId}`),
     ]
+    const originalSourceEdgeKeys = new Set(
+      sourceEdgeLocks.results.map((lock) => lock.resourceKey),
+    )
     for (const resourceKey of lockResourceKeys) {
+      if (originalSourceEdgeKeys.has(resourceKey)) continue
+      if (
+        sourceEdgeLocks.results.some(
+          ({ tagId, relatedTagId }) =>
+            resourceKey ===
+            `parent:${tagId === input.sourceId ? input.targetId : tagId}:${
+              relatedTagId === input.sourceId ? input.targetId : relatedTagId
+            }`,
+        )
+      )
+        continue
       if (await this.repository.hasActiveLock(resourceKey))
         throw new Error(
           `Taxonomy merge is blocked by active lock: ${resourceKey}`,
@@ -1409,12 +1556,40 @@ export class TaxonomyService {
       now,
       releaseSha(this.env),
       actorId,
-      this.repository.db
-        .prepare(
-          `UPDATE taxonomy_locks SET released_by = ?, released_at = ?, release_reason = ?
-         WHERE id = ? AND released_at IS NULL`,
-        )
-        .bind(actorId, now, reason, id),
+      [
+        this.repository.db
+          .prepare(
+            `SELECT CASE WHEN EXISTS (SELECT 1 FROM taxonomy_locks
+                                     WHERE id = ? AND released_at IS NULL)
+             THEN 1 ELSE json_extract('lock release guard failed', '$') END`,
+          )
+          .bind(id),
+        this.repository.db
+          .prepare(
+            `UPDATE taxonomy_locks SET released_by = ?, released_at = ?, release_reason = ?
+             WHERE id = ? AND released_at IS NULL`,
+          )
+          .bind(actorId, now, reason, id),
+        this.repository.db
+          .prepare(
+            `UPDATE tags SET automation_locked = 0, revision = revision + 1,
+             updated_at = ?
+             WHERE automation_locked = 1
+               AND id IN (
+                 SELECT tag_id FROM taxonomy_locks WHERE id = ? AND tag_id IS NOT NULL
+                 UNION
+                 SELECT related_tag_id FROM taxonomy_locks
+                 WHERE id = ? AND related_tag_id IS NOT NULL
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM taxonomy_locks active
+                 WHERE active.released_at IS NULL
+                   AND active.scope <> 'site_assignment'
+                   AND (active.tag_id = tags.id OR active.related_tag_id = tags.id)
+               )`,
+          )
+          .bind(now, id, id),
+      ],
     )
     return true
   }
@@ -1449,8 +1624,12 @@ export class TaxonomyService {
       scope === 'event'
         ? `SELECT * FROM taxonomy_audit_events WHERE id = ?`
         : scope === 'batch'
-          ? `SELECT * FROM taxonomy_audit_events WHERE batch_id = ? ORDER BY created_at DESC, id DESC LIMIT 501`
-          : `SELECT * FROM taxonomy_audit_events WHERE entity_type = 'site_assignment' AND entity_id LIKE ? ORDER BY created_at DESC, id DESC LIMIT 501`
+          ? `SELECT * FROM taxonomy_audit_events WHERE batch_id = ?
+             AND event_type IN ('assignment_add','assignment_remove','alias_created','parent_created')
+             ORDER BY created_at DESC, id DESC`
+          : `SELECT * FROM taxonomy_audit_events WHERE entity_type = 'site_assignment'
+             AND event_type IN ('assignment_add','assignment_remove') AND entity_id LIKE ?
+             ORDER BY created_at DESC, id DESC`
     const parameter = scope === 'site' ? `${value}:%` : value
     const result = await this.repository.db
       .prepare(query)
@@ -1458,10 +1637,22 @@ export class TaxonomyService {
       .all<Row>()
     const events = result.results
     if (!events.length) throw new Error('No rollback events found')
-    if (events.length > 500) {
-      throw new Error(
-        'Rollback scope exceeds 500 events; split it into smaller scopes',
+    if (
+      events.every((event) =>
+        ['assignment_add', 'assignment_remove'].includes(
+          String(event.event_type),
+        ),
       )
+    ) {
+      return this.rollbackAssignments({
+        scope,
+        value,
+        actorId,
+        batchId,
+        now,
+        stateVersion: state.publishedVersion,
+        events,
+      })
     }
     const statements: D1PreparedStatement[] = [
       this.repository.db
@@ -1525,31 +1716,121 @@ export class TaxonomyService {
           .bind(`site:${siteId}:tag:${tagId}`, `tag:${tagId}`)
           .first('1')
         if (locked) throw new Error('Rollback target is locked')
-        const assigned = Boolean(
-          await this.repository.db
-            .prepare('SELECT 1 FROM site_tags WHERE site_id = ? AND tag_id = ?')
-            .bind(siteId, tagId)
-            .first('1'),
-        )
-        if (assigned !== Boolean(after.assigned)) {
-          throw new Error('Rollback target no longer matches audited state')
+        const beforeTag = assignmentTagProvenance(before, 'before', tagId)
+        const afterTag = assignmentTagProvenance(after, 'after', tagId)
+        if (beforeTag.revision !== afterTag.revision) {
+          throw new Error('Assignment audit tag provenance is inconsistent')
         }
+        const currentTag = await this.repository.db
+          .prepare('SELECT status, revision FROM tags WHERE id = ?')
+          .bind(tagId)
+          .first<Row>()
+        if (
+          !currentTag ||
+          currentTag.status !== afterTag.status ||
+          currentTag.revision !== afterTag.revision
+        ) {
+          throw new Error(
+            'Rollback tag status or revision no longer matches audited state',
+          )
+        }
+        const current = await this.repository.db
+          .prepare(
+            `SELECT raw_name AS rawName, source, decision_id AS decisionId,
+                    revision, created_at AS createdAt, updated_at AS updatedAt
+             FROM site_tags WHERE site_id = ? AND tag_id = ?`,
+          )
+          .bind(siteId, tagId)
+          .first<Row>()
         statements.push(
-          before.assigned === true
-            ? this.repository.db
-                .prepare(
-                  `INSERT INTO site_tags
-                   (site_id, tag_id, raw_name, source, revision, created_at, updated_at)
-                   SELECT ?, id, name, 'automation', 1, ?, ? FROM tags
-                   WHERE id = ? AND status = 'active'`,
-                )
-                .bind(siteId, now, now, tagId)
-            : this.repository.db
-                .prepare(
-                  'DELETE FROM site_tags WHERE site_id = ? AND tag_id = ?',
-                )
-                .bind(siteId, tagId),
+          this.repository.db
+            .prepare(
+              `SELECT CASE WHEN EXISTS (
+                 SELECT 1 FROM tags WHERE id = ? AND status = ? AND revision = ?
+               ) THEN 1 ELSE json_extract('assignment rollback tag changed', '$') END`,
+            )
+            .bind(tagId, afterTag.status, afterTag.revision),
         )
+        if (eventType === 'assignment_add') {
+          if (before.assigned !== false || after.assigned !== true) {
+            throw new Error('Assignment add audit state is inconsistent')
+          }
+          const expected = assignmentProvenance(after, 'applied')
+          if (!assignmentMatches(current, expected)) {
+            throw new Error(
+              'Rollback target provenance or revision no longer matches audited state',
+            )
+          }
+          statements.push(
+            this.repository.db
+              .prepare(
+                `SELECT CASE WHEN EXISTS (
+                   SELECT 1 FROM site_tags WHERE site_id = ? AND tag_id = ?
+                     AND raw_name = ? AND source = 'automation'
+                     AND decision_id IS ? AND revision = ?
+                     AND created_at = ? AND updated_at = ?
+                 ) THEN 1 ELSE json_extract('assignment rollback provenance changed', '$') END`,
+              )
+              .bind(
+                siteId,
+                tagId,
+                expected.rawName,
+                expected.decisionId,
+                expected.revision,
+                expected.createdAt,
+                expected.updatedAt,
+              ),
+            this.repository.db
+              .prepare(
+                `DELETE FROM site_tags WHERE site_id = ? AND tag_id = ?
+                 AND raw_name = ? AND source = 'automation'
+                 AND decision_id IS ? AND revision = ?
+                 AND created_at = ? AND updated_at = ?`,
+              )
+              .bind(
+                siteId,
+                tagId,
+                expected.rawName,
+                expected.decisionId,
+                expected.revision,
+                expected.createdAt,
+                expected.updatedAt,
+              ),
+          )
+        } else {
+          if (before.assigned !== true || after.assigned !== false) {
+            throw new Error('Assignment removal audit state is inconsistent')
+          }
+          const removed = assignmentProvenance(before, 'removed')
+          if (current) {
+            throw new Error('Rollback target no longer matches audited removal')
+          }
+          statements.push(
+            this.repository.db
+              .prepare(
+                `SELECT CASE WHEN NOT EXISTS (
+                   SELECT 1 FROM site_tags WHERE site_id = ? AND tag_id = ?
+                 ) THEN 1 ELSE json_extract('assignment rollback target was reassigned', '$') END`,
+              )
+              .bind(siteId, tagId),
+            this.repository.db
+              .prepare(
+                `INSERT INTO site_tags
+                 (site_id, tag_id, raw_name, source, decision_id, revision,
+                  created_at, updated_at)
+                 VALUES (?, ?, ?, 'automation', ?, ?, ?, ?)`,
+              )
+              .bind(
+                siteId,
+                tagId,
+                removed.rawName,
+                removed.decisionId,
+                removed.revision,
+                removed.createdAt,
+                removed.updatedAt,
+              ),
+          )
+        }
       } else if (eventType === 'alias_created') {
         const targetTagId = Number(after.targetTagId)
         const targetTagRevision = Number(after.targetTagRevision)
@@ -1697,6 +1978,309 @@ export class TaxonomyService {
       batchId,
       status: 'applied',
       compensatedEvents: events.length,
+    }
+  }
+
+  private async rollbackAssignments(input: {
+    scope: 'event' | 'site' | 'batch'
+    value: string
+    actorId: string
+    batchId: string
+    now: number
+    stateVersion: number
+    events: Row[]
+  }): Promise<RollbackResult> {
+    const seenEntities = new Set<string>()
+    const targets = input.events.map((event) => {
+      const entityId = String(event.entity_id)
+      const [siteId, tagId] = entityId.split(':').map(Number)
+      if (!siteId || !tagId) throw new Error('Invalid assignment audit entity')
+      return {
+        eventId: String(event.id),
+        entityId,
+        siteId,
+        tagId,
+        createdAt: Number(event.created_at),
+      }
+    })
+    const targetIssue = await this.repository.db
+      .prepare(
+        `WITH targets AS (
+           SELECT json_extract(value, '$.eventId') AS event_id,
+                  json_extract(value, '$.entityId') AS entity_id,
+                  json_extract(value, '$.siteId') AS site_id,
+                  json_extract(value, '$.tagId') AS tag_id,
+                  json_extract(value, '$.createdAt') AS created_at
+           FROM json_each(?)
+         )
+         SELECT CASE
+           WHEN EXISTS (
+             SELECT 1 FROM targets target JOIN taxonomy_audit_events later
+               ON later.entity_type = 'site_assignment'
+              AND later.entity_id = target.entity_id
+              AND (later.created_at > target.created_at OR
+                   (later.created_at = target.created_at AND later.id > target.event_id))
+              AND later.rollback_of_event_id IS NULL
+              AND later.id NOT IN (SELECT event_id FROM targets)
+           ) THEN 'Rollback has a later dependent event'
+           WHEN EXISTS (
+             SELECT 1 FROM targets target JOIN taxonomy_locks lock
+               ON lock.released_at IS NULL AND lock.resource_key IN (
+                    'site:' || target.site_id || ':tag:' || target.tag_id,
+                    'tag:' || target.tag_id)
+           ) THEN 'Rollback target is locked'
+           ELSE NULL END AS issue`,
+      )
+      .bind(stableJson(targets))
+      .first<string>('issue')
+    if (targetIssue) throw new Error(targetIssue)
+    const rows = input.events.map((event) => {
+      const eventId = String(event.id)
+      const entityId = String(event.entity_id)
+      const eventType = String(event.event_type)
+      const [siteId, tagId] = entityId.split(':').map(Number)
+      if (!siteId || !tagId) throw new Error('Invalid assignment audit entity')
+      if (seenEntities.has(entityId)) {
+        throw new Error('Rollback scope has multiple events for one assignment')
+      }
+      seenEntities.add(entityId)
+      const before = JSON.parse(String(event.before)) as Record<string, unknown>
+      const after = JSON.parse(String(event.after)) as Record<string, unknown>
+      const beforeTag = assignmentTagProvenance(before, 'before', tagId)
+      const afterTag = assignmentTagProvenance(after, 'after', tagId)
+      if (beforeTag.revision !== afterTag.revision) {
+        throw new Error('Assignment audit tag provenance is inconsistent')
+      }
+      const assignment =
+        eventType === 'assignment_add'
+          ? assignmentProvenance(after, 'applied')
+          : assignmentProvenance(before, 'removed')
+      if (
+        (eventType === 'assignment_add' &&
+          (before.assigned !== false || after.assigned !== true)) ||
+        (eventType === 'assignment_remove' &&
+          (before.assigned !== true || after.assigned !== false))
+      ) {
+        throw new Error('Assignment audit state is inconsistent')
+      }
+      return {
+        eventId,
+        compensationId: `taxonomy-compensation:${crypto.randomUUID()}`,
+        entityId,
+        siteId,
+        tagId,
+        action: eventType === 'assignment_add' ? 'delete' : 'insert',
+        createdAt: Number(event.created_at),
+        tagRevision: afterTag.revision,
+        assignment,
+        before: stableJson(before),
+        after: stableJson(after),
+      }
+    })
+    const decisions = stableJson(rows)
+    const preflight = await this.repository.db
+      .prepare(
+        `WITH decisions AS (
+           SELECT json_extract(value, '$.eventId') AS event_id,
+                  json_extract(value, '$.entityId') AS entity_id,
+                  json_extract(value, '$.siteId') AS site_id,
+                  json_extract(value, '$.tagId') AS tag_id,
+                  json_extract(value, '$.action') AS action,
+                  json_extract(value, '$.createdAt') AS created_at,
+                  json_extract(value, '$.tagRevision') AS tag_revision,
+                  json_extract(value, '$.assignment.rawName') AS raw_name,
+                  json_extract(value, '$.assignment.decisionId') AS decision_id,
+                  json_extract(value, '$.assignment.revision') AS revision,
+                  json_extract(value, '$.assignment.createdAt') AS assignment_created_at,
+                  json_extract(value, '$.assignment.updatedAt') AS assignment_updated_at
+           FROM json_each(?)
+         )
+         SELECT CASE
+           WHEN EXISTS (
+             SELECT 1 FROM decisions decision JOIN taxonomy_audit_events later
+               ON later.entity_type = 'site_assignment'
+              AND later.entity_id = decision.entity_id
+              AND (later.created_at > decision.created_at OR
+                   (later.created_at = decision.created_at AND later.id > decision.event_id))
+              AND later.rollback_of_event_id IS NULL
+              AND later.id NOT IN (SELECT event_id FROM decisions)
+           ) THEN 'Rollback has a later dependent event'
+           WHEN EXISTS (
+             SELECT 1 FROM decisions decision JOIN taxonomy_locks lock
+               ON lock.released_at IS NULL AND lock.resource_key IN (
+                    'site:' || decision.site_id || ':tag:' || decision.tag_id,
+                    'tag:' || decision.tag_id)
+           ) THEN 'Rollback target is locked'
+           WHEN EXISTS (
+             SELECT 1 FROM decisions decision LEFT JOIN tags tag ON tag.id = decision.tag_id
+             WHERE tag.id IS NULL OR tag.status <> 'active'
+                OR tag.revision <> decision.tag_revision
+           ) THEN 'Rollback tag status or revision no longer matches audited state'
+           WHEN EXISTS (
+             SELECT 1 FROM decisions decision
+             WHERE (decision.action = 'delete' AND NOT EXISTS (
+                     SELECT 1 FROM site_tags assignment
+                     WHERE assignment.site_id = decision.site_id
+                       AND assignment.tag_id = decision.tag_id
+                       AND assignment.raw_name = decision.raw_name
+                       AND assignment.source = 'automation'
+                       AND assignment.decision_id IS decision.decision_id
+                       AND assignment.revision = decision.revision
+                       AND assignment.created_at = decision.assignment_created_at
+                       AND assignment.updated_at = decision.assignment_updated_at))
+                OR (decision.action = 'insert' AND EXISTS (
+                     SELECT 1 FROM site_tags assignment
+                     WHERE assignment.site_id = decision.site_id
+                       AND assignment.tag_id = decision.tag_id))
+           ) THEN 'Rollback target provenance or revision no longer matches audited state'
+           ELSE NULL END AS issue`,
+      )
+      .bind(decisions)
+      .first<string>('issue')
+    if (preflight) throw new Error(preflight)
+
+    const guardSql = `SELECT CASE WHEN
+      (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?1
+      AND NOT EXISTS (
+        WITH decisions AS (
+          SELECT json_extract(value, '$.eventId') AS event_id,
+                 json_extract(value, '$.entityId') AS entity_id,
+                 json_extract(value, '$.siteId') AS site_id,
+                 json_extract(value, '$.tagId') AS tag_id,
+                 json_extract(value, '$.action') AS action,
+                 json_extract(value, '$.createdAt') AS created_at,
+                 json_extract(value, '$.tagRevision') AS tag_revision,
+                 json_extract(value, '$.assignment.rawName') AS raw_name,
+                 json_extract(value, '$.assignment.decisionId') AS decision_id,
+                 json_extract(value, '$.assignment.revision') AS revision,
+                 json_extract(value, '$.assignment.createdAt') AS assignment_created_at,
+                 json_extract(value, '$.assignment.updatedAt') AS assignment_updated_at
+          FROM json_each(?2)
+        )
+        SELECT 1 FROM decisions decision
+        WHERE EXISTS (
+          SELECT 1 FROM taxonomy_audit_events later
+          WHERE later.entity_type = 'site_assignment'
+            AND later.entity_id = decision.entity_id
+            AND (later.created_at > decision.created_at OR
+                 (later.created_at = decision.created_at AND later.id > decision.event_id))
+            AND later.rollback_of_event_id IS NULL
+            AND later.id NOT IN (SELECT event_id FROM decisions)
+        ) OR EXISTS (
+          SELECT 1 FROM taxonomy_locks lock WHERE lock.released_at IS NULL
+            AND lock.resource_key IN (
+              'site:' || decision.site_id || ':tag:' || decision.tag_id,
+              'tag:' || decision.tag_id)
+        ) OR NOT EXISTS (
+          SELECT 1 FROM tags tag WHERE tag.id = decision.tag_id
+            AND tag.status = 'active' AND tag.revision = decision.tag_revision
+        ) OR (decision.action = 'delete' AND NOT EXISTS (
+          SELECT 1 FROM site_tags assignment
+          WHERE assignment.site_id = decision.site_id
+            AND assignment.tag_id = decision.tag_id
+            AND assignment.raw_name = decision.raw_name
+            AND assignment.source = 'automation'
+            AND assignment.decision_id IS decision.decision_id
+            AND assignment.revision = decision.revision
+            AND assignment.created_at = decision.assignment_created_at
+            AND assignment.updated_at = decision.assignment_updated_at
+        )) OR (decision.action = 'insert' AND EXISTS (
+          SELECT 1 FROM site_tags assignment WHERE assignment.site_id = decision.site_id
+            AND assignment.tag_id = decision.tag_id
+        ))
+      )
+      THEN 1 ELSE json_extract('assignment rollback guard failed', '$') END`
+    const statements: D1PreparedStatement[] = [
+      this.repository.db.prepare(guardSql).bind(input.stateVersion, decisions),
+      this.repository.db
+        .prepare(
+          `INSERT INTO taxonomy_change_batches
+           (id, kind, status, actor_type, actor_id, expected_taxonomy_version,
+            resulting_taxonomy_version, summary, applied_at, created_at)
+           VALUES (?, 'rollback', 'rolling_back', 'admin', ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          input.batchId,
+          input.actorId,
+          input.stateVersion,
+          input.stateVersion + 1,
+          `Compensating rollback for ${input.scope}:${input.value}`,
+          input.now,
+          input.now,
+        ),
+      this.repository.db
+        .prepare(
+          `DELETE FROM site_tags WHERE EXISTS (
+             SELECT 1 FROM json_each(?) decision
+             WHERE json_extract(decision.value, '$.action') = 'delete'
+               AND site_tags.site_id = json_extract(decision.value, '$.siteId')
+               AND site_tags.tag_id = json_extract(decision.value, '$.tagId'))`,
+        )
+        .bind(decisions),
+      this.repository.db
+        .prepare(
+          `INSERT INTO site_tags
+           (site_id, tag_id, raw_name, source, decision_id, revision, created_at, updated_at)
+           SELECT json_extract(value, '$.siteId'), json_extract(value, '$.tagId'),
+                  json_extract(value, '$.assignment.rawName'), 'automation',
+                  json_extract(value, '$.assignment.decisionId'),
+                  json_extract(value, '$.assignment.revision'),
+                  json_extract(value, '$.assignment.createdAt'),
+                  json_extract(value, '$.assignment.updatedAt')
+           FROM json_each(?) WHERE json_extract(value, '$.action') = 'insert'`,
+        )
+        .bind(decisions),
+      this.repository.db
+        .prepare(
+          `INSERT INTO taxonomy_audit_events
+           (id, batch_id, event_type, entity_type, entity_id, actor_type, actor_id,
+            taxonomy_version_before, taxonomy_version_after, scores, evidence, before,
+            after, release_sha, rollback_of_event_id, compensates_event_id, created_at)
+           SELECT json_extract(value, '$.compensationId'), ?, 'compensating_rollback',
+                  'site_assignment', json_extract(value, '$.entityId'), 'admin', ?, ?, ?,
+                  '{}', '', json_extract(value, '$.after'), json_extract(value, '$.before'),
+                  ?, json_extract(value, '$.eventId'), json_extract(value, '$.eventId'), ?
+           FROM json_each(?)`,
+        )
+        .bind(
+          input.batchId,
+          input.actorId,
+          input.stateVersion,
+          input.stateVersion + 1,
+          releaseSha(this.env),
+          input.now,
+          decisions,
+        ),
+      this.repository.db
+        .prepare(
+          `UPDATE taxonomy_state SET published_version = ?, updated_at = ?
+           WHERE id = 1 AND published_version = ?`,
+        )
+        .bind(input.stateVersion + 1, input.now, input.stateVersion),
+    ]
+    if (input.scope === 'batch') {
+      statements.push(
+        this.repository.db
+          .prepare(
+            `UPDATE taxonomy_change_batches SET status = 'rolled_back', completed_at = ?
+             WHERE id = ? AND status = 'applied'`,
+          )
+          .bind(input.now, input.value),
+      )
+    }
+    statements.push(
+      this.repository.db
+        .prepare(
+          `UPDATE taxonomy_change_batches SET status = 'applied', completed_at = ?
+           WHERE id = ? AND status = 'rolling_back'`,
+        )
+        .bind(input.now, input.batchId),
+    )
+    await this.repository.db.batch(statements)
+    return {
+      batchId: input.batchId,
+      status: 'applied',
+      compensatedEvents: rows.length,
     }
   }
 }

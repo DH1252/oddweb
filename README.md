@@ -44,11 +44,11 @@ npm run db:migrations:remote:check
 npm run db:migrate:remote
 ```
 
-Production deployment uploads an inactive Worker version before applying migrations, then promotes that exact version only after migrations succeed. Additive migrations leave the current Worker serving normally. A reviewed migration marked `release: maintenance-required` first deploys a minimal 503 maintenance Worker, applies the migration, and then promotes the application, preventing old code from running against a rebuilt schema.
+Production deployment first asks Wrangler for the unapplied D1 migration list. After verification it copies the Vite-generated server/client output and maintenance Worker into a release-specific `.wrangler` artifact, rebases every generated config to immutable inputs, and dry-runs the exact production, cron-deferred, previous-trigger, and migration-aware maintenance configs before changing remote state. A code-only release uploads that verified artifact as an inactive Worker version without exporting D1. Every release clears cron schedules and pauses queue delivery when it was initially running before promoting new application code. Releases with pending D1 or Durable Object lifecycle migrations additionally deploy the fetch-only 503 Worker, set `app_state['release:maintenance']` for the global request barrier, wait for HTTP stabilization, and drain all taxonomy job and outbox leases, including expired lease rows, before recording the recovery point. The barrier remains set through backup and migration and is cleared only after the new application is active immediately before its smoke test. The application passes that gate while asynchronous delivery is held, and only then are production triggers and queue consumer settings reconciled, postdeploy checks run, and queue delivery restored to its asserted initial state for the trigger-aware smoke gate.
 
 Use expand/migrate/contract changes across separate releases: first add nullable columns/tables/indexes, then deploy code that can read both shapes and backfill data, and only remove old schema in a later release after rollback to old code is no longer required. The release check rejects unmarked table/column drops and renames. A reviewed SQLite table rebuild must carry the `release: maintenance-required` marker and is released through the maintenance path.
 
-SQLite table rebuilds (`CREATE ..._new`, copy, drop, rename) are contract migrations. Split them into additive columns/indexes/triggers where possible. When a rebuild is required, the release script provides a bounded maintenance response and restores the previous Worker if migration application fails; the pre-release D1 export remains the database recovery point.
+SQLite table rebuilds (`CREATE ..._new`, copy, drop, rename) are contract migrations. Split them into additive columns/indexes/triggers where possible. When a rebuild is required, the release script provides a bounded maintenance response and keeps maintenance active if migration application or verification fails; the under-maintenance D1 export and recorded Time Travel bookmark are the database recovery points.
 
 ## R2 Thumbnails
 
@@ -72,16 +72,23 @@ npx wrangler login
 npx wrangler secret put ADMIN_USERNAME
 npx wrangler secret put ADMIN_PASSWORD_HASH
 npx wrangler secret put ADMIN_SESSION_SECRET
+npx wrangler secret put TAXONOMY_MASTER_KEY_V1
 ```
 
-Set an absolute backup directory outside the repository. `npm run deploy` refuses to continue without it, exports D1 before any migration, verifies the export is non-empty, and writes SHA-256 and JSON provenance sidecars:
+Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 cannot report `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without both settings. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
 
 ```bash
 export BACKUP_DIR=/absolute/path/to/secured/oddweb-backups
+export CLOUDFLARE_ACCOUNT_ID=your-account-id
+export CLOUDFLARE_API_TOKEN=queue-read-write-release-token
 npm run deploy
 ```
 
-The release command requires a clean worktree whose `HEAD` exactly matches its configured upstream. It runs all verification gates, records the commit SHA and UTC release time, uploads a strict inactive version tagged with that provenance, applies pending remote D1 migrations through either the additive or maintenance path, promotes the tagged version to 100%, and smoke-tests bindings, canonical metadata, robots, sitemap, structured data, real 404 handling, and private-route noindex controls. Additive-release smoke failures restore the previous Worker. Contract-migration failures keep maintenance active because old code may no longer match the database; restore the verified D1 backup or fix forward before serving traffic. `PRODUCTION_URL` must remain the canonical origin. Do not run the final command from CI without an intentional production approval and Cloudflare credentials.
+Migration releases require the active Worker to expose release fence version 1.
+After introducing or upgrading the fence protocol, deploy once with no pending D1
+or Durable Object migrations before running a migration-bearing release.
+
+The release command requires a clean worktree whose `HEAD` exactly matches its configured upstream, repeats that check after route generation and verification, and checks it again immediately before the first remote mutation. Predeploy remote validation checks provisioned resources only, so a fix-forward release can start while the fetch-only maintenance Worker is active; deployed handlers, bindings, queue consumer, DLQ, consumer settings, and secret metadata are validated after promotion. The release journal is written before the first mutation and records the initial queue state, barrier transitions, stabilization and lease drain, recovery point, migrations, application promotion, trigger restoration, final queue state, completion, and containment failures. The release compares the active Worker version's supported `migration_tag` metadata with the configured Durable Object migration list. Historical, already-applied Durable Object migrations therefore continue through inactive version upload; only a genuinely pending lifecycle migration uses direct deployment of the verified built artifact under maintenance. A first-gate code-only failure restores the previous code and reconstructable routes/crons plus the exact live pre-release consumer snapshot, then restores queue delivery only if every restoration step succeeds. A release aborts before mutation if the previous routes and cron schedules cannot be reconstructed from the active release SHA. A trigger-gate failure keeps queue delivery paused and cron schedules cleared. Durable Object lifecycle changes are forward-only in this workflow: Cloudflare does not permit rollback across a lifecycle migration, so keep maintenance active, keep the D1 barrier set, and fix forward at the active migration tag. `PRODUCTION_URL` must remain the canonical origin. Do not run the final command from CI without an intentional production approval and Cloudflare credentials.
 
 The production Worker disables its `workers.dev` endpoint and per-version preview URLs. `oddweb.page` is the only indexable origin; `www` must permanently redirect to it. Production smoke tests require both alternate-host policies and fail if either regresses. `/health` is an uncached deployment marker reporting environment, release SHA, and release time. Operational errors use structured object logs; invocation logs are sampled at 10% and traces at 1% in Cloudflare observability. Wrangler uploads generated source maps so persisted stack traces resolve to application source; source maps are not served as public static assets.
 
@@ -109,14 +116,16 @@ Manual DNS and Cloudflare setup is intentionally not automated by this repositor
 
 ## Staging
 
-Staging must use isolated D1 and R2 resources. Resource creation remains an explicit operator task; this repository does not invent or provision IDs. Copy `staging.env.example` outside the repository or replace its placeholders locally after provisioning:
+Staging must use an isolated Worker, D1 database, R2 bucket, taxonomy queue, and taxonomy DLQ. Queue names must be distinct, non-production names prefixed with `STAGING_WORKER_NAME`. Resource creation remains an explicit operator task; this repository does not invent or provision IDs. Provision all four storage and messaging resources, then copy `staging.env.example` outside the repository and fill in the returned D1 ID and chosen names:
 
 ```bash
 npx wrangler d1 create oddweb-staging
 npx wrangler r2 bucket create oddweb-thumbnails-staging
+npx wrangler queues create oddweb-staging-taxonomy
+npx wrangler queues create oddweb-staging-taxonomy-dlq
 ```
 
-Generate and validate an executable, gitignored Wrangler config from explicit values:
+Generate and validate an executable, gitignored Wrangler config from explicit values. `staging:verify` validates local configuration and the pre-provisioned D1, R2, queue, and DLQ, but intentionally does not require a deployed Worker or remote handlers, so it works before the first deployment:
 
 ```bash
 set -a
@@ -125,17 +134,15 @@ set +a
 npm run staging:verify
 ```
 
-The generated config is `.wrangler/staging.jsonc` and targets the production build output created by `npm run staging:verify`. Configure all three admin secrets against that config, apply migrations, deploy strictly, then smoke-test:
+The generated config is `.wrangler/staging.jsonc` and targets the production build output created by `npm run staging:verify`. It records the current Git SHA and generation time. Wrangler cannot set required secrets before a Worker exists, so the first deployment must supply all four secrets atomically through a secured `.env` or JSON file outside the repository. The file must be readable only by its owner and define `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, and a 32-byte base64url `TAXONOMY_MASTER_KEY_V1`:
 
 ```bash
-npx wrangler secret put ADMIN_USERNAME --config .wrangler/staging.jsonc
-npx wrangler secret put ADMIN_PASSWORD_HASH --config .wrangler/staging.jsonc
-npx wrangler secret put ADMIN_SESSION_SECRET --config .wrangler/staging.jsonc
-npx wrangler d1 migrations list "$STAGING_D1_DATABASE_NAME" --remote --config .wrangler/staging.jsonc
-npx wrangler d1 migrations apply "$STAGING_D1_DATABASE_NAME" --remote --config .wrangler/staging.jsonc
-npx wrangler deploy --config .wrangler/staging.jsonc --strict
-npm run staging:smoke
+chmod 600 /secure/path/staging-secrets.env
+export STAGING_SECRETS_FILE=/secure/path/staging-secrets.env
+npm run staging:deploy:first
 ```
+
+`staging:deploy:first` validates all four required secret keys before remote work, runs staging verification, requires a clean worktree, hashes the config, server, client, and secrets, and dry-runs the exact strict `--secrets-file` deployment before any mutation. It rechecks cleanliness and the digest before applying isolated D1 migrations and again before deployment, then validates handlers/consumer settings and smoke-tests the exact staging release SHA. Use the ordinary staging verification and deployment controls for later changes; never commit or place the secrets file under the repository.
 
 Run staging checks for schema changes and risky operational changes before production. Staging data must be synthetic or separately sanitized; never bind staging to production D1 or R2.
 
@@ -148,7 +155,7 @@ npx wrangler versions list
 npx wrangler rollback <version-id>
 ```
 
-A failed post-deploy smoke test exits nonzero but does not automatically roll back because schema/data recovery requires operator judgment. Inspect `/health`, `npx wrangler tail --format json`, recent versions, and deployment status before choosing rollback.
+A failed code-only application smoke restores the previous Worker and its committed trigger/consumer configuration, then resumes delivery only after those restoration steps validate. A failed trigger-aware smoke intentionally leaves taxonomy delivery paused and cron schedules cleared for explicit recovery. A failed migration-path smoke keeps the maintenance Worker active because schema/data recovery requires operator judgment. If a Durable Object lifecycle migration was applied, do not attempt to deploy the previous version; Cloudflare blocks that rollback and the application must be fixed forward at the active migration tag. Inspect `/health`, `npx wrangler tail --format json`, recent versions, deployment status, and the recorded release recovery journal before intervening.
 
 A Worker rollback does not reverse D1 migrations or R2 changes. Prefer forward-compatible migrations and a corrective forward migration. D1 Time Travel is always available for supported production databases; capture a bookmark before destructive recovery and follow Cloudflare's current retention policy. To restore an exported SQL backup, first preserve the failed state, stop or block writes, record the recovery point and expected data-loss window, then execute the reviewed backup file:
 

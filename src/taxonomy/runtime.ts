@@ -36,6 +36,9 @@ Use only supplied numeric tag IDs. Do not invent tags or categories.
 Return assign only for directly supported tags, do_not_assign only for clearly incorrect current assignments, and review when uncertain.
 Evidence must quote or closely identify supplied site content.`
 
+const defaultLeaseSeconds = 900
+const providerDeadlineMarginMs = 30_000
+
 function unixSeconds(options: RuntimeOptions): number {
   return Math.floor((options.now?.() ?? Date.now()) / 1_000)
 }
@@ -66,7 +69,7 @@ function providerInstance(
     model: config.model,
     endpoint: config.endpoint,
     allowedHosts: allowedProviderHosts(config.providerKind),
-    timeoutMs: config.timeoutMs,
+    timeoutMs: Math.min(config.timeoutMs, 60_000),
     maxRetries: 0,
   }
   const runtime = { fetch: options.fetch, now: runtimeNow(options) }
@@ -133,8 +136,11 @@ async function callProvider(input: {
   policy: RuntimePolicy
   userPrompt: string
   now: number
+  attemptNumber?: number
 }): Promise<ProviderDecisionResult> {
-  const attemptNumber = await input.repository.nextAttemptNumber(input.job.id)
+  const attemptNumber =
+    input.attemptNumber ??
+    (await input.repository.nextAttemptNumber(input.job.id))
   const attemptId = `attempt:${input.job.id}:${attemptNumber}`
   const requestHash = await sha256Hex(
     stableJson({
@@ -190,6 +196,7 @@ async function callProvider(input: {
       schemaName: 'taxonomy_site_decision',
       systemPrompt,
       userPrompt: input.userPrompt,
+      signal: input.options.signal,
     })
     const raw = stableJson(result.data)
     await input.repository.finishAttempt({
@@ -264,17 +271,34 @@ async function routeProviders(input: {
   if (!primary)
     throw lastError ?? new Error('No primary taxonomy provider is configured')
   const results = [primary]
-  for (const config of plan.voters) {
-    try {
-      results.push(await callProvider({ ...input, config }))
-    } catch (error) {
-      throw new TaxonomyProviderError('Required consensus voter failed', {
-        code: 'invalid_response',
-        retryable: true,
-        cause: error,
-      })
-    }
+  const firstVoterAttempt = await input.repository.nextAttemptNumber(
+    input.job.id,
+  )
+  const voters = await Promise.allSettled(
+    plan.voters.map((config, index) =>
+      callProvider({
+        ...input,
+        config,
+        attemptNumber: firstVoterAttempt + index,
+      }),
+    ),
+  )
+  const failedVoter = voters.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  )
+  if (failedVoter) {
+    throw new TaxonomyProviderError('Required consensus voter failed', {
+      code: 'invalid_response',
+      retryable: true,
+      cause: failedVoter.reason,
+    })
   }
+  results.push(
+    ...voters.map(
+      (result) =>
+        (result as PromiseFulfilledResult<ProviderDecisionResult>).value,
+    ),
+  )
   if (results.length !== plan.requiredVoters) {
     throw new TaxonomyProviderError('Required consensus voter is missing', {
       code: 'invalid_response',
@@ -341,7 +365,7 @@ async function settleDecisions(input: {
   results: ProviderDecisionResult[]
   requiredVoters: number
   now: number
-}): Promise<{ mutations: number; agreement: boolean }> {
+}): Promise<{ mutations: number; agreement: boolean; decisionCount: number }> {
   const validated = validatedDecisions(
     input.results,
     input.snapshot,
@@ -352,28 +376,18 @@ async function settleDecisions(input: {
   const tagById = new Map(
     input.snapshot.tags.map((tag) => [String(tag.id), tag]),
   )
+  const activeLocks = new Set(input.snapshot.activeLockKeys)
+  const settlements: Array<
+    Parameters<TaxonomyRepository['applyAssignments']>[0][number]
+  > = []
   for (const [rank, decision] of validated.decisions.entries()) {
     const tag = tagById.get(decision.tagId)
     if (!tag) continue
-    const candidateKey = `existing:${tag.id}:${decision.decision}`
-    const candidateId = `candidate:${(await sha256Hex(`${input.job.id}:${candidateKey}`)).slice(0, 40)}`
-    await input.repository.saveCandidate({
-      id: candidateId,
-      jobId: input.job.id,
-      attemptId: validated.provider.attemptId,
-      candidateKey,
-      kind: 'existing_tag',
-      tagId: tag.id,
-      payload: decision,
-      confidenceMicros: Math.round(decision.confidence * 1_000_000),
-      marginMicros: Math.round(decision.margin * 1_000_000),
-      rank,
-      now: input.now,
-    })
     const action = decision.decision === 'assign' ? 'add' : 'remove'
-    const lockKey = `site:${input.snapshot.site.id}:tag:${tag.id}`
     const locked =
-      tag.automationLocked || (await input.repository.hasActiveLock(lockKey))
+      tag.automationLocked ||
+      activeLocks.has(`site:${input.snapshot.site.id}:tag:${tag.id}`) ||
+      activeLocks.has(`tag:${tag.id}`)
     const mayMutate =
       validated.agreement &&
       !locked &&
@@ -389,33 +403,47 @@ async function settleDecisions(input: {
         : mayMutate
           ? 'applied'
           : 'shadow'
+    const candidateKey = `existing:${tag.id}:${decision.decision}:attempt:${validated.provider.attemptId}`
+    const candidateId = `candidate:${(await sha256Hex(`${input.job.id}:${candidateKey}`)).slice(0, 40)}`
     const suffix = (
-      await sha256Hex(`${input.job.id}:${candidateKey}:decision`)
+      await sha256Hex(`${input.job.id}:${candidateKey}:${outcome}:decision`)
     ).slice(0, 40)
-    if (
-      await input.repository.applyAssignment({
-        job: input.job,
-        site: input.snapshot.site,
-        tag,
-        candidateId,
-        decisionId: `decision:${suffix}`,
-        batchId: `classification:${input.job.id}`,
-        eventId: `assignment-event:${suffix}`,
-        action,
-        outcome,
-        confidenceMicros: Math.round(decision.confidence * 1_000_000),
-        reason: decision.evidence,
-        providerConfigId: validated.provider.config.id,
-        providerModel: validated.provider.config.model,
-        policy: input.policy,
-        releaseSha: input.env.RELEASE_SHA,
-        now: input.now,
-      })
-    ) {
-      mutations += 1
-    }
+    settlements.push({
+      job: input.job,
+      site: input.snapshot.site,
+      tag,
+      candidateId,
+      attemptId: validated.provider.attemptId,
+      candidateKey,
+      payload: decision,
+      marginMicros: Math.round(decision.margin * 1_000_000),
+      rank,
+      decisionId: `decision:${suffix}`,
+      batchId: `classification:${input.job.id}`,
+      eventId: `assignment-event:${suffix}`,
+      action,
+      outcome,
+      confidenceMicros: Math.round(decision.confidence * 1_000_000),
+      reason: decision.evidence,
+      providerConfigId: validated.provider.config.id,
+      providerModel: validated.provider.config.model,
+      policy: input.policy,
+      releaseSha: input.env.RELEASE_SHA,
+      now: input.now,
+    })
   }
-  return { mutations, agreement: validated.agreement }
+  if (validated.agreement) {
+    mutations = settlements.length
+      ? await input.repository.applyAssignments(settlements, true)
+      : 0
+  } else if (settlements.length) {
+    await input.repository.applyAssignments(settlements, false)
+  }
+  return {
+    mutations,
+    agreement: validated.agreement,
+    decisionCount: settlements.length,
+  }
 }
 
 async function evaluateCircuit(
@@ -461,16 +489,39 @@ export async function processTaxonomyMessage(
   const { jobId } = parseQueueMessage(message)
   const repository = new TaxonomyRepository(env.DB)
   const now = unixSeconds(options)
+  const leaseSeconds = boundedLimit(
+    options.leaseSeconds,
+    defaultLeaseSeconds,
+    defaultLeaseSeconds,
+  )
   const leaseToken = crypto.randomUUID()
   const job = await repository.leaseJob(
     jobId,
     options.owner ?? 'taxonomy-worker',
     leaseToken,
     now,
-    boundedLimit(options.leaseSeconds, 120, 900),
+    leaseSeconds,
   )
   if (!job) return { jobId, status: 'ignored', attempts: 0, mutations: 0 }
+  const deadline = new AbortController()
+  const parentAbort = () => deadline.abort(options.signal?.reason)
+  options.signal?.addEventListener('abort', parentAbort, { once: true })
+  if (options.signal?.aborted) parentAbort()
+  const deadlineTimer = setTimeout(
+    () =>
+      deadline.abort(
+        new DOMException(
+          'Taxonomy job provider deadline exceeded',
+          'TimeoutError',
+        ),
+      ),
+    Math.max(1, leaseSeconds * 1_000 - providerDeadlineMarginMs),
+  )
+  const runtimeOptions = { ...options, signal: deadline.signal }
   try {
+    if (!(await repository.renewJobLease(job, now, leaseSeconds))) {
+      return { jobId, status: 'ignored', attempts: 0, mutations: 0 }
+    }
     const state = await repository.loadState()
     const policy = await repository.loadPolicy(
       job.policyConfigId ?? state.activePolicyConfigId,
@@ -498,7 +549,7 @@ export async function processTaxonomyMessage(
       return await processOntologyJob({
         repository,
         env,
-        options,
+        options: runtimeOptions,
         job,
         state,
         policy,
@@ -527,6 +578,7 @@ export async function processTaxonomyMessage(
     if (
       !snapshot ||
       snapshot.site.contentVersion !== job.siteContentVersion ||
+      snapshot.site.classificationInputHash !== job.inputHash ||
       state.publishedVersion !== job.taxonomyVersion
     ) {
       await repository.settleJob(
@@ -551,13 +603,28 @@ export async function processTaxonomyMessage(
     const results = await routeProviders({
       repository,
       env,
-      options,
+      options: runtimeOptions,
       job,
       policy,
       providers,
       userPrompt: promptFor(snapshot),
       now,
     })
+    if (!(await repository.classificationInputCurrent(job))) {
+      await repository.settleJob(
+        job,
+        'obsolete',
+        now,
+        'stale_input',
+        'Site input changed while providers were running.',
+      )
+      return {
+        jobId,
+        status: 'obsolete',
+        attempts: job.attemptCount,
+        mutations: 0,
+      }
+    }
     const settlement = await settleDecisions({
       repository,
       env,
@@ -591,12 +658,9 @@ export async function processTaxonomyMessage(
         mutations: 0,
       }
     }
-    await repository.markSiteClassified(
-      snapshot.site.id,
-      job.inputHash,
-      snapshot.site.contentVersion,
-    )
-    await repository.settleJob(job, 'settled', now)
+    if (!settlement.decisionCount) {
+      await repository.settleClassification(job, snapshot.site, now)
+    }
     await evaluateCircuit(repository, policy, now)
     return {
       jobId,
@@ -645,6 +709,9 @@ export async function processTaxonomyMessage(
       attempts: job.attemptCount,
       mutations: 0,
     }
+  } finally {
+    clearTimeout(deadlineTimer)
+    options.signal?.removeEventListener('abort', parentAbort)
   }
 }
 

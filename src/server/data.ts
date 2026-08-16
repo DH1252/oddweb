@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers'
-import { createMiddleware, createServerFn } from '@tanstack/react-start'
+import { createServerFn } from '@tanstack/react-start'
 import {
   getRequest,
   setResponseHeader,
@@ -30,25 +30,6 @@ import { deferVisitAccounting } from './visit-accounting'
 import { publishRealtimeEvent } from './realtime'
 
 const daySeconds = 24 * 60 * 60
-const maxUploadRequestBytes = 9 * 1024 * 1024
-
-const uploadSizeMiddleware = createMiddleware({ type: 'function' }).server(
-  async ({ next }) => {
-    const contentLength = getRequest().headers.get('content-length')
-    if (contentLength) {
-      const bytes = Number(contentLength)
-      if (!Number.isSafeInteger(bytes) || bytes < 0) {
-        setResponseStatus(400)
-        throw new Error('Invalid Content-Length header.')
-      }
-      if (bytes > maxUploadRequestBytes) {
-        setResponseStatus(413)
-        throw new Error('Upload request is too large.')
-      }
-    }
-    return next()
-  },
-)
 
 const guestbookInput = z.object({
   name: z.string().trim().min(1).max(24),
@@ -84,7 +65,6 @@ const tagMergeInput = z.object({
 })
 
 export const submitSite = createServerFn({ method: 'POST' })
-  .middleware([uploadSizeMiddleware])
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
     await enforcePublicRateLimit('submission', 3, daySeconds)

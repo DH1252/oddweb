@@ -2,6 +2,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
 import {
+  normalizeFilterTagList,
+  publicDirectorySearchMaxLength,
+  publicFilterTagLimit,
+  publicTagSearchMaxLength,
+  tagInputMaxLength,
+} from '../data/tags'
+
+import {
   readPublicDirectoryPage,
   readPublicPopularPage,
   readPublicSiteDetail,
@@ -10,9 +18,21 @@ import {
   readTagSuggestions,
 } from '../db/public-repository'
 
-const tagsInput = z.array(z.string().max(80)).max(20).default([])
+const filterTagInput = z
+  .string()
+  .max(tagInputMaxLength + 1)
+  .refine(
+    (tag) =>
+      (tag.startsWith('~') ? tag.slice(1) : tag).length <= tagInputMaxLength,
+    `Tag values must be ${tagInputMaxLength} characters or fewer.`,
+  )
+const tagsInput = z
+  .array(filterTagInput)
+  .max(publicFilterTagLimit)
+  .transform(normalizeFilterTagList)
+  .default([])
 const directoryInput = z.object({
-  query: z.string().max(120).default(''),
+  query: z.string().max(publicDirectorySearchMaxLength).default(''),
   include: tagsInput,
   exclude: tagsInput,
   sort: z
@@ -21,13 +41,13 @@ const directoryInput = z.object({
   page: z.number().int().min(0).max(10_000).default(0),
 })
 const tagPageInput = z.object({
-  query: z.string().max(80).default(''),
+  query: z.string().max(publicTagSearchMaxLength).default(''),
   include: tagsInput,
   exclude: tagsInput,
   page: z.number().int().min(0).max(10_000).default(0),
 })
 const tagSuggestionInput = z.object({
-  query: z.string().max(80).default(''),
+  query: z.string().max(tagInputMaxLength).default(''),
   selected: tagsInput,
   limit: z.number().int().min(1).max(20).default(8),
 })

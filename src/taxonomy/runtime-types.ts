@@ -102,6 +102,17 @@ export interface SiteSnapshot {
   classificationInputHash: string | null
   assignedTagIds: number[]
   automationAssignedTagIds: number[]
+  assignments: SiteAssignmentSnapshot[]
+}
+
+export interface SiteAssignmentSnapshot {
+  tagId: number
+  rawName: string
+  source: 'deterministic' | 'automation' | 'admin' | 'migration'
+  decisionId: string | null
+  revision: number
+  createdAt: number
+  updatedAt: number
 }
 
 export interface TagSnapshot {
@@ -118,6 +129,7 @@ export interface TagSnapshot {
 export interface CandidateSnapshot {
   site: SiteSnapshot
   tags: TagSnapshot[]
+  activeLockKeys: string[]
 }
 
 export interface ProviderDecisionResult {
@@ -137,6 +149,7 @@ export interface ProviderRoutePlan {
 export interface RuntimeOptions {
   now?: () => number
   fetch?: typeof fetch
+  signal?: AbortSignal
   owner?: string
   leaseSeconds?: number
   candidateLimit?: number

@@ -101,6 +101,16 @@ test('site decision and ontology contracts reject unknown and malformed data', (
     false,
   )
   assert.equal(
+    siteDecisionSchema.safeParse({
+      schemaVersion: 1,
+      decisions: [
+        valid.decisions[0],
+        { ...valid.decisions[0], decision: 'do_not_assign' },
+      ],
+    }).success,
+    false,
+  )
+  assert.equal(
     ontologyProposalResponseSchema.safeParse({
       schemaVersion: 1,
       proposals: [
@@ -124,7 +134,7 @@ test('site decision and ontology contracts reject unknown and malformed data', (
   )
 })
 
-test('policy separates automatic, review, rejected, duplicate, and unknown decisions', () => {
+test('policy separates automatic, review, rejected, and unknown decisions', () => {
   const response = siteDecisionSchema.parse({
     schemaVersion: 1,
     decisions: [
@@ -156,13 +166,6 @@ test('policy separates automatic, review, rejected, duplicate, and unknown decis
         margin: 0.5,
         evidence: 'd',
       },
-      {
-        tagId: 'a',
-        decision: 'assign',
-        confidence: 0.99,
-        margin: 0.5,
-        evidence: 'duplicate',
-      },
     ],
   })
   const result = validateSiteDecisions(response, new Set(['a', 'b', 'c']))
@@ -178,10 +181,7 @@ test('policy separates automatic, review, rejected, duplicate, and unknown decis
     result.rejected.map(({ tagId }) => tagId),
     ['d'],
   )
-  assert.deepEqual(result.violations, [
-    'unknown tag: d',
-    'duplicate tag decision: a',
-  ])
+  assert.deepEqual(result.violations, ['unknown tag: d'])
   assert.throws(
     () =>
       parseTaxonomyPolicy({ reviewThreshold: 0.95, autoAssignThreshold: 0.9 }),

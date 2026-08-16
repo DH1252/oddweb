@@ -6,6 +6,9 @@ import { readJsonc, taxonomyResources } from './check-taxonomy-resources.mjs'
 
 const staging = process.argv.includes('--staging')
 const local = process.argv.includes('--local')
+const applicationOnly = process.argv.includes('--application-only')
+const triggersOnly = process.argv.includes('--triggers-only')
+const readOnlyTriggers = process.argv.includes('--read-only-triggers')
 const production = !staging && !local
 const productionOrigin = 'https://oddweb.page'
 const baseUrl =
@@ -13,10 +16,26 @@ const baseUrl =
     local ? 'LOCAL_URL' : staging ? 'STAGING_URL' : 'PRODUCTION_URL'
   ] ?? (local ? 'http://localhost:3000' : staging ? '' : productionOrigin)
 const expectedRelease = process.env.RELEASE_SHA
+const queueInitiallyPaused =
+  process.env.RELEASE_TAXONOMY_QUEUE_INITIAL_STATE === 'paused'
 const configPath = resolve(
   process.env.WRANGLER_CONFIG ??
     (staging ? '.wrangler/staging.jsonc' : 'wrangler.jsonc'),
 )
+
+if (applicationOnly && triggersOnly) {
+  throw new Error(
+    '--application-only and --triggers-only are mutually exclusive.',
+  )
+}
+if (local && triggersOnly) {
+  throw new Error(
+    '--triggers-only requires an authenticated remote environment.',
+  )
+}
+if (readOnlyTriggers && !triggersOnly) {
+  throw new Error('--read-only-triggers requires --triggers-only.')
+}
 
 if (!baseUrl || !URL.canParse(baseUrl)) {
   throw new Error('The smoke-test URL must be an absolute URL.')
@@ -34,147 +53,158 @@ if (production && target.origin !== productionOrigin) {
   )
 }
 
-await retry(async () => {
-  const health = await request('/health', {
-    headers: { Accept: 'application/json' },
-  })
-  expectStatus(health, 200, '/health')
-  expectNoindex(health, '/health')
-  const marker = await health.json()
-  if (marker.status !== 'ok' || !marker.checks?.d1 || !marker.checks?.r2) {
-    throw new Error('/health did not confirm D1 and R2 bindings')
-  }
-  if (expectedRelease && marker.release !== expectedRelease) {
-    throw new Error(
-      `expected release ${expectedRelease}, received ${marker.release}`,
-    )
-  }
+if (triggersOnly) await retry(healthProbe)
 
-  const robots = await request('/robots.txt')
-  expectStatus(robots, 200, '/robots.txt')
-  expectContentType(robots, 'text/plain', '/robots.txt')
-  const robotsBody = await robots.text()
-  expectMatch(robotsBody, /^User-agent: \*$/m, 'robots user agent')
-  if (staging) {
-    expectMatch(robotsBody, /^Disallow: \/$/m, 'staging robots block')
-  } else {
-    expectMatch(robotsBody, /^Disallow: \/admin$/m, 'robots admin rule')
+if (!triggersOnly) {
+  await retry(async () => {
+    await healthProbe()
+
+    const robots = await request('/robots.txt')
+    expectStatus(robots, 200, '/robots.txt')
+    expectContentType(robots, 'text/plain', '/robots.txt')
+    const robotsBody = await robots.text()
+    expectMatch(robotsBody, /^User-agent: \*$/m, 'robots user agent')
+    if (staging) {
+      expectMatch(robotsBody, /^Disallow: \/$/m, 'staging robots block')
+    } else {
+      expectMatch(robotsBody, /^Disallow: \/admin$/m, 'robots admin rule')
+      expectMatch(
+        robotsBody,
+        new RegExp(
+          `^Sitemap: ${escapeRegex(expectedOrigin)}/sitemap\\.xml$`,
+          'm',
+        ),
+        'robots canonical sitemap',
+      )
+    }
+
+    const sitemap = await request('/sitemap.xml')
+    expectStatus(sitemap, 200, '/sitemap.xml')
+    expectContentType(sitemap, 'application/xml', '/sitemap.xml')
+    const sitemapBody = await sitemap.text()
     expectMatch(
-      robotsBody,
-      new RegExp(
-        `^Sitemap: ${escapeRegex(expectedOrigin)}/sitemap\\.xml$`,
-        'm',
-      ),
-      'robots canonical sitemap',
+      sitemapBody,
+      /^<\?xml version="1\.0" encoding="UTF-8"\?>/,
+      'sitemap XML declaration',
     )
-  }
+    expectMatch(
+      sitemapBody,
+      /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/,
+      'sitemap root',
+    )
+    expectMatch(
+      sitemapBody,
+      new RegExp(`<loc>${escapeRegex(expectedOrigin)}/</loc>`),
+      'sitemap homepage',
+    )
+    expectMatch(
+      sitemapBody,
+      new RegExp(
+        `<loc>${escapeRegex(expectedOrigin)}/sites/radio-garden</loc>`,
+      ),
+      'sitemap detail',
+    )
+    if (/<loc>[^<]*&(?!amp;|lt;|gt;|quot;|apos;)/.test(sitemapBody)) {
+      throw new Error('sitemap contains an unescaped XML entity')
+    }
+    const sitemapLocations = [
+      ...sitemapBody.matchAll(/<loc>([^<]+)<\/loc>/g),
+    ].map((match) => decodeHtml(match[1]))
+    if (
+      sitemapLocations.some((location) => {
+        const url = new URL(location)
+        return url.origin !== expectedOrigin || url.search || url.hash
+      })
+    ) {
+      throw new Error('sitemap contains a noncanonical URL')
+    }
 
-  const sitemap = await request('/sitemap.xml')
-  expectStatus(sitemap, 200, '/sitemap.xml')
-  expectContentType(sitemap, 'application/xml', '/sitemap.xml')
-  const sitemapBody = await sitemap.text()
-  expectMatch(
-    sitemapBody,
-    /^<\?xml version="1\.0" encoding="UTF-8"\?>/,
-    'sitemap XML declaration',
-  )
-  expectMatch(
-    sitemapBody,
-    /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/,
-    'sitemap root',
-  )
-  expectMatch(
-    sitemapBody,
-    new RegExp(`<loc>${escapeRegex(expectedOrigin)}/</loc>`),
-    'sitemap homepage',
-  )
-  expectMatch(
-    sitemapBody,
-    new RegExp(`<loc>${escapeRegex(expectedOrigin)}/sites/radio-garden</loc>`),
-    'sitemap detail',
-  )
-  if (/<loc>[^<]*&(?!amp;|lt;|gt;|quot;|apos;)/.test(sitemapBody)) {
-    throw new Error('sitemap contains an unescaped XML entity')
-  }
-  const sitemapLocations = [
-    ...sitemapBody.matchAll(/<loc>([^<]+)<\/loc>/g),
-  ].map((match) => decodeHtml(match[1]))
-  if (
-    sitemapLocations.some((location) => {
-      const url = new URL(location)
-      return url.origin !== expectedOrigin || url.search || url.hash
+    const home = await html('/')
+    expectCanonical(home.body, `${expectedOrigin}/`, 'homepage')
+    expectMeta(
+      home.body,
+      'property',
+      'og:url',
+      `${expectedOrigin}/`,
+      'homepage',
+    )
+    if (staging)
+      expectMeta(home.body, 'name', 'robots', 'noindex, nofollow', 'homepage')
+    expectMetaPresent(home.body, 'property', 'og:title', 'homepage')
+    const website = findJsonLd(home.body, 'WebSite')
+    if (website.url !== `${expectedOrigin}/` || website.name !== 'Oddweb') {
+      throw new Error('homepage WebSite JSON-LD has unexpected identity fields')
+    }
+
+    const detail = await html('/sites/radio-garden')
+    expectCanonical(
+      detail.body,
+      `${expectedOrigin}/sites/radio-garden`,
+      'detail page',
+    )
+    expectMetaPresent(detail.body, 'name', 'description', 'detail page')
+    expectMeta(
+      detail.body,
+      'property',
+      'og:url',
+      `${expectedOrigin}/sites/radio-garden`,
+      'detail page',
+    )
+    findJsonLd(detail.body, 'WebPage')
+
+    const missing = await request('/sites/not-a-real-site', {
+      redirect: 'manual',
     })
-  ) {
-    throw new Error('sitemap contains a noncanonical URL')
-  }
+    expectStatus(missing, 404, 'unknown site')
+    const missingBody = await missing.text()
+    expectMeta(
+      missingBody,
+      'name',
+      'robots',
+      'noindex, nofollow',
+      'unknown site',
+    )
+    if (!missing.headers.get('cache-control')?.includes('no-store')) {
+      throw new Error('unknown site was not marked no-store')
+    }
+    if (
+      missing.headers.get('x-robots-tag') &&
+      !missing.headers.get('x-robots-tag')?.includes('noindex')
+    ) {
+      throw new Error('unknown site returned an invalid X-Robots-Tag')
+    }
 
-  const home = await html('/')
-  expectCanonical(home.body, `${expectedOrigin}/`, 'homepage')
-  expectMeta(home.body, 'property', 'og:url', `${expectedOrigin}/`, 'homepage')
-  if (staging)
-    expectMeta(home.body, 'name', 'robots', 'noindex, nofollow', 'homepage')
-  expectMetaPresent(home.body, 'property', 'og:title', 'homepage')
-  const website = findJsonLd(home.body, 'WebSite')
-  if (website.url !== `${expectedOrigin}/` || website.name !== 'Oddweb') {
-    throw new Error('homepage WebSite JSON-LD has unexpected identity fields')
-  }
+    const filtered = await html('/?include=listen')
+    expectCanonical(filtered.body, `${expectedOrigin}/`, 'filtered homepage')
+    expectMeta(
+      filtered.body,
+      'name',
+      'robots',
+      'noindex, follow',
+      'filtered homepage',
+    )
 
-  const detail = await html('/sites/radio-garden')
-  expectCanonical(
-    detail.body,
-    `${expectedOrigin}/sites/radio-garden`,
-    'detail page',
-  )
-  expectMetaPresent(detail.body, 'name', 'description', 'detail page')
-  expectMeta(
-    detail.body,
-    'property',
-    'og:url',
-    `${expectedOrigin}/sites/radio-garden`,
-    'detail page',
-  )
-  findJsonLd(detail.body, 'WebPage')
-
-  const missing = await request('/sites/not-a-real-site', {
-    redirect: 'manual',
+    const admin = await request('/admin', { redirect: 'manual' })
+    if (![302, 307].includes(admin.status)) {
+      throw new Error(`anonymous /admin returned ${admin.status}`)
+    }
+    if (!(admin.headers.get('location') || '').includes('/admin/login')) {
+      throw new Error('anonymous /admin did not redirect to login')
+    }
+    const login = await html('/admin/login')
+    expectNoindex(login.response, '/admin/login')
+    if (!login.response.headers.get('cache-control')?.includes('no-store')) {
+      throw new Error('/admin/login was not marked no-store')
+    }
+    expectMeta(
+      login.body,
+      'name',
+      'robots',
+      'noindex, nofollow',
+      '/admin/login',
+    )
   })
-  expectStatus(missing, 404, 'unknown site')
-  const missingBody = await missing.text()
-  expectMeta(missingBody, 'name', 'robots', 'noindex, nofollow', 'unknown site')
-  if (!missing.headers.get('cache-control')?.includes('no-store')) {
-    throw new Error('unknown site was not marked no-store')
-  }
-  if (
-    missing.headers.get('x-robots-tag') &&
-    !missing.headers.get('x-robots-tag')?.includes('noindex')
-  ) {
-    throw new Error('unknown site returned an invalid X-Robots-Tag')
-  }
-
-  const filtered = await html('/?include=listen')
-  expectCanonical(filtered.body, `${expectedOrigin}/`, 'filtered homepage')
-  expectMeta(
-    filtered.body,
-    'name',
-    'robots',
-    'noindex, follow',
-    'filtered homepage',
-  )
-
-  const admin = await request('/admin', { redirect: 'manual' })
-  if (![302, 307].includes(admin.status)) {
-    throw new Error(`anonymous /admin returned ${admin.status}`)
-  }
-  if (!(admin.headers.get('location') || '').includes('/admin/login')) {
-    throw new Error('anonymous /admin did not redirect to login')
-  }
-  const login = await html('/admin/login')
-  expectNoindex(login.response, '/admin/login')
-  if (!login.response.headers.get('cache-control')?.includes('no-store')) {
-    throw new Error('/admin/login was not marked no-store')
-  }
-  expectMeta(login.body, 'name', 'robots', 'noindex, nofollow', '/admin/login')
-})
+}
 
 if (production) {
   await checkDuplicateOrigin(
@@ -188,8 +218,15 @@ if (production) {
   )
 }
 
-if (!local) await taxonomyProbe()
-await realtimeProbe()
+if (!local && !applicationOnly && !readOnlyTriggers) {
+  await taxonomyProbe()
+} else if (readOnlyTriggers) {
+  await taxonomyReadOnlyProbe()
+  console.warn(
+    'Queue delivery remains externally paused; trigger verification is read-only and the release remains incomplete.',
+  )
+}
+if (!triggersOnly) await realtimeProbe()
 
 console.log(`Smoke test passed for ${baseUrl}.`)
 
@@ -330,6 +367,34 @@ FROM taxonomy_jobs WHERE id = '${jobId}';`
   }
 }
 
+async function taxonomyReadOnlyProbe() {
+  if (!queueInitiallyPaused) {
+    throw new Error(
+      'Read-only trigger verification is only valid for an observed paused queue.',
+    )
+  }
+  const config = readJsonc(configPath)
+  const { database, worker } = taxonomyResources(config)
+  if (!database || !worker) {
+    throw new Error('Taxonomy smoke requires a Worker name and DB binding.')
+  }
+  wrangler(['whoami'])
+  const state = queryD1(
+    database,
+    `SELECT published_version, mode, circuit_state
+     FROM taxonomy_state WHERE id = 1`,
+  )[0]
+  if (
+    !state ||
+    !Number.isInteger(Number(state.published_version)) ||
+    !['disabled', 'shadow', 'gradual', 'autonomous', 'degraded'].includes(
+      state.mode,
+    )
+  ) {
+    throw new Error('taxonomy_state is missing or unreadable')
+  }
+}
+
 function queryD1(database, sql) {
   const output = executeD1(database, sql)
   const result = JSON.parse(output)
@@ -365,6 +430,23 @@ function sqlLiteral(value) {
 
 async function request(path, init) {
   return fetch(new URL(path, baseUrl), init)
+}
+
+async function healthProbe() {
+  const health = await request('/health', {
+    headers: { Accept: 'application/json' },
+  })
+  expectStatus(health, 200, '/health')
+  expectNoindex(health, '/health')
+  const marker = await health.json()
+  if (marker.status !== 'ok' || !marker.checks?.d1 || !marker.checks?.r2) {
+    throw new Error('/health did not confirm D1 and R2 bindings')
+  }
+  if (expectedRelease && marker.release !== expectedRelease) {
+    throw new Error(
+      `expected release ${expectedRelease}, received ${marker.release}`,
+    )
+  }
 }
 
 async function html(path) {

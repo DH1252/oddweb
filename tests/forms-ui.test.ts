@@ -35,12 +35,40 @@ test('tag input Enter prefers canonical suggestions over freeform text', async (
   )
   assert.match(
     source,
-    /fetchQuery\([\s\S]*tagSuggestionsQueryOptions[\s\S]*addToken\(suggestion\.slug\)[\s\S]*else addTag\(input\)/,
+    /fetchQuery\([\s\S]*tagSuggestionsQueryOptions[\s\S]*result\.suggestions\.find\([\s\S]*tag\.slug === input[\s\S]*tag\.aliases\.includes\(input\)[\s\S]*result\.suggestions\.at\(0\)[\s\S]*addToken\(suggestion\.slug\)[\s\S]*else addTag\(input\)/,
   )
   assert.match(
     source,
     /event\.key === 'Enter'[\s\S]*event\.preventDefault\(\)[\s\S]*commitEnteredTag\(\)/,
   )
+})
+
+test('tag lookup rejection retains input and exposes an accessible error', async () => {
+  const source = await readFile(
+    new URL('../src/components/tag-input.tsx', import.meta.url),
+    'utf8',
+  )
+  const commit = source.match(
+    /async function commitEnteredTag[\s\S]*?\n {2}function removeTag/,
+  )?.[0]
+
+  assert.ok(commit)
+  assert.match(
+    commit,
+    /catch \{[\s\S]*setLookupError\(\{ query: input, message: tagLookupErrorMessage \}\)/,
+  )
+  assert.doesNotMatch(
+    commit.match(/catch \{[\s\S]*?\n {4}\} finally/)?.[0] || '',
+    /setQuery\(/,
+  )
+  assert.match(source, /maxLength=\{tagInputMaxLength\}/)
+  assert.match(source, /id=\{`\$\{id\}-lookup-error`\}/)
+  assert.match(source, /visibleLookupError[\s\S]*role="alert"/)
+  assert.match(
+    source,
+    /aria-describedby=[\s\S]*visibleLookupError[\s\S]*lookup-error/,
+  )
+  assert.match(source, /recoveredLookup[\s\S]*suggestionQuery\.isSuccess/)
 })
 
 test('semantic button tones override shared hover colors', async () => {

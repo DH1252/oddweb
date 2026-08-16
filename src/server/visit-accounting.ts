@@ -1,6 +1,7 @@
 import { env, waitUntil } from 'cloudflare:workers'
 
 import { recordAtomicVisit, VisitRepositoryError } from '../db/visit-repository'
+import { runWithReleaseInvocation } from './release-barrier.server'
 import { publishRealtimeEvent } from './realtime'
 
 export type DeferredVisitInput = {
@@ -76,27 +77,29 @@ export async function deferVisitAccounting({
 
   const visitorKey = await visitorVisitKey(request, slug, secret)
   waitUntil(
-    recordAtomicVisit(database, { slug, visitorKey })
-      .then(async (result) => {
-        if (result.recorded && result.views !== undefined) {
+    runWithReleaseInvocation(
+      'deferred',
+      async () => {
+        const result = await recordAtomicVisit(database, { slug, visitorKey })
+        if (result.recorded && result.views !== undefined)
           await publishRealtimeEvent({
             type: 'site.viewed',
             slug,
             views: result.views,
           })
-        }
+      },
+      { database },
+    ).catch((error: unknown) => {
+      console.error({
+        event: 'visit_accounting_failed',
+        code:
+          error instanceof VisitRepositoryError
+            ? error.code
+            : 'VISIT_ACCOUNTING_UNEXPECTED_ERROR',
+        slug,
+        error: error instanceof Error ? error.message : String(error),
       })
-      .catch((error: unknown) => {
-        console.error({
-          event: 'visit_accounting_failed',
-          code:
-            error instanceof VisitRepositoryError
-              ? error.code
-              : 'VISIT_ACCOUNTING_UNEXPECTED_ERROR',
-          slug,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }),
+    }),
   )
 
   return { accepted: true }

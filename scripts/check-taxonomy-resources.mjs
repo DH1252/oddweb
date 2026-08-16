@@ -9,7 +9,10 @@ export const productionTaxonomyResources = {
 }
 
 export function readJsonc(path) {
-  const source = readFileSync(path, 'utf8')
+  return parseJsonc(readFileSync(path, 'utf8'))
+}
+
+export function parseJsonc(source) {
   let withoutComments = ''
   let inString = false
   let escaped = false
@@ -76,14 +79,54 @@ export function readJsonc(path) {
   return JSON.parse(json)
 }
 
+export function validateQueueConsumerSettings(configured, deployed) {
+  const failures = []
+  const settings = deployed?.settings ?? {}
+  const comparisons = [
+    ['max_batch_size', 'batch_size', 1],
+    ['max_batch_timeout', 'max_wait_time_ms', 1000],
+    ['max_retries', 'max_retries', 1],
+    ['max_concurrency', 'max_concurrency', 1],
+    ['retry_delay', 'retry_delay', 1],
+  ]
+  for (const [configKey, remoteKey, multiplier] of comparisons) {
+    if (configured?.[configKey] === undefined) {
+      const automatic =
+        settings[remoteKey] === undefined ||
+        settings[remoteKey] === null ||
+        (configKey === 'retry_delay' && Number(settings[remoteKey]) === 0)
+      if (
+        ['max_concurrency', 'retry_delay'].includes(configKey) &&
+        !automatic
+      ) {
+        failures.push(
+          `${configKey} is ${String(settings[remoteKey])}, expected automatic/default`,
+        )
+      }
+      continue
+    }
+    const expected = Number(configured[configKey]) * multiplier
+    if (Number(settings[remoteKey]) !== expected) {
+      failures.push(
+        `${configKey} is ${String(settings[remoteKey])}, expected ${expected}`,
+      )
+    }
+  }
+  return failures
+}
+
 export function taxonomyResources(config) {
   const database = config.d1_databases?.find(
     (candidate) => candidate.binding === 'DB',
+  )
+  const thumbnails = config.r2_buckets?.find(
+    (candidate) => candidate.binding === 'THUMBNAILS',
   )
   return {
     worker: config.name,
     database: database?.database_name,
     databaseId: database?.database_id,
+    bucket: thumbnails?.bucket_name,
   }
 }
 
@@ -120,25 +163,23 @@ export function validateTaxonomyConfig(config, expected) {
   if (!resources.worker) failures.push('the Worker name is required')
   if (!resources.database || !resources.databaseId)
     failures.push('the DB binding must declare a D1 database name and ID')
+  if (!resources.bucket)
+    failures.push('the THUMBNAILS binding must declare an R2 bucket name')
   return failures
 }
 
-export function remotePreflight(configPath, config, expected, execute = exec) {
+export function remoteResourcePreflight(
+  configPath,
+  config,
+  expected,
+  execute = exec,
+) {
   const failures = []
   const warnings = []
   const resources = taxonomyResources(config)
-  try {
-    execute('wrangler', ['whoami'])
-  } catch {
-    return {
-      failures: [
-        'Cloudflare authentication is unavailable; authenticate with `wrangler login` or provide a valid API token before release',
-      ],
-      warnings,
-    }
-  }
+  if (!remoteAuthenticated(execute, failures)) return { failures, warnings }
 
-  const queueOutput = remoteOutput(
+  remoteOutput(
     execute,
     ['queues', 'info', expected.queue, '--config', configPath],
     failures,
@@ -150,14 +191,6 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
     failures,
     `dead-letter queue ${expected.dlq}`,
   )
-  if (queueOutput && !queueOutput.includes(resources.worker))
-    warnings.push(
-      `remote queue ${expected.queue} does not currently expose consumer ${resources.worker}; post-deploy smoke will require queue settlement`,
-    )
-  if (queueOutput && !queueOutput.includes(expected.dlq))
-    warnings.push(
-      `remote queue ${expected.queue} does not currently expose DLQ ${expected.dlq}; the configured Worker consumer will attach it during deployment`,
-    )
 
   const d1Output = remoteOutput(
     execute,
@@ -187,6 +220,73 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
       failures,
       'read-only taxonomy_state query',
     )
+  }
+
+  remoteOutput(
+    execute,
+    ['r2', 'bucket', 'info', resources.bucket, '--config', configPath],
+    failures,
+    `R2 bucket ${resources.bucket}`,
+  )
+
+  return { failures, warnings }
+}
+
+export function remoteHandlerValidation(
+  configPath,
+  config,
+  expected,
+  execute = exec,
+) {
+  const failures = []
+  const warnings = []
+  const resources = taxonomyResources(config)
+  if (!remoteAuthenticated(execute, failures)) return { failures, warnings }
+
+  const consumerOutput = remoteOutput(
+    execute,
+    [
+      'queues',
+      'consumer',
+      'worker',
+      'list',
+      expected.queue,
+      '--json',
+      '--config',
+      configPath,
+    ],
+    failures,
+    `worker consumers for queue ${expected.queue}`,
+  )
+  if (consumerOutput) {
+    const consumers = JSON.parse(consumerOutput)
+    const consumer = consumers.find(
+      (candidate) =>
+        candidate.script === resources.worker ||
+        candidate.service === resources.worker ||
+        candidate.script_name === resources.worker,
+    )
+    if (!consumer)
+      failures.push(
+        `remote queue ${expected.queue} does not expose consumer ${resources.worker}`,
+      )
+    else {
+      if (consumer.dead_letter_queue !== expected.dlq)
+        failures.push(
+          `remote queue ${expected.queue} consumer ${resources.worker} does not use DLQ ${expected.dlq}`,
+        )
+      const configuredConsumer = config.queues?.consumers?.find(
+        (candidate) => candidate.queue === expected.queue,
+      )
+      for (const failure of validateQueueConsumerSettings(
+        configuredConsumer,
+        consumer,
+      )) {
+        failures.push(
+          `remote queue ${expected.queue} consumer ${resources.worker} ${failure}`,
+        )
+      }
+    }
   }
 
   const secretOutput = remoteOutput(
@@ -254,18 +354,20 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
         const handlers = new Set(version.resources?.script?.handlers ?? [])
         for (const handler of ['fetch', 'queue', 'scheduled'])
           if (!handlers.has(handler))
-            warnings.push(
-              `active Worker ${resources.worker} does not currently expose the ${handler} handler; post-deploy smoke will verify the promoted version`,
+            failures.push(
+              `active Worker ${resources.worker} does not expose the ${handler} handler`,
             )
         const bindings = version.resources?.bindings ?? []
         if (
           !bindings.some(
             (binding) =>
-              binding.name === 'DB' && binding.id === resources.databaseId,
+              binding.name === 'DB' &&
+              (binding.database_id === resources.databaseId ||
+                binding.id === resources.databaseId),
           )
         )
-          warnings.push(
-            'active Worker does not currently expose the configured DB binding; post-deploy smoke will verify the promoted version',
+          failures.push(
+            'active Worker does not expose the configured DB binding',
           )
         if (
           !bindings.some(
@@ -275,8 +377,18 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
                 binding.queue === expected.queue),
           )
         )
-          warnings.push(
-            'active Worker does not currently expose the configured TAXONOMY_QUEUE binding; post-deploy smoke will verify the promoted version',
+          failures.push(
+            'active Worker does not expose the configured TAXONOMY_QUEUE binding',
+          )
+        if (
+          !bindings.some(
+            (binding) =>
+              binding.name === 'THUMBNAILS' &&
+              binding.bucket_name === resources.bucket,
+          )
+        )
+          failures.push(
+            'active Worker does not expose the configured THUMBNAILS binding',
           )
       }
     }
@@ -285,6 +397,26 @@ export function remotePreflight(configPath, config, expected, execute = exec) {
     'Wrangler exposes the deployed scheduled handler but has no read-only command for deployed cron schedules; the post-deploy outbox probe verifies cron execution.',
   )
   return { failures, warnings }
+}
+
+export function remotePreflight(configPath, config, expected, execute = exec) {
+  const resources = remoteResourcePreflight(
+    configPath,
+    config,
+    expected,
+    execute,
+  )
+  if (resources.failures.length) return resources
+  const handlers = remoteHandlerValidation(
+    configPath,
+    config,
+    expected,
+    execute,
+  )
+  return {
+    failures: [...resources.failures, ...handlers.failures],
+    warnings: [...resources.warnings, ...handlers.warnings],
+  }
 }
 
 const isMain =
@@ -298,8 +430,18 @@ if (isMain) {
   const config = readJsonc(configPath)
   const failures = validateTaxonomyConfig(config, expected)
   const warnings = []
-  if (process.argv.includes('--remote') && failures.length === 0) {
-    const remote = remotePreflight(configPath, config, expected)
+  const allRemote = process.argv.includes('--remote')
+  const checkRemoteResources =
+    allRemote || process.argv.includes('--remote-resources')
+  const checkRemoteHandlers =
+    allRemote || process.argv.includes('--remote-handlers')
+  if (failures.length === 0 && checkRemoteResources) {
+    const remote = remoteResourcePreflight(configPath, config, expected)
+    failures.push(...remote.failures)
+    warnings.push(...remote.warnings)
+  }
+  if (failures.length === 0 && checkRemoteHandlers) {
+    const remote = remoteHandlerValidation(configPath, config, expected)
     failures.push(...remote.failures)
     warnings.push(...remote.warnings)
   }
@@ -311,9 +453,12 @@ if (isMain) {
     )
     process.exit(1)
   }
-  console.log(
-    `Taxonomy ${process.argv.includes('--remote') ? 'configuration and remote resources' : 'configuration'} passed preflight.`,
-  )
+  const scope = [
+    'configuration',
+    ...(checkRemoteResources ? ['remote resources'] : []),
+    ...(checkRemoteHandlers ? ['deployed handlers'] : []),
+  ].join(', ')
+  console.log(`Taxonomy ${scope} passed preflight.`)
 }
 
 function option(name) {
@@ -330,6 +475,18 @@ function remoteOutput(execute, args, failures, label) {
   } catch {
     failures.push(`remote ${label} is missing, inaccessible, or invalid`)
     return ''
+  }
+}
+
+function remoteAuthenticated(execute, failures) {
+  try {
+    execute('wrangler', ['whoami'])
+    return true
+  } catch {
+    failures.push(
+      'Cloudflare authentication is unavailable; authenticate with `wrangler login` or provide a valid API token before release',
+    )
+    return false
   }
 }
 

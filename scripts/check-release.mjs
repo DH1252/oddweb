@@ -7,6 +7,7 @@ import {
   readJsonc,
   validateTaxonomyConfig,
 } from './check-taxonomy-resources.mjs'
+import { hasDestructiveSchemaOperation } from './release-migration-safety.mjs'
 
 const localOnly = process.argv.includes('--local')
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -61,11 +62,7 @@ const serverEntry = readFileSync(resolve(root, 'src/server.ts'), 'utf8')
 if (!serverEntry.includes("export { RealtimeHub } from './realtime/hub'")) {
   failures.push('src/server.ts must export RealtimeHub')
 }
-for (const handler of [
-  'processTaxonomyMessage',
-  'dispatchTaxonomyOutbox',
-  'runTaxonomyMaintenance',
-]) {
+for (const handler of ['processTaxonomyMessage', 'runTaxonomyMaintenance']) {
   if (!serverEntry.includes(handler)) {
     failures.push(`src/server.ts must wire ${handler}`)
   }
@@ -113,9 +110,7 @@ for (const name of sqlMigrations) {
     failures.push(`${name} is missing from the Drizzle journal`)
   const sql = readFileSync(resolve(root, 'drizzle', name), 'utf8')
   if (
-    /\bDROP\s+TABLE\b|\bDROP\s+COLUMN\b|\bRENAME\s+(?:TABLE|COLUMN)\b/i.test(
-      sql,
-    ) &&
+    hasDestructiveSchemaOperation(sql) &&
     !sql.includes('release: maintenance-required')
   ) {
     failures.push(

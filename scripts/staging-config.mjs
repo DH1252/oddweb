@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -50,6 +51,10 @@ if (
 }
 
 const output = resolve('.wrangler/staging.jsonc')
+const releaseSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+  encoding: 'utf8',
+}).trim()
+const releaseTime = new Date().toISOString()
 mkdirSync(resolve('.wrangler'), { recursive: true })
 writeFileSync(
   output,
@@ -69,8 +74,8 @@ writeFileSync(
       vars: {
         ENVIRONMENT: 'staging',
         PUBLIC_SITE_URL: stagingUrl.origin,
-        RELEASE_SHA: 'staging-dry-run',
-        RELEASE_TIME: 'staging-dry-run',
+        RELEASE_SHA: releaseSha,
+        RELEASE_TIME: releaseTime,
       },
       secrets: {
         required: [

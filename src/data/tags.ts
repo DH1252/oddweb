@@ -13,6 +13,16 @@ export type CanonicalTag = {
   directCount?: number
 }
 
+export const publicFilterTagLimit = 20
+export const tagInputMaxLength = 80
+export const publicDirectorySearchMaxLength = 120
+export const publicTagSearchMaxLength = 80
+
+export type PublicFilterSearch = {
+  include?: string[]
+  exclude?: string[]
+}
+
 const aliases: Partial<Record<string, string>> = {
   audio: 'listen',
   experiment: 'experiments',
@@ -133,9 +143,35 @@ export function normalizeFilterTagList(value: unknown) {
           if (!raw) return undefined
           return item.startsWith('~') ? `~${raw}` : raw
         })
-        .filter((tag): tag is string => Boolean(tag)),
+        .filter((tag): tag is string => {
+          if (!tag) return false
+          return (
+            (tag.startsWith('~') ? tag.slice(1) : tag).length <=
+            tagInputMaxLength
+          )
+        }),
     ),
-  ]
+  ].slice(0, publicFilterTagLimit)
+}
+
+export function normalizePublicFilterSearch(
+  search: Record<string, unknown>,
+): PublicFilterSearch {
+  const include = normalizeFilterTagList(search.include)
+  const exclude = normalizeFilterTagList(search.exclude).filter(
+    (tag) => !include.includes(tag),
+  )
+  return {
+    include: include.length ? include : undefined,
+    exclude: exclude.length ? exclude : undefined,
+  }
+}
+
+export function publicFilterLoaderDeps(search: PublicFilterSearch) {
+  return {
+    include: search.include ?? [],
+    exclude: search.exclude ?? [],
+  }
 }
 
 export function siteFilterTags(site: SiteEntry) {

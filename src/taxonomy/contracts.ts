@@ -12,10 +12,24 @@ export const siteTagDecisionSchema = z.strictObject({
   evidence,
 })
 
-export const siteDecisionSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  decisions: z.array(siteTagDecisionSchema).max(50),
-})
+export const siteDecisionSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    decisions: z.array(siteTagDecisionSchema).max(50),
+  })
+  .superRefine(({ decisions }, context) => {
+    const seen = new Set<string>()
+    for (const [index, decision] of decisions.entries()) {
+      if (seen.has(decision.tagId)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate tag ID: ${decision.tagId}`,
+          path: ['decisions', index, 'tagId'],
+        })
+      }
+      seen.add(decision.tagId)
+    }
+  })
 
 const proposalBase = {
   confidence,

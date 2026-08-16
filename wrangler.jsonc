@@ -16,6 +16,7 @@
     "PUBLIC_SITE_URL": "https://oddweb.page",
     "RELEASE_SHA": "development",
     "RELEASE_TIME": "development",
+    "RELEASE_FENCE_VERSION": "1",
   },
   "secrets": {
     "required": [

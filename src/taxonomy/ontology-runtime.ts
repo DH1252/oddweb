@@ -60,7 +60,7 @@ function provider(
     model: config.model,
     endpoint: config.endpoint,
     allowedHosts: allowedProviderHosts(config.providerKind),
-    timeoutMs: config.timeoutMs,
+    timeoutMs: Math.min(config.timeoutMs, 60_000),
     maxRetries: 0,
   }
   const runtime = { fetch: options.fetch, now: options.now ?? Date.now }
@@ -81,8 +81,11 @@ async function invoke(input: {
   config: ProviderConfig
   prompt: string
   now: number
+  attemptNumber?: number
 }): Promise<OntologyResult> {
-  const number = await input.repository.nextAttemptNumber(input.job.id)
+  const number =
+    input.attemptNumber ??
+    (await input.repository.nextAttemptNumber(input.job.id))
   const attemptId = `attempt:${input.job.id}:${number}`
   const requestHash = await sha256Hex(
     stableJson({
@@ -136,6 +139,7 @@ async function invoke(input: {
       schemaName: 'taxonomy_ontology_proposals',
       systemPrompt: ontologySystemPrompt,
       userPrompt: input.prompt,
+      signal: input.options.signal,
     })
     const raw = stableJson(result.data)
     await input.repository.finishAttempt({
@@ -347,7 +351,8 @@ export async function processOntologyJob(input: {
         mutations: 0,
       }
     }
-    if (!['proposed', 'accepted'].includes(String(row.status))) {
+    const candidateStatus = String(row.status)
+    if (!['proposed', 'accepted'].includes(candidateStatus)) {
       await input.repository.settleJob(
         input.job,
         'obsolete',
@@ -358,6 +363,50 @@ export async function processOntologyJob(input: {
       return {
         jobId: input.job.id,
         status: 'obsolete',
+        attempts: input.job.attemptCount,
+        mutations: 0,
+      }
+    }
+    if (
+      candidateStatus === 'proposed' &&
+      !(await permitsMutation(
+        input.state.mode,
+        input.job.conceptKey,
+        input.policy.rolloutBasisPoints,
+      ))
+    ) {
+      const settled = await input.repository.settleRolloutExcludedCandidate(
+        input.job.conceptKey,
+        input.job,
+        input.now,
+      )
+      if (!settled) {
+        const refreshed = await input.repository.candidate(input.job.conceptKey)
+        if (String(refreshed?.status) === 'accepted') {
+          return {
+            jobId: input.job.id,
+            status: 'ignored',
+            attempts: input.job.attemptCount,
+            mutations: 0,
+          }
+        }
+        await input.repository.settleJob(
+          input.job,
+          'obsolete',
+          input.now,
+          'candidate_changed',
+          'Ontology candidate changed while rollout exclusion was settling.',
+        )
+        return {
+          jobId: input.job.id,
+          status: 'obsolete',
+          attempts: input.job.attemptCount,
+          mutations: 0,
+        }
+      }
+      return {
+        jobId: input.job.id,
+        status: 'settled',
         attempts: input.job.attemptCount,
         mutations: 0,
       }
@@ -447,13 +496,13 @@ export async function processOntologyJob(input: {
     ({ routingRole }) => routingRole === 'consensus',
   )
   const requiredVoters = input.policy.ontologyProviderAgreement
-  const voters = consensus
-  if (!primary.length || voters.length + 1 < requiredVoters) {
+  if (!primary.length || consensus.length + 1 < requiredVoters) {
     throw new TaxonomyProviderError(
-      `Ontology route has ${voters.length} configured voters but policy requires ${requiredVoters}`,
+      `Ontology route has ${consensus.length} configured voters but policy requires ${requiredVoters}`,
       { code: 'configuration', retryable: true },
     )
   }
+  const voters = consensus.slice(0, Math.max(0, requiredVoters - 1))
   const prompt = stableJson({
     concept: input.job.conceptKey,
     evidence: context.evidence,
@@ -485,17 +534,34 @@ export async function processOntologyJob(input: {
       }
     }
   }
-  for (const config of voters) {
-    try {
-      results.push(await invoke({ ...input, config, prompt }))
-    } catch (error) {
-      throw new TaxonomyProviderError('Required ontology voter failed', {
-        code: 'invalid_response',
-        retryable: true,
-        cause: error,
-      })
-    }
+  const firstVoterAttempt = await input.repository.nextAttemptNumber(
+    input.job.id,
+  )
+  const voterResults = await Promise.allSettled(
+    voters.map((config, index) =>
+      invoke({
+        ...input,
+        config,
+        prompt,
+        attemptNumber: firstVoterAttempt + index,
+      }),
+    ),
+  )
+  const failedVoter = voterResults.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  )
+  if (failedVoter) {
+    throw new TaxonomyProviderError('Required ontology voter failed', {
+      code: 'invalid_response',
+      retryable: true,
+      cause: failedVoter.reason,
+    })
   }
+  results.push(
+    ...voterResults.map(
+      (result) => (result as PromiseFulfilledResult<OntologyResult>).value,
+    ),
+  )
   if (!primarySucceeded || results.length !== requiredVoters) {
     throw new TaxonomyProviderError('Required ontology voter is missing', {
       code: 'invalid_response',
@@ -506,6 +572,8 @@ export async function processOntologyJob(input: {
   const proposals = policyValidatedProposals(results, input.policy, knownIds)
   const revisions = new Map(context.tags.map((tag) => [tag.id, tag.revision]))
   let mutations = 0
+  const selected: Array<{ candidateId: string; proposal: OntologyProposal }> =
+    []
   for (const [rank, proposal] of proposals.entries()) {
     const candidateId = await saveProposal({
       repository: input.repository,
@@ -515,31 +583,31 @@ export async function processOntologyJob(input: {
       rank,
       now: input.now,
     })
-    if (
-      mutations === 0 &&
-      (await permitsMutation(
-        input.state.mode,
-        `${input.job.id}:${proposalKey(proposal)}`,
-        input.policy.rolloutBasisPoints,
-      ))
-    ) {
-      const service = new TaxonomyService(input.env, input.options)
-      await service.publishOntology(
-        mutationFor(
-          proposal,
-          input.state.publishedVersion + mutations,
-          revisions,
-        ),
-        'ontology-provider',
-        { candidateId, job: input.job },
-      )
-      mutations += 1
-    } else if (input.state.mode !== 'shadow') {
-      await new TaxonomyService(
-        input.env,
-        input.options,
-      ).enqueueOntologyCandidate(candidateId)
-    }
+    const mutationPermitted = await permitsMutation(
+      input.state.mode,
+      candidateId,
+      input.policy.rolloutBasisPoints,
+    )
+    if (mutationPermitted) selected.push({ candidateId, proposal })
+  }
+  for (const { candidateId } of selected.slice(1)) {
+    await new TaxonomyService(
+      input.env,
+      input.options,
+    ).enqueueOntologyCandidate(candidateId)
+  }
+  for (const { candidateId, proposal } of selected.slice(0, 1)) {
+    const service = new TaxonomyService(input.env, input.options)
+    await service.publishOntology(
+      mutationFor(
+        proposal,
+        input.state.publishedVersion + mutations,
+        revisions,
+      ),
+      'ontology-provider',
+      { candidateId, job: input.job },
+    )
+    mutations += 1
   }
   if (!proposals.length) {
     throw new TaxonomyProviderError(
