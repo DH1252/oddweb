@@ -464,6 +464,7 @@ test('code-only release pauses asynchronous delivery before promotion and skips 
     'check-taxonomy-resources.mjs --remote-handlers',
     'smoke-test.mjs --triggers-only --read-only-triggers',
   ])
+  assert.equal(harness.readOnlyTriggerQueueState(), 'paused')
   const recovery = harness.writtenJson('.recovery.json')
   assert.equal(recovery.strategy, 'worker-rollback-and-d1-time-travel')
   assert.equal(recovery.timeTravelBookmark, 'bookmark-before-release')
@@ -1209,6 +1210,7 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
   const events: HarnessEvent[] = []
   const writes = new Map<string, string | Uint8Array>()
   const errors: string[] = []
+  let readOnlyTriggerQueueState: string | undefined
   const occurrences = new Map<string, number>()
   const config = options.config ?? productionConfig(['v1'])
   const previousConfig = options.previousConfig ?? productionConfig(['v1'])
@@ -1251,8 +1253,13 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
   }
 
   const io = {
-    run(command: string, args: string[]) {
+    run(command: string, args: string[], env?: Record<string, string>) {
       const label = [command, ...args].join(' ')
+      if (
+        label.includes('smoke-test.mjs --triggers-only --read-only-triggers')
+      ) {
+        readOnlyTriggerQueueState = env?.RELEASE_TAXONOMY_QUEUE_INITIAL_STATE
+      }
       const occurrence = record('run', label)
       if (options.failRun?.(label, occurrence)) {
         if (options.stealLeaseOnRunFailure) releaseOwner = 'newer-release'
@@ -1544,6 +1551,7 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
   return {
     events,
     errors,
+    readOnlyTriggerQueueState: () => readOnlyTriggerQueueState,
     execute(envOverrides: Record<string, string> = {}) {
       return runRelease({
         root: '/repo',

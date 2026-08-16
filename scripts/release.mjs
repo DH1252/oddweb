@@ -593,7 +593,7 @@ export function runRelease(options = {}) {
         {
           ...env,
           RELEASE_SHA: sha,
-          RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: initialQueueDeliveryState,
+          RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'paused',
         },
       )
       releaseIncomplete = true
