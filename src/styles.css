@@ -103,12 +103,51 @@ button {
   -webkit-text-fill-color: #593625;
 }
 
-:where([data-od-id='admin-page'], [data-od-id='admin-login']) button:disabled {
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :is(button, a).bg-rust:not(:disabled) {
+  background-color: #b9431d !important;
+  color: #fffaf0 !important;
+  -webkit-text-fill-color: #fffaf0 !important;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :is(button, a).bg-success:not(:disabled) {
+  background-color: #2f6f3c !important;
+  color: #fffaf0 !important;
+  -webkit-text-fill-color: #fffaf0 !important;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :is(button, a).bg-danger:not(:disabled) {
+  background-color: #9f2f26 !important;
+  color: #fffaf0 !important;
+  -webkit-text-fill-color: #fffaf0 !important;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  :is(button, a).bg-brown:not(:disabled) {
+  background-color: #593625 !important;
+  color: #fffaf0 !important;
+  -webkit-text-fill-color: #fffaf0 !important;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  button:disabled:is([aria-pressed='true'], [aria-current]) {
+  cursor: not-allowed;
+  border-color: #2a1810 !important;
+  background: #593625 !important;
+  color: #fffaf0 !important;
+  -webkit-text-fill-color: #fffaf0 !important;
+  box-shadow: none !important;
+}
+
+:where([data-od-id='admin-page'], [data-od-id='admin-login'])
+  button:disabled:not([aria-pressed='true']):not([aria-current]) {
   cursor: not-allowed;
   border-color: #704936 !important;
   background: #e5d8bb !important;
   color: #593625 !important;
-  -webkit-text-fill-color: #593625;
+  -webkit-text-fill-color: #593625 !important;
   box-shadow: none !important;
 }
 

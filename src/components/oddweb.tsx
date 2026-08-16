@@ -6,12 +6,16 @@ import { thumbnailUrl } from '../lib/thumbnails'
 import type { ReactNode } from 'react'
 import type { SiteEntry } from '../data/sites'
 
-export const buttonClass =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink bg-paper px-3 text-sm font-bold text-ink no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] hover:bg-warm active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:border-muted disabled:bg-[#e5d8bb] disabled:text-[#684b3b] disabled:shadow-none'
+export const buttonBaseClass =
+  'inline-flex min-h-11 cursor-pointer items-center justify-center border border-ink px-3 text-sm font-bold no-underline shadow-[2px_2px_0_#d9aa7a] transition-[background-color,color,transform] active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:border-muted disabled:shadow-none'
 
-export const primaryButtonClass = `${buttonClass} bg-rust text-white hover:bg-[#9f3516] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
-export const successButtonClass = `${buttonClass} bg-success text-white hover:bg-[#24592f] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
-export const dangerButtonClass = `${buttonClass} bg-danger text-white hover:bg-[#78221c] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
+export const buttonClass = `${buttonBaseClass} bg-paper text-ink hover:bg-warm disabled:bg-[#e5d8bb] disabled:text-[#684b3b]`
+
+export const selectedButtonClass = `${buttonBaseClass} bg-brown text-paper hover:bg-[#4a2c1e] disabled:bg-brown disabled:text-paper`
+
+export const primaryButtonClass = `${buttonBaseClass} bg-rust text-white hover:bg-[#9f3516] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
+export const successButtonClass = `${buttonBaseClass} bg-success text-white hover:bg-[#24592f] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
+export const dangerButtonClass = `${buttonBaseClass} bg-danger text-white hover:bg-[#78221c] disabled:bg-[#e5d8bb] disabled:text-[#593625]`
 
 export function SiteHeader({
   directoryLink = false,

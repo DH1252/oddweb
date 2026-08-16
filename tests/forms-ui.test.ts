@@ -76,19 +76,40 @@ test('semantic button tones override shared hover colors', async () => {
     new URL('../src/components/oddweb.tsx', import.meta.url),
     'utf8',
   )
+  assert.match(source, /export const buttonBaseClass/)
+  assert.match(
+    source,
+    /export const buttonClass = `\$\{buttonBaseClass\}[\s\S]*bg-paper[\s\S]*text-ink/,
+  )
+  assert.match(
+    source,
+    /export const selectedButtonClass = `\$\{buttonBaseClass\}[\s\S]*bg-brown[\s\S]*text-paper/,
+  )
   assert.match(source, /successButtonClass[\s\S]*hover:bg-\[#24592f\]/)
   assert.match(source, /dangerButtonClass[\s\S]*hover:bg-\[#78221c\]/)
   assert.match(
     source,
-    /primaryButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+    /primaryButtonClass = `\$\{buttonBaseClass\}[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
   )
   assert.match(
     source,
-    /successButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+    /successButtonClass = `\$\{buttonBaseClass\}[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
   )
   assert.match(
     source,
-    /dangerButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+    /dangerButtonClass = `\$\{buttonBaseClass\}[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+  )
+  assert.doesNotMatch(
+    source.match(/export const primaryButtonClass = `[^\n]+/)?.[0] || '',
+    /bg-paper|text-ink/,
+  )
+  assert.doesNotMatch(
+    source.match(/export const successButtonClass = `[^\n]+/)?.[0] || '',
+    /bg-paper|text-ink/,
+  )
+  assert.doesNotMatch(
+    source.match(/export const dangerButtonClass = `[^\n]+/)?.[0] || '',
+    /bg-paper|text-ink/,
   )
 })
 
@@ -109,10 +130,26 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.match(styles, /fieldset:disabled[\s\S]*opacity: 1/)
   assert.match(
     styles,
-    /button:disabled[\s\S]*background: #e5d8bb !important[\s\S]*color: #593625 !important/,
+    /button:disabled:not\(\[aria-pressed='true'\]\):not\(\[aria-current\]\)[\s\S]*background: #e5d8bb !important[\s\S]*color: #593625 !important/,
   )
-  assert.match(styles, /-webkit-text-fill-color: #593625/)
+  assert.match(styles, /-webkit-text-fill-color: #593625 !important/)
+  assert.match(
+    styles,
+    /button:disabled:is\(\[aria-pressed='true'\], \[aria-current\]\)[\s\S]*background: #593625 !important[\s\S]*color: #fffaf0 !important/,
+  )
+  assert.match(
+    styles,
+    /:is\(button, a\)\.bg-danger:not\(:disabled\)[\s\S]*background-color: #9f2f26 !important[\s\S]*color: #fffaf0 !important/,
+  )
   assert.match(login, /data-od-id="admin-login"/)
+
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(admin, /selectedButtonClass/)
+  assert.match(admin, /aria-pressed=\{dashboard\.state\.mode === mode\}/)
+  assert.doesNotMatch(admin, /!bg-brown !text-paper/)
 })
 
 test('automation jobs expose every server-retryable terminal status', async () => {

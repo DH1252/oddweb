@@ -19,6 +19,7 @@ import {
   dangerButtonClass,
   fieldClass,
   primaryButtonClass,
+  selectedButtonClass,
   successButtonClass,
 } from '../components/oddweb'
 import {
@@ -1737,7 +1738,8 @@ function AutomationSection({
                 <button
                   key={mode}
                   type="button"
-                  className={`${buttonClass} min-h-9 ${dashboard.state.mode === mode ? '!bg-brown !text-paper' : ''}`}
+                  className={`${dashboard.state.mode === mode ? selectedButtonClass : buttonClass} min-h-9`}
+                  aria-pressed={dashboard.state.mode === mode}
                   disabled={
                     modeMutation.isPending ||
                     dashboard.state.mode === mode ||
@@ -4284,7 +4286,7 @@ function AdminPagination({
             ) : null}
             <button
               type="button"
-              className={`${buttonClass} min-h-9 min-w-9 px-2 ${number === safePage ? '!bg-brown !text-paper' : ''}`}
+              className={`${number === safePage ? selectedButtonClass : buttonClass} min-h-9 min-w-9 px-2`}
               aria-current={number === safePage ? 'page' : undefined}
               onClick={() => changePage(number)}
             >
