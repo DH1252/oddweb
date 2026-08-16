@@ -107,6 +107,10 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.match(styles, /--color-muted: #704936/)
   assert.match(styles, /--color-line: #996141/)
   assert.match(styles, /fieldset:disabled[\s\S]*opacity: 1/)
+  assert.match(
+    styles,
+    /button:disabled[\s\S]*background: #e5d8bb !important[\s\S]*color: #593625 !important/,
+  )
   assert.match(styles, /-webkit-text-fill-color: #593625/)
   assert.match(login, /data-od-id="admin-login"/)
 })

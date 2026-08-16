@@ -103,6 +103,15 @@ button {
   -webkit-text-fill-color: #593625;
 }
 
+:where([data-od-id='admin-page'], [data-od-id='admin-login']) button:disabled {
+  cursor: not-allowed;
+  border-color: #704936 !important;
+  background: #e5d8bb !important;
+  color: #593625 !important;
+  -webkit-text-fill-color: #593625;
+  box-shadow: none !important;
+}
+
 :where([data-od-id='admin-page'], [data-od-id='admin-login'])
   :where(input, textarea)::placeholder {
   color: #704936;
