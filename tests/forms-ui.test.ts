@@ -78,6 +78,18 @@ test('semantic button tones override shared hover colors', async () => {
   )
   assert.match(source, /successButtonClass[\s\S]*hover:bg-\[#24592f\]/)
   assert.match(source, /dangerButtonClass[\s\S]*hover:bg-\[#78221c\]/)
+  assert.match(
+    source,
+    /primaryButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+  )
+  assert.match(
+    source,
+    /successButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+  )
+  assert.match(
+    source,
+    /dangerButtonClass[\s\S]*disabled:bg-\[#e5d8bb\][\s\S]*disabled:text-\[#593625\]/,
+  )
 })
 
 test('admin pages use high-contrast text, borders, and disabled controls', async () => {
