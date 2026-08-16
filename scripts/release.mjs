@@ -1204,8 +1204,10 @@ function releaseReleaseLease(io, lease, now) {
 }
 
 function releaseOwnedIo(io, lease, now) {
+  const queueStateEnv = io.queueStateEnv
   return {
     ...io,
+    queueStateEnv,
     run(command, args, env) {
       assertReleaseLease(io, lease, now)
       try {
@@ -1217,7 +1219,7 @@ function releaseOwnedIo(io, lease, now) {
     output(command, args, env) {
       if (!isLeaseCommand(args)) assertReleaseLease(io, lease, now)
       try {
-        return io.output(command, args, env)
+        return io.output(command, args, env ?? queueStateEnv)
       } finally {
         if (!isLeaseCommand(args)) assertReleaseLease(io, lease, now)
       }
