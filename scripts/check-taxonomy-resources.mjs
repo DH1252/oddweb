@@ -304,15 +304,18 @@ export function remoteHandlerValidation(
     failures,
     `secret metadata for Worker ${resources.worker}`,
   )
-  if (
-    secretOutput &&
-    !JSON.parse(secretOutput).some(
-      (secret) => secret.name === 'TAXONOMY_MASTER_KEY_V1',
+  if (secretOutput) {
+    const remoteSecrets = new Set(
+      JSON.parse(secretOutput).map((secret) => secret.name),
     )
-  )
-    failures.push(
-      `remote Worker ${resources.worker} is missing TAXONOMY_MASTER_KEY_V1 secret metadata`,
-    )
+    for (const requiredSecret of config.secrets?.required ?? []) {
+      if (!remoteSecrets.has(requiredSecret)) {
+        failures.push(
+          `remote Worker ${resources.worker} is missing ${requiredSecret} secret metadata`,
+        )
+      }
+    }
+  }
 
   const deploymentOutput = remoteOutput(
     execute,
@@ -330,11 +333,15 @@ export function remoteHandlerValidation(
   )
   if (deploymentOutput) {
     const deployment = JSON.parse(deploymentOutput)
-    const activeVersion = deployment.versions?.find(
-      (version) => version.percentage > 0,
-    )?.version_id
+    const activeVersions = deployment.versions?.filter(
+      (version) => Number(version.percentage) === 100,
+    )
+    const activeVersion =
+      activeVersions?.length === 1 ? activeVersions[0].version_id : undefined
     if (!activeVersion)
-      failures.push(`Worker ${resources.worker} has no active deployed version`)
+      failures.push(
+        `Worker ${resources.worker} does not have exactly one 100% active deployed version`,
+      )
     else {
       const versionOutput = remoteOutput(
         execute,

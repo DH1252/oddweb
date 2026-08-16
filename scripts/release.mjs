@@ -81,7 +81,6 @@ export function runRelease(options = {}) {
     now,
   )
   io = releaseOwnedIo(baseIo, releaseLease, now)
-  let releaseIncomplete = false
   try {
     const previousVersion = currentVersionId(io)
     const previousVersionMetadata = JSON.parse(
@@ -586,23 +585,48 @@ export function runRelease(options = {}) {
       })
       runPostdeployValidation(io, productionConfigPath)
       updateJournal(io, recoveryPath, journal, 'triggers_restored', now)
-      updateJournal(io, recoveryPath, journal, 'queue_left_paused', now)
-      io.run(
-        'node',
-        ['scripts/smoke-test.mjs', '--triggers-only', '--read-only-triggers'],
-        {
+      if (queuePauseChanged) {
+        resumeTaxonomyDelivery(io)
+        queuePaused = false
+        updateJournal(io, recoveryPath, journal, 'queue_restored', now, {
+          finalQueueDeliveryState: 'running',
+        })
+        io.run('node', ['scripts/smoke-test.mjs', '--triggers-only'], {
           ...env,
           RELEASE_SHA: sha,
-          RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'paused',
-        },
-      )
-      releaseIncomplete = true
-      updateJournal(io, recoveryPath, journal, 'incomplete_queue_paused', now, {
-        incompleteReason:
-          'Queue delivery remains paused because release automation never resumes it without an atomic ownership primitive; functional trigger verification is still required.',
-      })
+        })
+        updateJournal(io, recoveryPath, journal, 'triggers_verified', now)
+      } else {
+        updateJournal(
+          io,
+          recoveryPath,
+          journal,
+          'queue_preserved_paused',
+          now,
+          {
+            finalQueueDeliveryState: 'paused',
+          },
+        )
+        io.run(
+          'node',
+          ['scripts/smoke-test.mjs', '--triggers-only', '--read-only-triggers'],
+          {
+            ...env,
+            RELEASE_SHA: sha,
+            RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'paused',
+          },
+        )
+        updateJournal(
+          io,
+          recoveryPath,
+          journal,
+          'triggers_verified_read_only',
+          now,
+        )
+      }
+      updateJournal(io, recoveryPath, journal, 'completed', now)
     } catch (error) {
-      const queueNeedsPause = false
+      const queueNeedsPause = !queuePaused
       const containmentErrors = maintenanceRequired
         ? holdMaintenance({
             io,
@@ -647,12 +671,6 @@ export function runRelease(options = {}) {
             : 'Production trigger verification failed. The application remains deployed, but taxonomy delivery is paused and cron schedules are cleared for explicit recovery.',
       )
       throwWithContainment(error, containmentErrors)
-    }
-
-    if (releaseIncomplete) {
-      throw new Error(
-        `Release ${sha} remains incomplete with queue delivery paused; explicitly verify ownership, resume delivery, and run functional trigger verification. Recovery journal: ${recoveryPath}`,
-      )
     }
 
     io.log(
@@ -1079,7 +1097,7 @@ function pauseTaxonomyDelivery(io) {
     'pause-delivery',
     productionTaxonomyResources.queue,
   ])
-  requireQueueDeliveryState(io, io.queueStateEnv, 'paused')
+  verifyQueueTransitionWhenAuthoritative(io, 'paused')
 }
 
 function queryQueueDeliveryState(io, env) {
@@ -1120,20 +1138,23 @@ function sameQueueDeliverySnapshot(left, right) {
 }
 
 function resumeTaxonomyDelivery(io) {
-  const first = requireQueueDeliveryState(io, io.queueStateEnv, 'paused')
-  const second = requireQueueDeliveryState(io, io.queueStateEnv, 'paused')
-  if (!sameQueueDeliverySnapshot(first, second)) {
-    throw new Error(
-      'The paused queue state changed during ownership validation; refusing to resume delivery.',
-    )
-  }
   io.run('npx', [
     'wrangler',
     'queues',
     'resume-delivery',
     productionTaxonomyResources.queue,
   ])
-  requireQueueDeliveryState(io, io.queueStateEnv, 'running')
+  verifyQueueTransitionWhenAuthoritative(io, 'running')
+}
+
+function verifyQueueTransitionWhenAuthoritative(io, expected) {
+  const actual = queryQueueDeliveryState(io, io.queueStateEnv)
+  if (actual.source !== 'operator' && actual.state !== expected) {
+    throw new Error(
+      `Queue delivery is ${actual.state}, expected ${expected} after the state transition.`,
+    )
+  }
+  return actual
 }
 
 function setMaintenanceBarrier(io, configPath) {
@@ -1217,7 +1238,7 @@ function releaseOwnedIo(io, lease, now) {
     run(command, args, env) {
       assertReleaseLease(io, lease, now)
       try {
-        return io.run(command, args, env)
+        return io.run(command, args, env ?? queueStateEnv)
       } finally {
         assertReleaseLease(io, lease, now)
       }
@@ -1486,7 +1507,7 @@ function restoreCodeOnlyApplication({
       desiredConfig: previousRestoreConfig,
       configPath: previousTriggersConfigPath,
       candidateQueueNames,
-      resume: false,
+      resume: initialQueueDeliveryState === 'running',
       artifactHashPaths,
       artifactDigest,
     })
@@ -1526,6 +1547,13 @@ function restoreTriggerAndQueueState({
     validateRemoteQueueConsumers(io, desiredConfig, configPath)
   } catch (error) {
     errors.push(error)
+  }
+  if (!errors.length && resume) {
+    try {
+      resumeTaxonomyDelivery(io)
+    } catch (error) {
+      errors.push(error)
+    }
   }
   return errors
 }

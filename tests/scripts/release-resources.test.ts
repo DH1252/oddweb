@@ -426,7 +426,7 @@ test('queue consumer validation compares every configured delivery setting', () 
 
 test('code-only release pauses asynchronous delivery before promotion and skips export', () => {
   const harness = releaseHarness()
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
 
   assert.equal(harness.has('d1 export'), false)
   assert.ok(harness.has('queues pause-delivery'))
@@ -462,9 +462,9 @@ test('code-only release pauses asynchronous delivery before promotion and skips 
     'smoke-test.mjs --application-only',
     'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
     'check-taxonomy-resources.mjs --remote-handlers',
-    'smoke-test.mjs --triggers-only --read-only-triggers',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
   ])
-  assert.equal(harness.readOnlyTriggerQueueState(), 'paused')
   const recovery = harness.writtenJson('.recovery.json')
   assert.equal(recovery.strategy, 'worker-rollback-and-d1-time-travel')
   assert.equal(recovery.timeTravelBookmark, 'bookmark-before-release')
@@ -479,42 +479,58 @@ test('code-only release pauses asynchronous delivery before promotion and skips 
       'application_promoted',
       'application_verified',
       'triggers_restored',
-      'queue_left_paused',
-      'incomplete_queue_paused',
+      'queue_restored',
+      'triggers_verified',
+      'completed',
     ],
   )
+  assert.equal(recovery.finalQueueDeliveryState, 'running')
 })
 
 test('an initially paused queue is never paused or resumed by release', () => {
   const harness = releaseHarness({ initialQueueDeliveryState: 'paused' })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
   assert.equal(harness.has('queues pause-delivery'), false)
   assert.equal(harness.has('queues resume-delivery'), false)
+  assert.equal(harness.readOnlyTriggerQueueState(), 'paused')
   const recovery = harness.writtenJson('.recovery.json')
   assert.equal(recovery.initialQueueDeliveryState, 'paused')
-  assert.ok(
-    recovery.phaseHistory.some(
-      (entry: { phase: string }) => entry.phase === 'incomplete_queue_paused',
-    ),
-  )
+  assert.equal(recovery.finalQueueDeliveryState, 'paused')
+  assert.equal(recovery.phase, 'completed')
 })
 
 test('release derives queue state remotely instead of trusting operator input', () => {
   const harness = releaseHarness({ initialQueueDeliveryState: 'running' })
-  assert.throws(
-    () => harness.execute({ RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'paused' }),
-    /remains incomplete/,
-  )
+  harness.execute({ RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'paused' })
   assert.ok(harness.has('scripts/queue-delivery-state.mjs'))
   assert.ok(harness.has('queues pause-delivery'))
 })
 
-test('release never automatically resumes queue delivery', () => {
-  const harness = releaseHarness({
-    queueModifiedStates: ['1', '1', '1', '2', '2', '3'],
-  })
-  assert.throws(() => harness.execute(), /remains incomplete/)
-  assert.equal(harness.has('queues resume-delivery'), false)
+test('release restores a queue pause owned by the active release', () => {
+  const harness = releaseHarness()
+  harness.execute()
+  assert.ok(harness.has('queues resume-delivery'))
+})
+
+test('release completes when Cloudflare omits optional queue state fields', () => {
+  const harness = releaseHarness({ operatorQueueState: true })
+  harness.execute({ RELEASE_TAXONOMY_QUEUE_INITIAL_STATE: 'running' })
+  assertOrder(harness.events, [
+    'queues pause-delivery oddweb-taxonomy',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
+  ])
+  assert.equal(harness.writtenJson('.recovery.json').phase, 'completed')
+})
+
+test('release environment reaches lease-protected Wrangler commands', () => {
+  const harness = releaseHarness()
+  harness.execute({ RELEASE_TEST_MARKER: 'present' })
+  assert.equal(
+    harness.runEnvironment('npx wrangler queues pause-delivery oddweb-taxonomy')
+      ?.RELEASE_TEST_MARKER,
+    'present',
+  )
 })
 
 test('verified artifact drift aborts before the first remote mutation', () => {
@@ -582,7 +598,7 @@ test('a fix-forward release recognizes an active maintenance Worker', () => {
     previousMaintenanceActive: true,
     initialQueueDeliveryState: 'paused',
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
 
   assert.ok(
     harness.has('wrangler deploy --config /repo/.wrangler/maintenance.jsonc'),
@@ -603,7 +619,7 @@ test('pending D1 migration enters maintenance before export and restores async w
         '-- release: maintenance-required\nALTER TABLE sites RENAME TO sites_old;',
     },
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
 
   assertOrder(harness.events, [
     'queues pause-delivery oddweb-taxonomy',
@@ -617,7 +633,8 @@ test('pending D1 migration enters maintenance before export and restores async w
     "DELETE FROM app_state WHERE key = 'release:maintenance'",
     'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
     'check-taxonomy-resources.mjs --remote-handlers',
-    'smoke-test.mjs --triggers-only --read-only-triggers',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
   ])
   const recovery = harness.writtenJson('.sql.json')
   assert.equal(recovery.strategy, 'd1-export-and-time-travel')
@@ -644,7 +661,7 @@ test('migration release waits for active taxonomy leases before export', () => {
       { leasedJobs: 0, leasedOutbox: 0 },
     ],
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
   assert.equal(harness.count('leased_jobs'), 4)
   const recovery = harness.writtenJson('.sql.json')
   assert.deepEqual(recovery.releaseDrain, {
@@ -676,7 +693,7 @@ test('migration drain requires sustained zero including active invocations', () 
       { leasedJobs: 0, leasedOutbox: 0, activeInvocations: 0 },
     ],
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
   const recovery = harness.writtenJson('.sql.json')
   assert.equal(recovery.releaseDrain.attempts, 5)
   assert.equal(recovery.releaseDrain.consecutiveZero, 3)
@@ -691,7 +708,7 @@ test('migration drain waits through the execution window of expired leases', () 
       { jobs: 1, outbox: 1, latest: 900, observedAt: 2101 },
     ],
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
   const recovery = harness.writtenJson('.sql.json')
   assert.equal(recovery.releaseDrain.attempts, 4)
   assert.equal(recovery.releaseDrain.expiredLeasedJobs, 1)
@@ -714,7 +731,7 @@ test('a genuinely pending Durable Object migration uses trigger-deferred direct 
     config: productionConfig(['v1', 'v2']),
     activeMigrationTag: 'v1',
   })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
 
   assert.equal(harness.has('wrangler versions upload'), false)
   assert.equal(harness.has('d1 export'), false)
@@ -727,7 +744,8 @@ test('a genuinely pending Durable Object migration uses trigger-deferred direct 
     'smoke-test.mjs --application-only',
     'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
     'check-taxonomy-resources.mjs --remote-handlers',
-    'smoke-test.mjs --triggers-only --read-only-triggers',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
   ])
   const deferred = harness.writtenJson('/repo/.wrangler/release.jsonc')
   assert.deepEqual(deferred.triggers.crons, [])
@@ -748,7 +766,7 @@ test('final trigger reconciliation removes a consumer from the previous queue', 
   previousConfig.queues.producers[0].queue = 'oddweb-taxonomy-old'
   previousConfig.queues.consumers[0].queue = 'oddweb-taxonomy-old'
   const harness = releaseHarness({ previousConfig })
-  assert.throws(() => harness.execute(), /remains incomplete/)
+  harness.execute()
   assert.ok(
     harness.has('queues consumer worker remove oddweb-taxonomy-old oddweb'),
   )
@@ -849,7 +867,7 @@ test('code-only application smoke failure restores the prior version before trig
     ),
   )
   assert.ok(harness.has('queues pause-delivery'))
-  assert.equal(harness.has('queues resume-delivery'), false)
+  assert.ok(harness.has('queues resume-delivery'))
   const restored = harness.writtenJson(
     '/repo/.wrangler/previous-triggers.jsonc',
   )
@@ -883,7 +901,9 @@ test('code-only trigger smoke failure holds delivery and crons without claiming 
   assert.throws(() => harness.execute(), /simulated command failure/)
   assertOrder(harness.events, [
     'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
-    'smoke-test.mjs --triggers-only --read-only-triggers',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
+    'queues pause-delivery oddweb-taxonomy',
     'wrangler triggers deploy --config /repo/.wrangler/maintenance.jsonc',
   ])
   assert.equal(harness.has('versions deploy previous-version@100'), false)
@@ -944,7 +964,9 @@ test('maintenance trigger failure pauses delivery again and redeploys maintenanc
   })
   assert.throws(() => harness.execute(), /simulated command failure/)
   assertOrder(harness.events, [
-    'smoke-test.mjs --triggers-only --read-only-triggers',
+    'queues resume-delivery oddweb-taxonomy',
+    'smoke-test.mjs --triggers-only',
+    'queues pause-delivery oddweb-taxonomy',
     'wrangler triggers deploy --config /repo/.wrangler/maintenance.jsonc',
     "VALUES ('release:maintenance', '1')",
     'wrangler deploy --config /repo/.wrangler/maintenance.jsonc',
@@ -960,9 +982,20 @@ test('maintenance containment keeps the already paused queue fail closed', () =>
       (label === 'npx wrangler queues pause-delivery oddweb-taxonomy' &&
         occurrence === 2),
   })
-  assert.throws(() => harness.execute(), /simulated command failure/)
-  assert.equal(harness.count('queues pause-delivery oddweb-taxonomy'), 1)
-  assert.equal(harness.maintenanceDeployCount(), 2)
+  assert.throws(
+    () => harness.execute(),
+    (error: unknown) => {
+      assert.ok(error instanceof AggregateError)
+      assert.ok(
+        error.errors.some((entry) =>
+          String(entry).includes('simulated command failure'),
+        ),
+      )
+      return true
+    },
+  )
+  assert.equal(harness.count('queues pause-delivery oddweb-taxonomy'), 2)
+  assert.equal(harness.maintenanceDeployCount(), 1)
 })
 
 test('staging scripts and documentation cover first-deploy queue and secret bootstrap', () => {
@@ -1184,6 +1217,7 @@ interface ReleaseHarnessOptions {
   initialQueueDeliveryState?: 'running' | 'paused'
   queueStates?: Array<'running' | 'paused'>
   queueModifiedStates?: string[]
+  operatorQueueState?: boolean
   loseReleaseLeaseAtRenewal?: number
   stealLeaseOnRunFailure?: boolean
   stealLeaseAfterRun?: (label: string) => boolean
@@ -1211,6 +1245,7 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
   const writes = new Map<string, string | Uint8Array>()
   const errors: string[] = []
   let readOnlyTriggerQueueState: string | undefined
+  const runEnvironments = new Map<string, Record<string, string> | undefined>()
   const occurrences = new Map<string, number>()
   const config = options.config ?? productionConfig(['v1'])
   const previousConfig = options.previousConfig ?? productionConfig(['v1'])
@@ -1255,6 +1290,7 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
   const io = {
     run(command: string, args: string[], env?: Record<string, string>) {
       const label = [command, ...args].join(' ')
+      runEnvironments.set(label, env)
       if (
         label.includes('smoke-test.mjs --triggers-only --read-only-triggers')
       ) {
@@ -1326,7 +1362,11 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
               Math.min(stateIndex, options.queueModifiedStates.length - 1)
             ]
           : String(queueModified)
-        return JSON.stringify({ state, modifiedOn })
+        return JSON.stringify(
+          options.operatorQueueState
+            ? { state, modifiedOn: null, source: 'operator' }
+            : { state, modifiedOn },
+        )
       }
       if (
         label.includes(
@@ -1552,6 +1592,7 @@ function releaseHarness(options: ReleaseHarnessOptions = {}) {
     events,
     errors,
     readOnlyTriggerQueueState: () => readOnlyTriggerQueueState,
+    runEnvironment: (label: string) => runEnvironments.get(label),
     execute(envOverrides: Record<string, string> = {}) {
       return runRelease({
         root: '/repo',

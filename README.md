@@ -75,14 +75,17 @@ npx wrangler secret put ADMIN_SESSION_SECRET
 npx wrangler secret put TAXONOMY_MASTER_KEY_V1
 ```
 
-Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 cannot report `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without both settings. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
+Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 may omit `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused` with `RELEASE_TAXONOMY_QUEUE_INITIAL_STATE`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without the recovery directory, Cloudflare credentials, and a queue-state declaration when the API omits state. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
 
 ```bash
 export BACKUP_DIR=/absolute/path/to/secured/oddweb-backups
 export CLOUDFLARE_ACCOUNT_ID=your-account-id
-export CLOUDFLARE_API_TOKEN=queue-read-write-release-token
+export CLOUDFLARE_API_TOKEN=production-release-token
+export RELEASE_TAXONOMY_QUEUE_INITIAL_STATE=running
 npm run deploy
 ```
+
+The production release token must cover the account and zone used by this project, including Workers Scripts, Workers Routes Edit, Queues, D1, R2, and Worker secret metadata. A successful release that starts with queue delivery running pauses it, restores production triggers, resumes the release-owned pause while the D1 release lease is still held, and runs the functional cron/outbox/queue probe before returning success. A queue that was already paused remains paused and receives read-only trigger verification.
 
 Migration releases require the active Worker to expose release fence version 1.
 After introducing or upgrading the fence protocol, deploy once with no pending D1
