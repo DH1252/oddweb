@@ -215,7 +215,70 @@ async function readBoundedResponse(
   return new TextDecoder().decode(bytes)
 }
 
-function responseError(status: number): TaxonomyProviderError {
+const unsupportedSchemaKeys = new Set([
+  '$schema',
+  '$id',
+  '$comment',
+  'minLength',
+  'maxLength',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'minItems',
+  'maxItems',
+  'minContains',
+  'maxContains',
+  'uniqueItems',
+  'pattern',
+  'format',
+  'contentEncoding',
+  'contentMediaType',
+])
+
+function providerJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return sanitizeProviderSchema(z.toJSONSchema(schema)) as Record<
+    string,
+    unknown
+  >
+}
+
+function sanitizeProviderSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeProviderSchema)
+  if (!value || typeof value !== 'object') return value
+  const output: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (unsupportedSchemaKeys.has(key)) continue
+    output[key] = sanitizeProviderSchema(child)
+  }
+  if (Object.hasOwn(output, 'const')) {
+    if (!Object.hasOwn(output, 'enum')) output.enum = [output.const]
+    delete output.const
+  }
+  return output
+}
+
+function providerErrorDetail(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as Record<string, unknown>
+    const error = body.error
+    if (typeof error === 'string' && error.trim()) {
+      return error.replaceAll(/\s+/g, ' ').trim().slice(0, 200)
+    }
+    if (error && typeof error === 'object') {
+      const message = (error as Record<string, unknown>).message
+      if (typeof message === 'string' && message.trim()) {
+        return message.replaceAll(/\s+/g, ' ').trim().slice(0, 200)
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function responseError(status: number, bodyText = ''): TaxonomyProviderError {
   if (status === 401 || status === 403) {
     return new TaxonomyProviderError('Provider authentication failed', {
       code: 'authentication',
@@ -230,12 +293,28 @@ function responseError(status: number): TaxonomyProviderError {
       status,
     })
   }
+  if (status >= 300 && status < 400) {
+    return new TaxonomyProviderError(
+      `Provider returned a redirect (${status})`,
+      {
+        code: 'invalid_response',
+        retryable: false,
+        status,
+      },
+    )
+  }
   const retryable = status === 408 || status === 409 || status >= 500
-  return new TaxonomyProviderError('Provider request failed', {
-    code: status >= 500 ? 'server' : 'invalid_response',
-    retryable,
-    status,
-  })
+  const detail = providerErrorDetail(bodyText)
+  return new TaxonomyProviderError(
+    detail
+      ? `Provider request failed (${status}): ${detail}`
+      : `Provider request failed (${status})`,
+    {
+      code: status >= 500 ? 'server' : 'invalid_response',
+      retryable,
+      status,
+    },
+  )
 }
 
 function retryDelay(response: Response | undefined, attempt: number): number {
@@ -293,7 +372,7 @@ async function executeRequest(
         signal: controller.signal,
       })
       const text = await readBoundedResponse(response, limits.maxResponseBytes)
-      if (!response.ok) throw responseError(response.status)
+      if (!response.ok) throw responseError(response.status, text)
       let body: unknown
       try {
         body = JSON.parse(text)
@@ -575,7 +654,7 @@ export function createOpenAICompatibleProvider(
           },
         )
       }
-      const jsonSchema = z.toJSONSchema(request.schema)
+      const jsonSchema = providerJsonSchema(request.schema)
       const isResponses = config.dialect === 'responses'
       const body = isResponses
         ? {
@@ -649,7 +728,7 @@ export function createGeminiProvider(
         response_format: {
           type: 'text',
           mime_type: 'application/json',
-          schema: z.toJSONSchema(request.schema),
+          schema: providerJsonSchema(request.schema),
         },
       }
       const interactionUrl = baseUrl.pathname.endsWith('/interactions')

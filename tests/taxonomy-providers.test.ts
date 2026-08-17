@@ -62,10 +62,27 @@ test('OpenAI Responses sends strict JSON schema and normalizes output and usage'
   assert.equal(capturedInit?.redirect, 'manual')
   const sent = JSON.parse(String(capturedInit.body)) as Record<string, unknown>
   const text = sent.text as {
-    format: { strict: boolean; schema: Record<string, unknown> }
+    format: {
+      strict: boolean
+      schema: {
+        $schema?: unknown
+        additionalProperties?: boolean
+        properties?: {
+          schemaVersion?: { const?: unknown; enum?: unknown }
+          decisions?: { maxItems?: unknown }
+        }
+      }
+    }
   }
+  const schema = text.format.schema
+  const schemaVersion = schema.properties?.schemaVersion
+  const decisions = schema.properties?.decisions
   assert.equal(text.format.strict, true)
-  assert.equal(text.format.schema.additionalProperties, false)
+  assert.equal(schema.additionalProperties, false)
+  assert.equal(schema.$schema, undefined)
+  assert.equal(schemaVersion?.const, undefined)
+  assert.deepEqual(schemaVersion?.enum, [1])
+  assert.equal(decisions?.maxItems, undefined)
   assert.deepEqual(result.data, decision)
   assert.deepEqual(result.usage, {
     inputTokens: 12,
@@ -365,6 +382,41 @@ test('provider fetch is invoked without the runtime object as its receiver', asy
   )
   await provider.generateStructured(request)
   assert.equal(receiver, undefined)
+})
+
+test('failed classification requests keep the provider status and error detail', async () => {
+  const provider = createOpenAICompatibleProvider(
+    {
+      apiKey: 'secret',
+      model: 'model',
+      dialect: 'responses',
+      maxRetries: 0,
+    },
+    {
+      fetch: async () =>
+        Response.json(
+          {
+            error: {
+              message:
+                'Invalid schema for response_format: maxItems is not supported.',
+            },
+          },
+          { status: 400 },
+        ),
+    },
+  )
+  await assert.rejects(
+    provider.generateStructured(request),
+    (error: unknown) => {
+      assert.ok(error instanceof TaxonomyProviderError)
+      assert.equal(error.code, 'invalid_response')
+      assert.equal(error.status, 400)
+      assert.equal(error.retryable, false)
+      assert.match(error.message, /400/)
+      assert.match(error.message, /maxItems is not supported/)
+      return true
+    },
+  )
 })
 
 test('provider redirects are exposed manually and rejected without following', async () => {
