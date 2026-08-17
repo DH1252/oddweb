@@ -17,6 +17,9 @@ const stagingFirstDeploy =
 const queueDeliveryState =
   // @ts-expect-error JavaScript release helper intentionally has no declaration file.
   await import('../../scripts/queue-delivery-state.mjs')
+const workerTriggerState =
+  // @ts-expect-error JavaScript release helper intentionally has no declaration file.
+  await import('../../scripts/worker-trigger-state.mjs')
 
 const {
   remoteHandlerValidation,
@@ -37,6 +40,7 @@ const { hasDestructiveSchemaOperation } = migrationSafety
 const { parseSecretsFile, runFirstStagingDeploy, validateBootstrapSecrets } =
   stagingFirstDeploy
 const { readQueueDeliveryState } = queueDeliveryState
+const { readWorkerTriggerState } = workerTriggerState
 
 const validPasswordHash = `$pbkdf2-sha256$100000$${Buffer.alloc(16, 1).toString('base64url')}$${Buffer.alloc(32, 2).toString('base64url')}`
 const validSessionSecret = 's'.repeat(32)
@@ -47,6 +51,7 @@ const expected = { queue: 'test-taxonomy', dlq: 'test-taxonomy-dlq' }
 function taxonomyConfig() {
   return {
     name: 'test-worker',
+    routes: [{ pattern: 'test.example', custom_domain: true }],
     secrets: { required: ['TAXONOMY_MASTER_KEY_V1'] },
     queues: {
       producers: [{ binding: 'TAXONOMY_QUEUE', queue: expected.queue }],
@@ -82,7 +87,7 @@ test('taxonomy resource config requires isolated queues, cron, D1, R2, and secre
   assert.deepEqual(validateTaxonomyConfig(invalid, expected), [
     'TAXONOMY_QUEUE must produce to the explicit queue test-taxonomy',
     'the taxonomy consumer DLQ must be test-taxonomy-dlq',
-    'the taxonomy maintenance cron must run every five minutes',
+    'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
     'TAXONOMY_MASTER_KEY_V1 must be declared as a required secret',
     'the DB binding must declare a D1 database name and ID',
     'the THUMBNAILS binding must declare an R2 bucket name',
@@ -101,10 +106,49 @@ test('remote resource preflight fails clearly when Cloudflare auth is unavailabl
   assert.match(result.failures[0], /authentication is unavailable/i)
 })
 
+test('Worker trigger state reads exact cron and custom-domain assignments', async () => {
+  const requests: string[] = []
+  const request = async (input: URL) => {
+    requests.push(input.toString())
+    const domains = input.pathname.endsWith('/workers/domains')
+    return new Response(
+      JSON.stringify({
+        success: true,
+        result: domains
+          ? [
+              {
+                hostname: 'test.example',
+                service: 'test-worker',
+              },
+              { hostname: 'other.example', service: 'other-worker' },
+            ]
+          : { schedules: [{ cron: '*/5 * * * *' }] },
+      }),
+      { headers: { 'content-type': 'application/json' } },
+    )
+  }
+  assert.deepEqual(
+    await readWorkerTriggerState(
+      'test-worker',
+      { CLOUDFLARE_ACCOUNT_ID: 'account', CLOUDFLARE_API_TOKEN: 'token' },
+      request,
+    ),
+    { crons: ['*/5 * * * *'], customDomains: ['test.example'] },
+  )
+  assert.ok(requests.some((url) => url.includes('/schedules')))
+  assert.ok(requests.some((url) => url.includes('service=test-worker')))
+})
+
 test('staging predeploy validation checks provisioned resources without requiring a Worker', () => {
   const calls: string[][] = []
   const execute = (_command: string, args: string[]) => {
     calls.push(args)
+    if (_command === 'node') {
+      return JSON.stringify({
+        crons: ['*/5 * * * *'],
+        customDomains: ['test.example'],
+      })
+    }
     if (args[0] === 'whoami') return 'authenticated'
     if (args[0] === 'queues') return `Queue Name: ${args[2]}`
     if (args[0] === 'd1' && args[1] === 'info') {
@@ -137,6 +181,12 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
   const calls: string[][] = []
   const execute = (_command: string, args: string[]) => {
     calls.push(args)
+    if (_command === 'node') {
+      return JSON.stringify({
+        crons: ['*/5 * * * *'],
+        customDomains: ['test.example'],
+      })
+    }
     if (args[0] === 'whoami') return 'authenticated'
     if (args[0] === 'queues') {
       return JSON.stringify([
@@ -188,7 +238,7 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
     execute,
   )
   assert.deepEqual(result.failures, [])
-  assert.equal(result.warnings.length, 1)
+  assert.equal(result.warnings.length, 0)
   assert.ok(
     calls.some(
       (args) =>
@@ -203,8 +253,83 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
   )
 })
 
+test('local and remote trigger validation reject additional trigger state', () => {
+  const local = taxonomyConfig()
+  local.triggers.crons.push('0 * * * *')
+  local.queues.consumers.push({
+    queue: 'unexpected-queue',
+    dead_letter_queue: expected.dlq,
+    max_retries: 5,
+  })
+  assert.deepEqual(validateTaxonomyConfig(local, expected), [
+    'exactly one taxonomy queue consumer must be configured',
+    'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
+  ])
+
+  const execute = (_command: string, args: string[]) => {
+    if (_command === 'node') {
+      return JSON.stringify({
+        crons: ['*/5 * * * *', '0 * * * *'].sort(),
+        customDomains: ['extra.example', 'test.example'],
+      })
+    }
+    if (args[0] === 'whoami') return 'authenticated'
+    if (args[0] === 'queues') {
+      return JSON.stringify([
+        {
+          type: 'worker',
+          script: 'test-worker',
+          dead_letter_queue: expected.dlq,
+          settings: { max_retries: 5 },
+        },
+      ])
+    }
+    if (args[0] === 'secret') {
+      return JSON.stringify([{ name: 'TAXONOMY_MASTER_KEY_V1' }])
+    }
+    if (args[0] === 'deployments') {
+      return JSON.stringify({
+        versions: [{ version_id: 'version-id', percentage: 100 }],
+      })
+    }
+    if (args[0] === 'versions') {
+      return JSON.stringify({
+        resources: {
+          script: { handlers: ['fetch', 'queue', 'scheduled'] },
+          bindings: [
+            { name: 'DB', database_id: 'test-db-id' },
+            { name: 'TAXONOMY_QUEUE', queue_name: expected.queue },
+            { name: 'THUMBNAILS', bucket_name: 'test-thumbnails' },
+          ],
+        },
+      })
+    }
+    throw new Error(`Unexpected command: ${args.join(' ')}`)
+  }
+  const remote = remoteHandlerValidation(
+    'test.jsonc',
+    taxonomyConfig(),
+    expected,
+    execute,
+  )
+  assert.ok(
+    remote.failures.some((failure: string) => /crons are/.test(failure)),
+  )
+  assert.ok(
+    remote.failures.some((failure: string) =>
+      /custom domains are/.test(failure),
+    ),
+  )
+})
+
 test('postdeploy validation reports an invalid consumer and missing handlers', () => {
   const execute = (_command: string, args: string[]) => {
+    if (_command === 'node') {
+      return JSON.stringify({
+        crons: ['*/5 * * * *'],
+        customDomains: ['test.example'],
+      })
+    }
     if (args[0] === 'whoami') return 'authenticated'
     if (args[0] === 'queues') {
       return JSON.stringify([
@@ -253,6 +378,12 @@ test('combined production preflight runs both resource and handler validation', 
   const calls: string[][] = []
   const execute = (_command: string, args: string[]) => {
     calls.push(args)
+    if (_command === 'node') {
+      return JSON.stringify({
+        crons: ['*/5 * * * *'],
+        customDomains: ['test.example'],
+      })
+    }
     if (args[0] === 'whoami') return 'authenticated'
     if (args[0] === 'queues' && args[1] === 'info') return 'queue exists'
     if (args[0] === 'queues') {
@@ -511,7 +642,7 @@ test('an initially paused queue is never paused or resumed by release', () => {
   const recovery = harness.writtenJson('.recovery.json')
   assert.equal(recovery.initialQueueDeliveryState, 'paused')
   assert.equal(recovery.finalQueueDeliveryState, 'paused')
-  assert.equal(recovery.phase, 'completed')
+  assert.equal(recovery.phase, 'operator_gate_queue_paused')
 })
 
 test('release derives queue state remotely instead of trusting operator input', () => {
@@ -525,6 +656,15 @@ test('release restores a queue pause owned by the active release', () => {
   const harness = releaseHarness()
   harness.execute()
   assert.ok(harness.has('queues resume-delivery'))
+})
+
+test('release refuses to resume after its queue pause snapshot changes', () => {
+  const harness = releaseHarness({
+    queueModifiedStates: ['1', '1', '1', '2', 'operator-change'],
+  })
+  assert.throws(() => harness.execute(), /changed after the release pause/)
+  assert.equal(harness.has('queues resume-delivery'), false)
+  assert.equal(harness.writtenJson('.recovery.json').phase, 'containment_held')
 })
 
 test('release completes when Cloudflare omits optional queue state fields', () => {

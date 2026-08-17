@@ -132,16 +132,20 @@ export function taxonomyResources(config) {
 
 export function validateTaxonomyConfig(config, expected) {
   const failures = []
-  const producer = (config.queues?.producers ?? []).find(
+  const producers = config.queues?.producers ?? []
+  const consumers = config.queues?.consumers ?? []
+  const producer = producers.find(
     (candidate) => candidate.binding === 'TAXONOMY_QUEUE',
   )
-  const consumer = (config.queues?.consumers ?? []).find(
+  const consumer = consumers.find(
     (candidate) => candidate.queue === expected.queue,
   )
   if (producer?.queue !== expected.queue)
     failures.push(
       `TAXONOMY_QUEUE must produce to the explicit queue ${expected.queue}`,
     )
+  if (producers.length !== 1)
+    failures.push('exactly one taxonomy queue producer must be configured')
   if (!consumer) failures.push(`a consumer for ${expected.queue} is required`)
   else {
     if (consumer.dead_letter_queue !== expected.dlq)
@@ -149,8 +153,13 @@ export function validateTaxonomyConfig(config, expected) {
     if (!Number.isInteger(consumer.max_retries) || consumer.max_retries < 1)
       failures.push('the taxonomy consumer must configure at least one retry')
   }
-  if (!config.triggers?.crons?.includes('*/5 * * * *'))
-    failures.push('the taxonomy maintenance cron must run every five minutes')
+  if (consumers.length !== 1)
+    failures.push('exactly one taxonomy queue consumer must be configured')
+  const crons = config.triggers?.crons ?? []
+  if (crons.length !== 1 || crons[0] !== '*/5 * * * *')
+    failures.push(
+      'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
+    )
   if (!config.secrets?.required?.includes('TAXONOMY_MASTER_KEY_V1'))
     failures.push(
       'TAXONOMY_MASTER_KEY_V1 must be declared as a required secret',
@@ -400,10 +409,37 @@ export function remoteHandlerValidation(
       }
     }
   }
-  warnings.push(
-    'Wrangler exposes the deployed scheduled handler but has no read-only command for deployed cron schedules; the post-deploy outbox probe verifies cron execution.',
+  const triggerOutput = remoteNodeOutput(
+    execute,
+    ['scripts/worker-trigger-state.mjs', resources.worker],
+    failures,
+    `trigger state for Worker ${resources.worker}`,
   )
+  if (triggerOutput) {
+    const deployed = JSON.parse(triggerOutput)
+    const expectedCrons = [...(config.triggers?.crons ?? [])].sort()
+    const expectedDomains = (config.routes ?? [])
+      .filter((route) => route.custom_domain === true)
+      .map((route) => route.pattern)
+      .sort()
+    if (!sameStringSet(deployed.crons, expectedCrons))
+      failures.push(
+        `remote Worker ${resources.worker} crons are ${JSON.stringify(deployed.crons)}, expected ${JSON.stringify(expectedCrons)}`,
+      )
+    if (!sameStringSet(deployed.customDomains, expectedDomains))
+      failures.push(
+        `remote Worker ${resources.worker} custom domains are ${JSON.stringify(deployed.customDomains)}, expected ${JSON.stringify(expectedDomains)}`,
+      )
+  }
   return { failures, warnings }
+}
+
+function sameStringSet(actual, expected) {
+  return (
+    Array.isArray(actual) &&
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  )
 }
 
 export function remotePreflight(configPath, config, expected, execute = exec) {
@@ -485,6 +521,15 @@ function remoteOutput(execute, args, failures, label) {
   }
 }
 
+function remoteNodeOutput(execute, args, failures, label) {
+  try {
+    return execute('node', args)
+  } catch {
+    failures.push(`remote ${label} is missing, inaccessible, or invalid`)
+    return ''
+  }
+}
+
 function remoteAuthenticated(execute, failures) {
   try {
     execute('wrangler', ['whoami'])
@@ -498,8 +543,12 @@ function remoteAuthenticated(execute, failures) {
 }
 
 function exec(command, args) {
-  return execFileSync('npx', [command, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  return execFileSync(
+    command === 'node' ? process.execPath : 'npx',
+    command === 'node' ? args : [command, ...args],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
 }

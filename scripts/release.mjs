@@ -324,10 +324,11 @@ export function runRelease(options = {}) {
 
     let queuePaused = initialQueueDeliveryState === 'paused'
     let queuePauseChanged = false
+    let ownedQueuePauseSnapshot
     let cronCleared = false
     try {
       if (!queuePaused) {
-        pauseTaxonomyDelivery(io)
+        ownedQueuePauseSnapshot = pauseTaxonomyDelivery(io)
         queuePaused = true
         queuePauseChanged = true
       }
@@ -336,6 +337,7 @@ export function runRelease(options = {}) {
       cronCleared = true
       updateJournal(io, recoveryPath, journal, 'async_triggers_paused', now, {
         queuePauseChanged,
+        ...(ownedQueuePauseSnapshot ? { ownedQueuePauseSnapshot } : {}),
       })
     } catch (error) {
       const containmentErrors = []
@@ -346,6 +348,7 @@ export function runRelease(options = {}) {
           configPath: previousTriggersConfigPath,
           candidateQueueNames,
           resume: queuePauseChanged,
+          ownedQueuePauseSnapshot,
           artifactHashPaths,
           artifactDigest,
         }),
@@ -430,6 +433,7 @@ export function runRelease(options = {}) {
             configPath: previousTriggersConfigPath,
             candidateQueueNames,
             resume: queuePauseChanged,
+            ownedQueuePauseSnapshot,
             artifactHashPaths,
             artifactDigest,
           }),
@@ -554,6 +558,7 @@ export function runRelease(options = {}) {
           maintenanceConfigPath,
           candidateQueueNames,
           initialQueueDeliveryState,
+          ownedQueuePauseSnapshot,
           artifactHashPaths,
           artifactDigest,
         })
@@ -587,7 +592,7 @@ export function runRelease(options = {}) {
       runPostdeployValidation(io, triggerConfigPath)
       updateJournal(io, recoveryPath, journal, 'triggers_restored', now)
       if (queuePauseChanged) {
-        resumeTaxonomyDelivery(io)
+        resumeTaxonomyDelivery(io, ownedQueuePauseSnapshot)
         queuePaused = false
         updateJournal(io, recoveryPath, journal, 'queue_restored', now, {
           finalQueueDeliveryState: 'running',
@@ -625,7 +630,13 @@ export function runRelease(options = {}) {
           now,
         )
       }
-      updateJournal(io, recoveryPath, journal, 'completed', now)
+      updateJournal(
+        io,
+        recoveryPath,
+        journal,
+        queuePauseChanged ? 'completed' : 'operator_gate_queue_paused',
+        now,
+      )
     } catch (error) {
       const queueNeedsPause = !queuePaused
       const containmentErrors = maintenanceRequired
@@ -675,7 +686,9 @@ export function runRelease(options = {}) {
     }
 
     io.log(
-      `Released ${sha}. Recovery journal: ${recoveryPath}${backupPath ? `; backup: ${backupPath}` : ''}`,
+      queuePauseChanged
+        ? `Released ${sha}. Recovery journal: ${recoveryPath}${backupPath ? `; backup: ${backupPath}` : ''}`
+        : `Application and trigger deployment finished for ${sha}, but the release remains incomplete because taxonomy delivery was already paused. Resume it explicitly and run trigger-only functional verification. Recovery journal: ${recoveryPath}`,
     )
   } finally {
     releaseReleaseLease(baseIo, releaseLease, now)
@@ -1098,7 +1111,7 @@ function pauseTaxonomyDelivery(io) {
     'pause-delivery',
     productionTaxonomyResources.queue,
   ])
-  verifyQueueTransitionWhenAuthoritative(io, 'paused')
+  return verifyQueueTransitionWhenAuthoritative(io, 'paused')
 }
 
 function queryQueueDeliveryState(io, env) {
@@ -1138,7 +1151,18 @@ function sameQueueDeliverySnapshot(left, right) {
   return left.state === right.state && left.modifiedOn === right.modifiedOn
 }
 
-function resumeTaxonomyDelivery(io) {
+function resumeTaxonomyDelivery(io, ownedQueuePauseSnapshot) {
+  if (!ownedQueuePauseSnapshot) {
+    throw new Error(
+      'Cannot resume taxonomy delivery without the release-owned pause snapshot.',
+    )
+  }
+  const current = queryQueueDeliveryState(io, io.queueStateEnv)
+  if (!sameQueueDeliverySnapshot(ownedQueuePauseSnapshot, current)) {
+    throw new Error(
+      'Queue delivery state changed after the release pause; refusing to overwrite newer operator state.',
+    )
+  }
   io.run('npx', [
     'wrangler',
     'queues',
@@ -1493,6 +1517,7 @@ function restoreCodeOnlyApplication({
   maintenanceConfigPath,
   candidateQueueNames,
   initialQueueDeliveryState,
+  ownedQueuePauseSnapshot,
   artifactHashPaths,
   artifactDigest,
 }) {
@@ -1513,6 +1538,7 @@ function restoreCodeOnlyApplication({
       configPath: previousTriggersConfigPath,
       candidateQueueNames,
       resume: initialQueueDeliveryState === 'running',
+      ownedQueuePauseSnapshot,
       artifactHashPaths,
       artifactDigest,
     })
@@ -1536,6 +1562,7 @@ function restoreTriggerAndQueueState({
   configPath,
   candidateQueueNames,
   resume,
+  ownedQueuePauseSnapshot,
   artifactHashPaths,
   artifactDigest,
 }) {
@@ -1555,7 +1582,7 @@ function restoreTriggerAndQueueState({
   }
   if (!errors.length && resume) {
     try {
-      resumeTaxonomyDelivery(io)
+      resumeTaxonomyDelivery(io, ownedQueuePauseSnapshot)
     } catch (error) {
       errors.push(error)
     }

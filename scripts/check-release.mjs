@@ -52,10 +52,15 @@ if (
 if (!wranglerConfig.includes('"PUBLIC_SITE_URL": "https://oddweb.page"')) {
   failures.push('production PUBLIC_SITE_URL must be https://oddweb.page')
 }
-if (!wranglerConfig.includes('"pattern": "oddweb.page"')) {
-  failures.push('production custom domain must be oddweb.page')
+if (
+  JSON.stringify(parsedWranglerConfig.routes) !==
+  JSON.stringify([{ pattern: 'oddweb.page', custom_domain: true }])
+) {
+  failures.push(
+    'production routes must contain only the oddweb.page custom domain',
+  )
 }
-if (!wranglerConfig.includes('"workers_dev": false')) {
+if (parsedWranglerConfig.workers_dev !== false) {
   failures.push('production workers_dev must be disabled')
 }
 const serverEntry = readFileSync(resolve(root, 'src/server.ts'), 'utf8')
