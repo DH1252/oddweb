@@ -49,6 +49,7 @@ export type AdminSubmission = RecentFiling & {
 export type AdminTagRecord = CanonicalTag & {
   id: number
   canonical: boolean
+  status: 'active' | 'merged' | 'deprecated'
 }
 
 const seededKeys = new Set<string>()

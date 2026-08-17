@@ -70,6 +70,7 @@ import {
   enableTaxonomyProvider,
   forceTagRelationInference,
   forceUnmappedTagWrangling,
+  refreshTagAssociations,
   releaseTaxonomyLock,
   resetTaxonomyCircuit,
   retryTaxonomyJobs,
@@ -239,6 +240,9 @@ export default function AdminPage() {
   })
   const forceUnmappedWranglingMutation = useMutation({
     mutationFn: () => forceUnmappedTagWrangling({ data: {} }),
+  })
+  const refreshAssociationsMutation = useMutation({
+    mutationFn: () => refreshTagAssociations({ data: {} }),
   })
   const guestbookMutation = useMutation({
     mutationFn: (input: { id: number; hidden: boolean }) =>
@@ -506,14 +510,36 @@ export default function AdminPage() {
       const result = await forceUnmappedWranglingMutation.mutateAsync()
       await refreshData()
       showStatus(
-        `Queued relation inference for ${result.enqueued} unmapped tag${
-          result.enqueued === 1 ? '' : 's'
-        }${result.skipped ? ` (${result.skipped} already queued)` : ''}.`,
-        'success',
+        result.enqueued
+          ? `Queued relation inference for ${result.enqueued} unmapped tag${
+              result.enqueued === 1 ? '' : 's'
+            }${result.skipped ? ` (${result.skipped} already queued)` : ''}.`
+          : 'No unmapped tags are left to wrangle.',
+        result.enqueued ? 'success' : '',
       )
     } catch (error) {
       showStatus(
         await handleAdminError(error, 'Could not queue unmapped wrangling.'),
+        'error',
+      )
+    }
+  }
+
+  async function refreshAllTagAssociations() {
+    try {
+      const result = await refreshAssociationsMutation.mutateAsync()
+      await refreshData()
+      showStatus(
+        result.enqueued
+          ? `Queued association refresh for ${result.enqueued} of ${result.total} tag${
+              result.total === 1 ? '' : 's'
+            }${result.skipped ? ` (${result.skipped} already queued)` : ''}.`
+          : 'No active tags to refresh.',
+        result.enqueued ? 'success' : '',
+      )
+    } catch (error) {
+      showStatus(
+        await handleAdminError(error, 'Could not queue association refresh.'),
         'error',
       )
     }
@@ -956,6 +982,7 @@ export default function AdminPage() {
                 className={`${buttonClass} min-h-9`}
                 onClick={() => void forceUnmappedWrangling()}
                 disabled={
+                  overview.unmappedTags === 0 ||
                   forceUnmappedWranglingMutation.isPending ||
                   forceInferenceMutation.isPending
                 }
@@ -963,6 +990,20 @@ export default function AdminPage() {
                 {forceUnmappedWranglingMutation.isPending
                   ? 'Queuing...'
                   : 'Force unmapped wrangling'}
+              </button>
+              <button
+                type="button"
+                className={`${buttonClass} min-h-9`}
+                onClick={() => void refreshAllTagAssociations()}
+                disabled={
+                  refreshAssociationsMutation.isPending ||
+                  forceUnmappedWranglingMutation.isPending ||
+                  forceInferenceMutation.isPending
+                }
+              >
+                {refreshAssociationsMutation.isPending
+                  ? 'Queuing...'
+                  : 'Refresh tag associations'}
               </button>
             </div>
             {tagResults.items.length ? (
@@ -4239,7 +4280,13 @@ function TagRow({
         <span className="font-mono text-xs text-muted">{tag.slug}</span>
       </td>
       <td className="p-2 font-mono text-xs">
-        {tag.canonical ? 'Canonical' : 'Unmapped'}
+        {tag.canonical
+          ? 'Canonical'
+          : tag.status === 'merged'
+            ? 'Merged'
+            : tag.status === 'deprecated'
+              ? 'Deprecated'
+              : 'Unmapped'}
       </td>
       <td className="p-2 font-mono text-xs">
         {tag.directCount || 0} direct / {tag.count} inherited
@@ -4264,7 +4311,7 @@ function TagRow({
             type="button"
             className={`${buttonClass} min-h-9`}
             onClick={() => onForce(tag)}
-            disabled={disabled || forceDisabled}
+            disabled={disabled || forceDisabled || tag.status !== 'active'}
             aria-label={`Force relation inference for ${tag.name}`}
           >
             Force inference

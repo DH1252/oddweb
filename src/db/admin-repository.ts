@@ -45,7 +45,7 @@ export async function readAdminOverview(): Promise<AdminOverview> {
           LEFT JOIN submissions sub ON sub.id = s.submission_id
           WHERE s.status = 'active'
             AND (s.source <> 'Submission' OR sub.status = 'approved')) AS tagsInUse,
-         (SELECT count(*) FROM tags WHERE canonical = 0) AS unmappedTags`,
+         (SELECT count(*) FROM tags WHERE canonical = 0 AND status = 'active') AS unmappedTags`,
   ).first<{
     activeSites: number
     pendingSubmissions: number
@@ -203,7 +203,7 @@ export async function readAdminTags(input: {
   )
   const page = safePage(input.page, total)
   const rows = await env.DB.prepare(
-    `SELECT t.id, t.slug, t.name, t.canonical,
+    `SELECT t.id, t.slug, t.name, t.canonical, t.status,
             coalesce((SELECT json_group_array(a.alias) FROM tag_aliases a WHERE a.tag_id = t.id), '[]') AS aliases,
             coalesce((SELECT json_group_array(parent.slug) FROM tag_parents p JOIN tags parent ON parent.id = p.parent_tag_id WHERE p.child_tag_id = t.id), '[]') AS parents,
             (SELECT count(DISTINCT st.site_id) FROM site_tags st JOIN sites s ON s.id = st.site_id LEFT JOIN submissions sub ON sub.id = s.submission_id WHERE st.tag_id = t.id AND s.status = 'active' AND (s.source <> 'Submission' OR sub.status = 'approved')) AS directCount,
@@ -220,6 +220,7 @@ export async function readAdminTags(input: {
       slug: string
       name: string
       canonical: number
+      status: AdminTagRecord['status']
       aliases: string
       parents: string
       directCount: number

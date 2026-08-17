@@ -1081,7 +1081,9 @@ export class TaxonomyService {
       .bind(concept, state.publishedVersion, state.activeProviderConfigId ?? 0)
       .first<{ id: string }>()
     if (active) return active.id
-    const inputHash = await sha256Hex(stableJson({ concept, forced: true }))
+    const inputHash = await sha256Hex(
+      stableJson({ concept, forced: true, nonce: crypto.randomUUID() }),
+    )
     const jobKey = `concept:${encodeURIComponent(concept)}:input:${inputHash}:taxonomy:${state.publishedVersion}:provider:${state.activeProviderConfigId ?? 0}`
     const id = `tax:${(await sha256Hex(jobKey)).slice(0, 40)}`
     const inserted = await this.repository.enqueueJob(

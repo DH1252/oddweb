@@ -484,8 +484,10 @@ test('admin tag wrangling buttons force relation inference', async () => {
   ])
   assert.match(admin, /Force inference/)
   assert.match(admin, /Force unmapped wrangling/)
+  assert.match(admin, /Refresh tag associations/)
   assert.match(admin, /forceTagRelationInference\(\{ data: input \}\)/)
   assert.match(admin, /forceUnmappedTagWrangling\(\{ data: \{\} \}\)/)
+  assert.match(admin, /refreshTagAssociations\(\{ data: \{\} \}\)/)
   assert.match(
     control,
     /export const forceTagRelationInference = createServerFn\(\{ method: 'POST' \}\)[\s\S]*forceConceptReassessment\(tag\.slug\)/,
@@ -493,5 +495,9 @@ test('admin tag wrangling buttons force relation inference', async () => {
   assert.match(
     control,
     /export const forceUnmappedTagWrangling = createServerFn\(\{ method: 'POST' \}\)[\s\S]*canonical = 0/,
+  )
+  assert.match(
+    control,
+    /export const refreshTagAssociations = createServerFn\(\{ method: 'POST' \}\)[\s\S]*ORDER BY canonical DESC, id LIMIT 50/,
   )
 })

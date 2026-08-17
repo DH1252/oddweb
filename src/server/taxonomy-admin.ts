@@ -398,6 +398,43 @@ export const forceUnmappedTagWrangling = createServerFn({ method: 'POST' })
     return { enqueued: jobIds.length, skipped, jobIds }
   })
 
+export const refreshTagAssociations = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => z.strictObject({}).parse(data))
+  .handler(async () => {
+    const [rows, total] = await Promise.all([
+      service()
+        .repository.db.prepare(
+          `SELECT slug FROM tags
+           WHERE status = 'active'
+           ORDER BY canonical DESC, id LIMIT 50`,
+        )
+        .all<{ slug: string }>(),
+      service()
+        .repository.db.prepare(
+          `SELECT count(*) FROM tags WHERE status = 'active'`,
+        )
+        .first<number>('count(*)'),
+    ])
+    const jobIds: string[] = []
+    let skipped = 0
+    for (const row of rows.results) {
+      const jobId = await service().forceConceptReassessment(row.slug)
+      if (jobId) {
+        if (!jobIds.includes(jobId)) jobIds.push(jobId)
+      } else {
+        skipped += 1
+      }
+    }
+    if (jobIds.length) await publishTaxonomyChange()
+    return {
+      enqueued: jobIds.length,
+      skipped,
+      jobIds,
+      total: total ?? rows.results.length,
+    }
+  })
+
 export const getTaxonomyJobs = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
   .validator((data) => jobsInput.parse(data))
