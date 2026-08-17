@@ -22,4 +22,7 @@ export default {
       { status: 503, headers },
     )
   },
+  async queue(batch) {
+    for (const message of batch.messages) message.retry()
+  },
 }

@@ -504,6 +504,13 @@ test('generated safety configs clear crons and preserve only applied lifecycle m
     ),
     /export \{ RealtimeHub \} from '\.\/server\/index\.js'/,
   )
+  assert.match(
+    readFileSync(
+      new URL('../../scripts/maintenance-worker.mjs', import.meta.url),
+      'utf8',
+    ),
+    /async queue\(batch\)[\s\S]*message\.retry\(\)/,
+  )
   const generated = generatedConfig(config)
   const paths = artifactPaths('/repo/.wrangler/release.jsonc')
   const production = buildVerifiedArtifactConfig(generated, {
