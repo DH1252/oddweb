@@ -128,6 +128,14 @@ export interface TagSnapshot {
   parentIds: number[]
 }
 
+export interface OntologyOccupiedState {
+  slugs: Map<
+    string,
+    { canonical: boolean; status: string; automationLocked: boolean }
+  >
+  aliases: Set<string>
+}
+
 export interface CandidateSnapshot {
   site: SiteSnapshot
   tags: TagSnapshot[]

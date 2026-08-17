@@ -2506,6 +2506,209 @@ test('multi-proposal rollout retries idempotently after a later enqueue failure'
   )
 })
 
+test('reassess filters provider proposals that collide with occupied tag slugs', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1, 'humor')
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 15_150_000 })
+  const providerId = await addProvider(service, {
+    name: 'slug-collision-provider',
+    credential: 'slug-collision-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1,
+       rollout_basis_points = 10000 WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('humor evidence')
+  assert.ok(jobId)
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 15_151_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            schemaVersion: 1,
+            proposals: [
+              {
+                kind: 'alias',
+                alias: 'humor',
+                targetTagId: '1',
+                confidence: 0.99,
+                evidence: 'The provider mistook the tag name for an alias.',
+              },
+            ],
+          }),
+        }),
+    },
+  )
+  assert.deepEqual(result, {
+    jobId,
+    status: 'settled',
+    attempts: 1,
+    mutations: 0,
+  })
+  assert.equal(
+    await db
+      .prepare('SELECT count(*) FROM taxonomy_candidates')
+      .first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_aliases').first('count(*)'),
+    0,
+  )
+})
+
+test('reassess filters concept proposals whose slug is occupied by a merged tag', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1, 'endless')
+  await insertTag(db, 2, 'infinite')
+  await db
+    .prepare(
+      `UPDATE tags SET status = 'merged', canonical = 0,
+       merged_into_tag_id = 2, deprecated_at = unixepoch() WHERE id = 1`,
+    )
+    .run()
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 15_200_000 })
+  const providerId = await addProvider(service, {
+    name: 'merged-slug-provider',
+    credential: 'merged-slug-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1,
+       rollout_basis_points = 10000 WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('endless evidence')
+  assert.ok(jobId)
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 15_201_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            schemaVersion: 1,
+            proposals: [
+              {
+                kind: 'concept',
+                proposedName: 'endless',
+                proposedSlug: 'endless',
+                confidence: 0.99,
+                evidence: 'The merged slug cannot be published again.',
+              },
+            ],
+          }),
+        }),
+    },
+  )
+  assert.deepEqual(result, {
+    jobId,
+    status: 'settled',
+    attempts: 1,
+    mutations: 0,
+  })
+  assert.equal(
+    await db
+      .prepare('SELECT count(*) FROM taxonomy_candidates')
+      .first('count(*)'),
+    0,
+  )
+})
+
+test('apply_ontology settles obsolete when the accepted candidate collides with a new tag slug', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 15_250_000 })
+  const providerId = await addProvider(service, {
+    name: 'late-collision-provider',
+    credential: 'late-collision-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1,
+       rollout_basis_points = 0 WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'gradual'").run()
+  const jobId = await service.enqueueConcept('late collision')
+  assert.ok(jobId)
+  await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 15_251_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            schemaVersion: 1,
+            proposals: [
+              {
+                kind: 'alias',
+                alias: 'taken alias',
+                targetTagId: '1',
+                confidence: 0.99,
+                evidence: 'Valid at proposal time.',
+              },
+            ],
+          }),
+        }),
+    },
+  )
+  const candidateId = await db
+    .prepare(
+      "SELECT id FROM taxonomy_candidates WHERE job_id = ? AND kind = 'alias'",
+    )
+    .bind(jobId)
+    .first<string>('id')
+  assert.ok(candidateId)
+  const accepted = await service.decideCandidate({
+    candidateId,
+    decision: 'accepted',
+    reason: 'Deliberately approved',
+    actorId: 'admin',
+  })
+  assert.ok(accepted.jobId)
+  await insertTag(db, 2, 'taken alias')
+  const applied = await processTaxonomyMessage(
+    { jobId: accepted.jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    { now: () => 15_252_000 },
+  )
+  assert.equal(applied.status, 'obsolete')
+  assert.equal(applied.mutations, 0)
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_aliases').first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT last_error_code FROM taxonomy_jobs WHERE id = ?')
+      .bind(accepted.jobId)
+      .first('last_error_code'),
+    'candidate_changed',
+  )
+})
+
 test('admin acceptance atomically requeues a leased rollout exclusion', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertTag(db, 1)

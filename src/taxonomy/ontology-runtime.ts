@@ -20,6 +20,7 @@ import { TaxonomyService } from './service'
 import { allowedProviderHosts, providerHostAllowed } from './provider-security'
 import type {
   OntologyMutation,
+  OntologyOccupiedState,
   ProcessingResult,
   ProviderConfig,
   RuntimeOptions,
@@ -198,15 +199,43 @@ function proposalKey(proposal: OntologyProposal): string {
   return `parent:${proposal.parentTagId}:${proposal.childTagId}`
 }
 
+function proposalPublishable(
+  proposal: OntologyProposal,
+  occupied: OntologyOccupiedState,
+): boolean {
+  if (proposal.kind === 'concept') {
+    const slug = normalizeProposedSlug(proposal.proposedSlug)
+    if (!slug) return false
+    const existing = occupied.slugs.get(slug)
+    return (
+      !existing ||
+      (existing.status === 'active' &&
+        !existing.canonical &&
+        !existing.automationLocked)
+    )
+  }
+  if (proposal.kind === 'alias') {
+    const alias = normalizeTaxonomyTag(proposal.alias)
+    return (
+      Boolean(alias) &&
+      !occupied.slugs.has(alias) &&
+      !occupied.aliases.has(alias)
+    )
+  }
+  return true
+}
+
 function policyValidatedProposals(
   results: readonly OntologyResult[],
   policy: RuntimePolicy,
   knownIds: ReadonlySet<string>,
+  occupied: OntologyOccupiedState,
 ): OntologyProposal[] {
   const groups = results.map(({ response }) =>
     response.proposals.filter((proposal) => {
       if (proposal.confidence * 1_000_000 < policy.ontologyConfidenceMicros)
         return false
+      if (!proposalPublishable(proposal, occupied)) return false
       if (proposal.kind === 'concept') return true
       if (proposal.kind === 'alias') return knownIds.has(proposal.targetTagId)
       if (proposal.kind === 'merge') {
@@ -466,6 +495,22 @@ export async function processOntologyJob(input: {
     const proposal = ontologyProposalSchema.parse(
       JSON.parse(String(row.payload)),
     )
+    const context = await input.repository.ontologyContext(null, 500)
+    if (!proposalPublishable(proposal, context.occupied)) {
+      await input.repository.settleJob(
+        input.job,
+        'obsolete',
+        input.now,
+        'candidate_changed',
+        'Ontology candidate conflicts with the current taxonomy.',
+      )
+      return {
+        jobId: input.job.id,
+        status: 'obsolete',
+        attempts: input.job.attemptCount,
+        mutations: 0,
+      }
+    }
     if (await proposalAlreadyApplied(input.repository, proposal)) {
       await input.repository.settleAlreadyAppliedCandidate(
         input.job.conceptKey,
@@ -479,7 +524,6 @@ export async function processOntologyJob(input: {
         mutations: 0,
       }
     }
-    const context = await input.repository.ontologyContext(null, 500)
     const revisions = new Map(context.tags.map((tag) => [tag.id, tag.revision]))
     const result = await new TaxonomyService(
       input.env,
@@ -587,11 +631,15 @@ export async function processOntologyJob(input: {
   const knownIds = new Set(context.tags.map((tag) => String(tag.id)))
   const proposals = (
     await Promise.all(
-      policyValidatedProposals(results, input.policy, knownIds).map(
-        async (proposal) =>
-          (await proposalAlreadyApplied(input.repository, proposal))
-            ? null
-            : proposal,
+      policyValidatedProposals(
+        results,
+        input.policy,
+        knownIds,
+        context.occupied,
+      ).map(async (proposal) =>
+        (await proposalAlreadyApplied(input.repository, proposal))
+          ? null
+          : proposal,
       ),
     )
   ).filter((proposal): proposal is OntologyProposal => proposal !== null)

@@ -1,6 +1,7 @@
 import { sha256Hex, stableJson, taxonomyJobKey } from './normalize'
 import type {
   CandidateSnapshot,
+  OntologyOccupiedState,
   ProviderConfig,
   RuntimePolicy,
   SiteSnapshot,
@@ -707,6 +708,7 @@ export class TaxonomyRepository {
       siteId: number
       confidenceMicros: number
     }>
+    occupied: OntologyOccupiedState
   }> {
     const tagRows = await all(
       this.db,
@@ -724,17 +726,38 @@ export class TaxonomyRepository {
       aliases: [],
       parentIds: [],
     }))
+    const [slugRows, aliasRows] = await Promise.all([
+      all(
+        this.db,
+        `SELECT slug, canonical, status, automation_locked FROM tags`,
+      ),
+      all(this.db, `SELECT alias FROM tag_aliases`),
+    ])
+    const occupied: OntologyOccupiedState = {
+      slugs: new Map(
+        slugRows.map((row) => [
+          text(row, 'slug'),
+          {
+            canonical: integer(row, 'canonical') === 1,
+            status: text(row, 'status'),
+            automationLocked: integer(row, 'automation_locked') === 1,
+          },
+        ]),
+      ),
+      aliases: new Set(aliasRows.map((row) => text(row, 'alias'))),
+    }
     const evidenceRows = concept
       ? await all(
           this.db,
           `SELECT normalized_concept, evidence_snippet, site_id, confidence_micros
-           FROM taxonomy_concept_evidence WHERE normalized_concept = ? AND accepted = 1
-           ORDER BY observed_at DESC, id LIMIT 100`,
+            FROM taxonomy_concept_evidence WHERE normalized_concept = ? AND accepted = 1
+            ORDER BY observed_at DESC, id LIMIT 100`,
           [concept],
         )
       : []
     return {
       tags,
+      occupied,
       evidence: evidenceRows.map((row) => ({
         concept: text(row, 'normalized_concept'),
         snippet: text(row, 'evidence_snippet'),
