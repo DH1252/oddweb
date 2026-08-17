@@ -3,7 +3,7 @@ import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
-import { thumbnailUrl } from '../lib/thumbnails'
+import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
 import { siteDetailQueryOptions } from '../queries/oddweb'
 import { recordSiteVisit } from '../server/data'
 import {
@@ -138,12 +138,27 @@ function SiteDetailPage() {
             aria-hidden={site.thumbnailKey && !imageFailed ? undefined : true}
           >
             {site.thumbnailKey && !imageFailed ? (
-              <img
-                src={thumbnailUrl(site.thumbnailKey)}
-                alt={site.thumbnailAlt || `Preview of ${site.name}`}
-                className="absolute inset-0 size-full object-cover"
-                onError={() => setImageFailed(true)}
-              />
+              <picture className="contents">
+                <source
+                  type="image/avif"
+                  srcSet={thumbnailSrcSet(site.thumbnailKey, 'avif')}
+                  sizes="(max-width: 767px) 100vw, 50vw"
+                />
+                <source
+                  type="image/webp"
+                  srcSet={thumbnailSrcSet(site.thumbnailKey, 'webp')}
+                  sizes="(max-width: 767px) 100vw, 50vw"
+                />
+                <img
+                  src={thumbnailUrl(site.thumbnailKey)}
+                  alt={site.thumbnailAlt || `Preview of ${site.name}`}
+                  className="absolute inset-0 size-full object-cover"
+                  sizes="(max-width: 767px) 100vw, 50vw"
+                  fetchPriority="high"
+                  decoding="async"
+                  onError={() => setImageFailed(true)}
+                />
+              </picture>
             ) : (
               <>
                 <div className="absolute inset-0 opacity-30 odd-crosshatch" />

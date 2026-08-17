@@ -306,12 +306,14 @@ function DirectoryPage() {
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
       ])
-      setNotice(`${name} was submitted for review with its preview image.`)
+      setNotice(`${name} was submitted for review.`)
       setSubmitOpen(false)
       form.reset()
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : 'The thumbnail upload failed.',
+        error instanceof Error
+          ? error.message
+          : 'The submission could not be saved.',
       )
       setNoticeError(true)
     }
@@ -723,11 +725,10 @@ function DirectoryPage() {
                     name="image"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
-                    required
                     className="w-full"
                   />
                   <small className="mt-1 block text-muted">
-                    PNG, JPEG, or WebP, up to 8 MB.
+                    Optional. PNG, JPEG, or WebP, up to 8 MB.
                   </small>
                 </div>
               </div>

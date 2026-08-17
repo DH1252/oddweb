@@ -68,28 +68,28 @@ export const submitSite = createServerFn({ method: 'POST' })
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
     await enforcePublicRateLimit('submission', 3, daySeconds)
-    const thumbnail = await storeThumbnail(data.image)
+    const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
     try {
       const result = await createSubmission({
         name: data.name,
         url: data.url,
         description: data.description,
         tags: data.tags,
-        thumbnailKey: thumbnail.key,
-        thumbnailAlt: `Preview of ${data.name}`,
+        thumbnailKey: thumbnail?.key ?? null,
+        thumbnailAlt: thumbnail ? `Preview of ${data.name}` : null,
       })
       if (
         result.previousThumbnailKey &&
-        result.previousThumbnailKey !== thumbnail.key
+        result.previousThumbnailKey !== thumbnail?.key
       ) {
         console.info({
           event: 'thumbnail_retained_for_recovery',
           key: result.previousThumbnailKey,
         })
       }
-      return { thumbnailKey: thumbnail.key, reused: result.reused }
+      return { thumbnailKey: thumbnail?.key ?? null, reused: result.reused }
     } catch (error) {
-      await removeThumbnail(thumbnail.key)
+      if (thumbnail) await removeThumbnail(thumbnail.key)
       throw error
     }
   })
@@ -104,22 +104,22 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
     return { ...site, status }
   })
   .handler(async ({ data }) => {
-    const thumbnail = await storeThumbnail(data.image)
+    const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
     try {
       const id = await createSite({
         name: data.name,
         url: data.url,
         description: data.description,
         tags: data.tags,
-        thumbnailKey: thumbnail.key,
-        thumbnailAlt: `Preview of ${data.name}`,
+        thumbnailKey: thumbnail?.key ?? null,
+        thumbnailAlt: thumbnail ? `Preview of ${data.name}` : null,
         status: data.status,
         source: 'Manual',
       })
       await publishRealtimeEvent({ type: 'directory.changed' })
-      return { id, thumbnailKey: thumbnail.key }
+      return { id, thumbnailKey: thumbnail?.key ?? null }
     } catch (error) {
-      await removeThumbnail(thumbnail.key)
+      if (thumbnail) await removeThumbnail(thumbnail.key)
       throw error
     }
   })
@@ -250,8 +250,12 @@ export const mergeTag = createServerFn({ method: 'POST' })
 
 function validateSiteForm(data: unknown) {
   if (!(data instanceof FormData)) throw new Error('Expected a site form.')
-  const image = data.get('image')
-  if (!(image instanceof File)) throw new Error('Choose a thumbnail image.')
+  const imageValue = data.get('image')
+  if (imageValue !== null && !(imageValue instanceof File)) {
+    throw new Error('Thumbnail image must be a file.')
+  }
+  const image =
+    imageValue instanceof File && imageValue.size > 0 ? imageValue : undefined
 
   return {
     name: formText(data, 'name', 60),

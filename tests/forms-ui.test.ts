@@ -253,3 +253,24 @@ test('suspense-backed result controls update inside transitions', async () => {
     /useQuery\(\{[\s\S]*tagPageQueryOptions[\s\S]*placeholderData: keepPreviousData[\s\S]*initialTagPage/,
   )
 })
+
+test('public and admin site creation accept optional preview images', async () => {
+  const [directory, admin, serverData] = await Promise.all([
+    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
+  ])
+
+  assert.doesNotMatch(directory, /id="submit-image"[\s\S]{0,300}\brequired\b/)
+  assert.doesNotMatch(admin, /id="entry-image"[\s\S]{0,300}\brequired\b/)
+  assert.match(directory, /Optional\. PNG, JPEG, or WebP, up to 8 MB\./)
+  assert.match(admin, /Optional\. PNG, JPEG, or WebP, up to 8 MB\./)
+  assert.match(
+    serverData,
+    /const thumbnail = data\.image \? await storeThumbnail\(data\.image\) : undefined/,
+  )
+  assert.match(
+    serverData,
+    /imageValue instanceof File && imageValue\.size > 0 \? imageValue : undefined/,
+  )
+})

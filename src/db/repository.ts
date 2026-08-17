@@ -162,8 +162,8 @@ export async function createSubmission(input: {
   url: string
   description: string
   tags: string[]
-  thumbnailKey: string
-  thumbnailAlt: string
+  thumbnailKey: string | null
+  thumbnailAlt: string | null
 }) {
   const db = getDb()
   const urlKey = websiteUrlKey(input.url)
@@ -230,8 +230,8 @@ export async function createSite(input: {
   url: string
   description: string
   tags: string[]
-  thumbnailKey: string
-  thumbnailAlt: string
+  thumbnailKey: string | null
+  thumbnailAlt: string | null
   status: 'active' | 'archived'
   source: 'Submission' | 'Manual'
 }) {

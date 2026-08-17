@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { thumbnailUrl } from '../lib/thumbnails'
+import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
 
 import type { ReactNode } from 'react'
 import type { SiteEntry } from '../data/sites'
@@ -135,6 +135,7 @@ export function SiteThumbnail({
       label={site.name}
       className={compact ? 'aspect-4/3 w-16' : 'h-[78px] w-full'}
       fallbackClassName={site.accent}
+      sizes={compact ? '64px' : '(max-width: 640px) 100vw, 320px'}
     />
   )
 }
@@ -145,12 +146,14 @@ export function ItemThumbnail({
   label,
   className = 'aspect-4/3 w-full',
   fallbackClassName = 'from-[#63396d] to-[#d27a3e]',
+  sizes = '(max-width: 640px) 100vw, 320px',
 }: {
   thumbnailKey?: string
   alt: string
   label: string
   className?: string
   fallbackClassName?: string
+  sizes?: string
 }) {
   const [imageFailed, setImageFailed] = useState(false)
 
@@ -170,14 +173,27 @@ export function ItemThumbnail({
       className={`relative grid shrink-0 place-items-center overflow-hidden border border-ink bg-linear-to-br ${fallbackClassName} ${className}`}
     >
       {thumbnailKey && !imageFailed ? (
-        <img
-          src={thumbnailUrl(thumbnailKey)}
-          alt={alt}
-          className="absolute inset-0 size-full object-cover"
-          loading="lazy"
-          decoding="async"
-          onError={() => setImageFailed(true)}
-        />
+        <picture className="contents">
+          <source
+            type="image/avif"
+            srcSet={thumbnailSrcSet(thumbnailKey, 'avif')}
+            sizes={sizes}
+          />
+          <source
+            type="image/webp"
+            srcSet={thumbnailSrcSet(thumbnailKey, 'webp')}
+            sizes={sizes}
+          />
+          <img
+            src={thumbnailUrl(thumbnailKey)}
+            alt={alt}
+            className="absolute inset-0 size-full object-cover"
+            sizes={sizes}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageFailed(true)}
+          />
+        </picture>
       ) : (
         <>
           <div className="absolute inset-0 opacity-25 odd-crosshatch" />

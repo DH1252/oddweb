@@ -81,6 +81,12 @@
       "bucket_name": "oddweb-thumbnails",
     },
   ],
+  "images": {
+    "binding": "IMAGES",
+  },
+  "cache": {
+    "enabled": true,
+  },
   "d1_databases": [
     {
       "binding": "DB",

@@ -1,3 +1,5 @@
+import { thumbnailUrl } from './thumbnails'
+
 import type { SiteEntry } from '../data/sites'
 
 export const FALLBACK_SITE_ORIGIN = 'https://oddweb.page'
@@ -74,7 +76,9 @@ export function siteDetailUrl(slug: string) {
 
 export function siteSocialImage(site: SiteEntry) {
   return site.thumbnailKey
-    ? absoluteUrl(`/thumbnails/${encodeURIComponent(site.thumbnailKey)}`)
+    ? absoluteUrl(
+        thumbnailUrl(site.thumbnailKey, { width: 1024, format: 'jpeg' }),
+      )
     : DEFAULT_SOCIAL_IMAGE
 }
 

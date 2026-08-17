@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 
 import {
@@ -17,6 +18,7 @@ import {
   readPublicTagPage,
   readTagSuggestions,
 } from '../db/public-repository'
+import { cachedPublicRead } from './public-cache'
 
 const filterTagInput = z
   .string()
@@ -54,24 +56,46 @@ const tagSuggestionInput = z.object({
 
 export const getPublicDirectoryPage = createServerFn({ method: 'GET' })
   .validator((data) => directoryInput.parse(data))
-  .handler(({ data }) => readPublicDirectoryPage(data))
+  .handler(({ data }) =>
+    cachePublicRead('directory', data, () => readPublicDirectoryPage(data)),
+  )
 
 export const getPublicPopularPage = createServerFn({ method: 'GET' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))
-  .handler(({ data }) => readPublicPopularPage(data))
+  .handler(({ data }) =>
+    cachePublicRead('popular', data, () => readPublicPopularPage(data)),
+  )
 
 export const getPublicSupportData = createServerFn({ method: 'GET' }).handler(
-  readPublicSupportData,
+  () => cachePublicRead('support', undefined, readPublicSupportData),
 )
 
 export const getPublicTagPage = createServerFn({ method: 'GET' })
   .validator((data) => tagPageInput.parse(data))
-  .handler(({ data }) => readPublicTagPage(data))
+  .handler(({ data }) =>
+    cachePublicRead('tags', data, () => readPublicTagPage(data)),
+  )
 
 export const getPublicSiteDetail = createServerFn({ method: 'GET' })
   .validator((data) => z.string().min(1).max(100).parse(data))
-  .handler(({ data }) => readPublicSiteDetail(data))
+  .handler(({ data }) =>
+    cachePublicRead('site', data, () => readPublicSiteDetail(data)),
+  )
 
 export const getTagSuggestions = createServerFn({ method: 'GET' })
   .validator((data) => tagSuggestionInput.parse(data))
   .handler(({ data }) => readTagSuggestions(data))
+
+function cachePublicRead<T>(
+  name: string,
+  payload: unknown,
+  read: () => Promise<T>,
+) {
+  return cachedPublicRead({
+    cache: (caches as unknown as { default: Cache }).default,
+    request: getRequest(),
+    name,
+    payload,
+    read,
+  })
+}

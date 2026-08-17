@@ -692,11 +692,10 @@ function AdminPage() {
                     name="image"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
-                    required
                     className="w-full"
                   />
                   <small className="mt-1 block text-muted">
-                    PNG, JPEG, or WebP, up to 8 MB.
+                    Optional. PNG, JPEG, or WebP, up to 8 MB.
                   </small>
                 </div>
                 <div className="mb-2.5">
