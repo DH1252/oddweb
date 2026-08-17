@@ -11,7 +11,7 @@ export async function cachedPublicRead<T>(input: {
 }): Promise<T> {
   const key = publicCacheKey(input.request, input.name, input.payload)
   const cached = await input.cache.match(key)
-  if (cached) return (await cached.json()) as T
+  if (cached) return await cached.json()
 
   const value = await input.read()
   await input.cache.put(

@@ -51,23 +51,22 @@ test('thumbnail delivery transforms a valid immutable variant', async () => {
         head: async () => thumbnailObject(),
       },
       IMAGES: {
-        input: () =>
-          ({
-            transform: (transform: Record<string, unknown>) => {
-              transforms.push(transform)
-              return {
-                output: async (output: Record<string, unknown>) => {
-                  outputs.push(output)
-                  return {
-                    response: () =>
-                      new Response('optimized', {
-                        headers: { 'content-type': 'image/webp' },
-                      }),
-                  }
-                },
-              }
-            },
-          }) as unknown as ImageTransformer,
+        input: () => ({
+          transform: (transform: Record<string, unknown>) => {
+            transforms.push(transform)
+            return {
+              output: async (output: Record<string, unknown>) => {
+                outputs.push(output)
+                return {
+                  response: () =>
+                    new Response('optimized', {
+                      headers: { 'content-type': 'image/webp' },
+                    }),
+                }
+              },
+            }
+          },
+        }),
       } as unknown as ImagesBinding,
     },
   )
