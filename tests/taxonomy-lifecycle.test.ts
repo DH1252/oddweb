@@ -467,7 +467,8 @@ CREATE TABLE taxonomy_policy_configs (
 );
 CREATE TABLE taxonomy_state (
   id INTEGER PRIMARY KEY, published_version INTEGER NOT NULL, active_provider_config_id INTEGER,
-  active_policy_config_id INTEGER, mode TEXT NOT NULL
+   active_policy_config_id INTEGER, mode TEXT NOT NULL,
+   site_classification_enabled INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE taxonomy_jobs (
   id TEXT PRIMARY KEY, job_key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, site_id INTEGER,

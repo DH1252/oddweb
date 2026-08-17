@@ -895,6 +895,7 @@ export class TaxonomyService {
     if (!Number.isSafeInteger(siteId) || siteId < 1)
       throw new TypeError('Invalid site id')
     const state = await this.repository.loadState()
+    if (!state.siteClassificationEnabled) return null
     const policy = await this.repository.loadPolicy(state.activePolicyConfigId)
     const sites = await this.repository.backfillSites(siteId - 1, 1)
     const site = sites.find((value) => value.id === siteId)
@@ -943,6 +944,18 @@ export class TaxonomyService {
       nowSeconds(this.options),
     )
     return inserted ? id : null
+  }
+
+  async setSiteClassificationEnabled(
+    enabled: boolean,
+    actorId = 'admin',
+  ): Promise<void> {
+    await this.repository.setSiteClassificationEnabled(
+      enabled,
+      nowSeconds(this.options),
+      releaseSha(this.env),
+      actorId,
+    )
   }
 
   async backfill(cursor = 0, requestedLimit = 25): Promise<BackfillResult> {

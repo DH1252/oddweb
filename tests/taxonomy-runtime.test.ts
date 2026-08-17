@@ -508,7 +508,8 @@ CREATE TABLE taxonomy_policy_configs (
 CREATE TABLE taxonomy_state (
   id INTEGER PRIMARY KEY, published_version INTEGER NOT NULL,
   active_provider_config_id INTEGER, active_policy_config_id INTEGER,
-  mode TEXT NOT NULL, circuit_state TEXT NOT NULL, circuit_reason TEXT,
+   mode TEXT NOT NULL, site_classification_enabled INTEGER NOT NULL DEFAULT 1,
+   circuit_state TEXT NOT NULL, circuit_reason TEXT,
   circuit_opened_at INTEGER, mode_changed_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );

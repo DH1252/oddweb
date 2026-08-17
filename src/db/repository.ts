@@ -23,6 +23,7 @@ import {
 
 import type { RecentFiling, SiteEntry } from '../data/sites'
 import type { CanonicalTag } from '../data/tags'
+import { consumeSubmissionRateLimit as consumeSlidingSubmissionRateLimit } from './submission-rate-limit'
 
 export type GuestbookEntry = {
   id: number
@@ -685,6 +686,14 @@ export async function consumePublicRateLimit(
     allowed: row.count <= limit,
     retryAfter: Math.max(1, row.windowStarted + windowSeconds - now),
   }
+}
+
+export async function consumeSubmissionRateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number,
+) {
+  return consumeSlidingSubmissionRateLimit(env.DB, key, limit, windowSeconds)
 }
 
 export async function clearLoginLimits(keys: string[]) {

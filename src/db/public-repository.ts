@@ -27,6 +27,11 @@ export type PublicDirectoryInput = {
   page: number
 }
 
+export type PublicSurpriseInput = Pick<
+  PublicDirectoryInput,
+  'query' | 'include' | 'exclude'
+>
+
 export type PublicDirectoryPage = {
   sites: SiteEntry[]
   total: number
@@ -126,12 +131,7 @@ export async function readPublicDirectoryPage(
     )
       .bind(...filter.bindings, publicDirectoryPageSize, offset)
       .all<SiteSqlRow>(),
-    env.DB.prepare(
-      `${tagClosureCte} SELECT s.slug FROM sites s WHERE ${filter.sql}
-       ORDER BY random() LIMIT 1`,
-    )
-      .bind(...filter.bindings)
-      .first<{ slug: string }>(),
+    readPublicSurprise(input),
   ])
   return {
     sites: await hydrateSiteRows(siteResult.results),
@@ -140,6 +140,19 @@ export async function readPublicDirectoryPage(
     pageSize: publicDirectoryPageSize,
     surpriseSlug: surpriseResult?.slug,
   }
+}
+
+export async function readPublicSurprise(
+  input: PublicSurpriseInput,
+): Promise<{ slug: string } | null> {
+  await ensureSeedData()
+  const filter = buildPublicSiteFilter(input)
+  return await env.DB.prepare(
+    `${tagClosureCte} SELECT s.slug FROM sites s WHERE ${filter.sql}
+       ORDER BY random() LIMIT 1`,
+  )
+    .bind(...filter.bindings)
+    .first<{ slug: string }>()
 }
 
 export async function readPublicPopularPage(

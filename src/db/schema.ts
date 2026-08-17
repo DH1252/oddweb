@@ -454,6 +454,11 @@ export const taxonomyStateTable = sqliteTable(
       .$type<'disabled' | 'shadow' | 'gradual' | 'autonomous' | 'degraded'>()
       .notNull()
       .default('disabled'),
+    siteClassificationEnabled: integer('site_classification_enabled', {
+      mode: 'boolean',
+    })
+      .notNull()
+      .default(true),
     circuitState: text('circuit_state')
       .$type<'closed' | 'open' | 'half_open'>()
       .notNull()
@@ -1219,6 +1224,22 @@ export const publicRateLimitsTable = sqliteTable(
   },
   (table) => [
     index('public_rate_limits_window_started_idx').on(table.windowStarted),
+  ],
+)
+
+export const publicSubmissionAttemptsTable = sqliteTable(
+  'public_submission_attempts',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    key: text().notNull(),
+    attemptedAt: integer('attempted_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('public_submission_attempts_key_time_idx').on(
+      table.key,
+      table.attemptedAt,
+    ),
+    index('public_submission_attempts_time_idx').on(table.attemptedAt),
   ],
 )
 

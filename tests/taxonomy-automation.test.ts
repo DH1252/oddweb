@@ -539,6 +539,7 @@ test('mode gates require configuration, readiness metrics, ordering, and a close
     activeProviderConfigId: providerId,
     activePolicyConfigId: 1,
     mode: 'shadow',
+    siteClassificationEnabled: true,
     circuitState: 'closed',
     circuitReason: null,
     circuitOpenedAt: null,
@@ -2966,6 +2967,19 @@ test('classification provider work cannot settle after the site input hash chang
       .first(),
     { inputHash: newerHash, contentVersion: 2 },
   )
+  const replacement = await db
+    .prepare(
+      `SELECT status, input_hash AS inputHash,
+              site_content_version AS siteContentVersion
+       FROM taxonomy_jobs WHERE id <> ?`,
+    )
+    .bind(jobId)
+    .first()
+  assert.deepEqual(replacement, {
+    status: 'pending',
+    inputHash: newerHash,
+    siteContentVersion: 2,
+  })
   assert.equal(
     await db.prepare('SELECT count(*) FROM site_tags').first('count(*)'),
     0,
@@ -3028,6 +3042,65 @@ test('classification requeues current site input after a concurrent taxonomy rev
       siteContentVersion: 1,
       inputHash: sourceJob.inputHash,
     },
+  )
+})
+
+test('site classification can be disabled without stopping concept reassessment', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 17_800_000 })
+  const providerId = await addProvider(service, {
+    name: 'classification-toggle-provider',
+    credential: 'classification-toggle-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const classificationJobId = await service.enqueueSite(1)
+  assert.ok(classificationJobId)
+
+  await service.setSiteClassificationEnabled(false)
+  assert.equal(await service.enqueueSite(1), null)
+  assert.ok(await service.enqueueConcept('still assessed'))
+
+  const result = await processTaxonomyMessage(
+    { jobId: classificationJobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 17_801_000,
+      fetch: async () => {
+        throw new Error('Disabled classification must not call a provider')
+      },
+    },
+  )
+  assert.deepEqual(result, {
+    jobId: classificationJobId,
+    status: 'degraded',
+    attempts: 1,
+    mutations: 0,
+  })
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_job_attempts
+         WHERE job_id = ?`,
+      )
+      .bind(classificationJobId)
+      .first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_audit_events
+         WHERE event_type = 'site_classification_changed'
+           AND json_extract(after, '$.siteClassificationEnabled') = 0`,
+      )
+      .first('count(*)'),
+    1,
   )
 })
 

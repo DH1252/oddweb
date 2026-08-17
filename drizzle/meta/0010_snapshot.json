@@ -1,0 +1,3904 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "c8647ce6-491c-4bc7-8970-f5e5534d9764",
+  "prevId": "14749eb2-7aa9-44ac-bb81-8e0fe50d4aa1",
+  "tables": {
+    "admin_login_attempts": {
+      "name": "admin_login_attempts",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "failures": {
+          "name": "failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "window_started": {
+          "name": "window_started",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "blocked_until": {
+          "name": "blocked_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "admin_sessions": {
+      "name": "admin_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_version": {
+          "name": "credential_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "admin_sessions_expires_idx": {
+          "name": "admin_sessions_expires_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        },
+        "admin_sessions_username_idx": {
+          "name": "admin_sessions_username_idx",
+          "columns": [
+            "username"
+          ],
+          "isUnique": false
+        },
+        "admin_sessions_one_live_username_unique": {
+          "name": "admin_sessions_one_live_username_unique",
+          "columns": [
+            "username"
+          ],
+          "isUnique": true,
+          "where": "\"admin_sessions\".\"revoked_at\" IS NULL"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "app_state": {
+      "name": "app_state",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "guestbook": {
+      "name": "guestbook",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "hidden_at": {
+          "name": "hidden_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "guestbook_created_idx": {
+          "name": "guestbook_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "guestbook_entry_unique": {
+          "name": "guestbook_entry_unique",
+          "columns": [
+            "name",
+            "message"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "public_rate_limits": {
+      "name": "public_rate_limits",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "window_started": {
+          "name": "window_started",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "public_rate_limits_window_started_idx": {
+          "name": "public_rate_limits_window_started_idx",
+          "columns": [
+            "window_started"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "site_tags": {
+      "name": "site_tags",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "raw_name": {
+          "name": "raw_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'deterministic'"
+        },
+        "decision_id": {
+          "name": "decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "site_tags_site_tag_unique": {
+          "name": "site_tags_site_tag_unique",
+          "columns": [
+            "site_id",
+            "tag_id"
+          ],
+          "isUnique": true
+        },
+        "site_tags_tag_idx": {
+          "name": "site_tags_tag_idx",
+          "columns": [
+            "tag_id"
+          ],
+          "isUnique": false
+        },
+        "site_tags_effective_idx": {
+          "name": "site_tags_effective_idx",
+          "columns": [
+            "site_id",
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "site_tags_decision_idx": {
+          "name": "site_tags_decision_idx",
+          "columns": [
+            "decision_id"
+          ],
+          "isUnique": false,
+          "where": "\"site_tags\".\"decision_id\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {
+        "site_tags_site_id_sites_id_fk": {
+          "name": "site_tags_site_id_sites_id_fk",
+          "tableFrom": "site_tags",
+          "tableTo": "sites",
+          "columnsFrom": [
+            "site_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "site_tags_tag_id_tags_id_fk": {
+          "name": "site_tags_tag_id_tags_id_fk",
+          "tableFrom": "site_tags",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "site_tags_decision_id_tag_assignment_decisions_id_fk": {
+          "name": "site_tags_decision_id_tag_assignment_decisions_id_fk",
+          "tableFrom": "site_tags",
+          "tableTo": "tag_assignment_decisions",
+          "columnsFrom": [
+            "decision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "site_tags_raw_name_check": {
+          "name": "site_tags_raw_name_check",
+          "value": "length(trim(\"site_tags\".\"raw_name\")) > 0"
+        },
+        "site_tags_source_check": {
+          "name": "site_tags_source_check",
+          "value": "\"site_tags\".\"source\" IN ('deterministic', 'automation', 'admin', 'migration')"
+        },
+        "site_tags_revision_check": {
+          "name": "site_tags_revision_check",
+          "value": "\"site_tags\".\"revision\" >= 1"
+        }
+      }
+    },
+    "sites": {
+      "name": "sites",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url_key": {
+          "name": "url_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "categories": {
+          "name": "categories",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "poster": {
+          "name": "poster",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'NEW FIND'"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "facts": {
+          "name": "facts",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "accent": {
+          "name": "accent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'from-[#63396d] to-[#d27a3e]'"
+        },
+        "thumbnail_key": {
+          "name": "thumbnail_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "thumbnail_alt": {
+          "name": "thumbnail_alt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "visits": {
+          "name": "visits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Manual'"
+        },
+        "submission_id": {
+          "name": "submission_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "added_at": {
+          "name": "added_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "content_version": {
+          "name": "content_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "classification_input_hash": {
+          "name": "classification_input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "sites_slug_unique": {
+          "name": "sites_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "sites_url_unique": {
+          "name": "sites_url_unique",
+          "columns": [
+            "url"
+          ],
+          "isUnique": true
+        },
+        "sites_url_key_unique": {
+          "name": "sites_url_key_unique",
+          "columns": [
+            "url_key"
+          ],
+          "isUnique": true
+        },
+        "sites_submission_unique": {
+          "name": "sites_submission_unique",
+          "columns": [
+            "submission_id"
+          ],
+          "isUnique": true
+        },
+        "sites_status_added_idx": {
+          "name": "sites_status_added_idx",
+          "columns": [
+            "status",
+            "added_at"
+          ],
+          "isUnique": false
+        },
+        "sites_status_visits_idx": {
+          "name": "sites_status_visits_idx",
+          "columns": [
+            "status",
+            "visits"
+          ],
+          "isUnique": false
+        },
+        "sites_thumbnail_key_idx": {
+          "name": "sites_thumbnail_key_idx",
+          "columns": [
+            "thumbnail_key"
+          ],
+          "isUnique": false,
+          "where": "\"sites\".\"thumbnail_key\" IS NOT NULL"
+        },
+        "sites_classification_input_idx": {
+          "name": "sites_classification_input_idx",
+          "columns": [
+            "classification_input_hash",
+            "content_version"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "sites_submission_id_submissions_id_fk": {
+          "name": "sites_submission_id_submissions_id_fk",
+          "tableFrom": "sites",
+          "tableTo": "submissions",
+          "columnsFrom": [
+            "submission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "sites_status_check": {
+          "name": "sites_status_check",
+          "value": "\"sites\".\"status\" IN ('active', 'archived')"
+        },
+        "sites_source_check": {
+          "name": "sites_source_check",
+          "value": "\"sites\".\"source\" IN ('Directory', 'Submission', 'Manual')"
+        },
+        "sites_submission_source_check": {
+          "name": "sites_submission_source_check",
+          "value": "(\"sites\".\"source\" = 'Submission') = (\"sites\".\"submission_id\" IS NOT NULL)"
+        },
+        "sites_visits_nonnegative_check": {
+          "name": "sites_visits_nonnegative_check",
+          "value": "\"sites\".\"visits\" >= 0"
+        },
+        "sites_content_version_check": {
+          "name": "sites_content_version_check",
+          "value": "\"sites\".\"content_version\" >= 1"
+        },
+        "sites_classification_hash_check": {
+          "name": "sites_classification_hash_check",
+          "value": "\"sites\".\"classification_input_hash\" IS NULL OR length(\"sites\".\"classification_input_hash\") = 64"
+        },
+        "sites_categories_json_check": {
+          "name": "sites_categories_json_check",
+          "value": "json_valid(\"sites\".\"categories\") AND json_type(\"sites\".\"categories\") = 'array'"
+        },
+        "sites_notes_json_check": {
+          "name": "sites_notes_json_check",
+          "value": "json_valid(\"sites\".\"notes\") AND json_type(\"sites\".\"notes\") = 'array'"
+        },
+        "sites_facts_json_check": {
+          "name": "sites_facts_json_check",
+          "value": "json_valid(\"sites\".\"facts\") AND json_type(\"sites\".\"facts\") = 'array'"
+        }
+      }
+    },
+    "submissions": {
+      "name": "submissions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url_key": {
+          "name": "url_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tags": {
+          "name": "tags",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "thumbnail_key": {
+          "name": "thumbnail_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "thumbnail_alt": {
+          "name": "thumbnail_alt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "submissions_open_url_unique": {
+          "name": "submissions_open_url_unique",
+          "columns": [
+            "url_key"
+          ],
+          "isUnique": true,
+          "where": "\"submissions\".\"status\" IN ('pending', 'approved')"
+        },
+        "submissions_status_date_idx": {
+          "name": "submissions_status_date_idx",
+          "columns": [
+            "status",
+            "submitted_at"
+          ],
+          "isUnique": false
+        },
+        "submissions_thumbnail_key_idx": {
+          "name": "submissions_thumbnail_key_idx",
+          "columns": [
+            "thumbnail_key"
+          ],
+          "isUnique": false,
+          "where": "\"submissions\".\"thumbnail_key\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "submissions_status_check": {
+          "name": "submissions_status_check",
+          "value": "\"submissions\".\"status\" IN ('pending', 'approved', 'rejected')"
+        },
+        "submissions_tags_json_check": {
+          "name": "submissions_tags_json_check",
+          "value": "json_valid(\"submissions\".\"tags\") AND json_type(\"submissions\".\"tags\") = 'array'"
+        },
+        "submissions_reviewed_check": {
+          "name": "submissions_reviewed_check",
+          "value": "(\"submissions\".\"status\" = 'pending' AND \"submissions\".\"reviewed_at\" IS NULL) OR (\"submissions\".\"status\" <> 'pending' AND \"submissions\".\"reviewed_at\" IS NOT NULL)"
+        }
+      }
+    },
+    "tag_aliases": {
+      "name": "tag_aliases",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "alias": {
+          "name": "alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "tag_aliases_alias_unique": {
+          "name": "tag_aliases_alias_unique",
+          "columns": [
+            "alias"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "tag_aliases_tag_id_tags_id_fk": {
+          "name": "tag_aliases_tag_id_tags_id_fk",
+          "tableFrom": "tag_aliases",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tag_assignment_decisions": {
+      "name": "tag_assignment_decisions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "replacement_tag_id": {
+          "name": "replacement_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "candidate_id": {
+          "name": "candidate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_micros": {
+          "name": "confidence_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "was_assigned": {
+          "name": "was_assigned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_assigned": {
+          "name": "is_assigned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "taxonomy_version": {
+          "name": "taxonomy_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_content_version": {
+          "name": "site_content_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_config_id": {
+          "name": "provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "policy_config_id": {
+          "name": "policy_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supersedes_decision_id": {
+          "name": "supersedes_decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "tag_assignment_decisions_site_idx": {
+          "name": "tag_assignment_decisions_site_idx",
+          "columns": [
+            "site_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "tag_assignment_decisions_effective_idx": {
+          "name": "tag_assignment_decisions_effective_idx",
+          "columns": [
+            "site_id",
+            "tag_id",
+            "outcome",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "tag_assignment_decisions_job_idx": {
+          "name": "tag_assignment_decisions_job_idx",
+          "columns": [
+            "job_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "tag_assignment_decisions_site_id_sites_id_fk": {
+          "name": "tag_assignment_decisions_site_id_sites_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "sites",
+          "columnsFrom": [
+            "site_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_tag_id_tags_id_fk": {
+          "name": "tag_assignment_decisions_tag_id_tags_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_replacement_tag_id_tags_id_fk": {
+          "name": "tag_assignment_decisions_replacement_tag_id_tags_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "replacement_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_job_id_taxonomy_jobs_id_fk": {
+          "name": "tag_assignment_decisions_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_candidate_id_taxonomy_candidates_id_fk": {
+          "name": "tag_assignment_decisions_candidate_id_taxonomy_candidates_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "taxonomy_candidates",
+          "columnsFrom": [
+            "candidate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "tag_assignment_decisions_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_policy_config_id_taxonomy_policy_configs_id_fk": {
+          "name": "tag_assignment_decisions_policy_config_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "policy_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tag_assignment_decisions_supersedes_decision_id_tag_assignment_decisions_id_fk": {
+          "name": "tag_assignment_decisions_supersedes_decision_id_tag_assignment_decisions_id_fk",
+          "tableFrom": "tag_assignment_decisions",
+          "tableTo": "tag_assignment_decisions",
+          "columnsFrom": [
+            "supersedes_decision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "tag_assignment_decisions_action_check": {
+          "name": "tag_assignment_decisions_action_check",
+          "value": "\"tag_assignment_decisions\".\"action\" IN ('add', 'remove', 'retain', 'replace') AND ((\"tag_assignment_decisions\".\"action\" = 'replace' AND \"tag_assignment_decisions\".\"tag_id\" IS NOT NULL AND \"tag_assignment_decisions\".\"replacement_tag_id\" IS NOT NULL AND \"tag_assignment_decisions\".\"tag_id\" <> \"tag_assignment_decisions\".\"replacement_tag_id\") OR (\"tag_assignment_decisions\".\"action\" <> 'replace' AND \"tag_assignment_decisions\".\"tag_id\" IS NOT NULL AND \"tag_assignment_decisions\".\"replacement_tag_id\" IS NULL))"
+        },
+        "tag_assignment_decisions_outcome_check": {
+          "name": "tag_assignment_decisions_outcome_check",
+          "value": "\"tag_assignment_decisions\".\"outcome\" IN ('applied', 'rejected', 'shadow', 'locked', 'obsolete', 'conservative')"
+        },
+        "tag_assignment_decisions_source_check": {
+          "name": "tag_assignment_decisions_source_check",
+          "value": "\"tag_assignment_decisions\".\"source\" IN ('deterministic', 'provider', 'admin', 'migration')"
+        },
+        "tag_assignment_decisions_score_check": {
+          "name": "tag_assignment_decisions_score_check",
+          "value": "\"tag_assignment_decisions\".\"confidence_micros\" IS NULL OR \"tag_assignment_decisions\".\"confidence_micros\" BETWEEN 0 AND 1000000"
+        },
+        "tag_assignment_decisions_assignment_check": {
+          "name": "tag_assignment_decisions_assignment_check",
+          "value": "\"tag_assignment_decisions\".\"was_assigned\" IN (0, 1) AND \"tag_assignment_decisions\".\"is_assigned\" IN (0, 1)"
+        },
+        "tag_assignment_decisions_hash_version_check": {
+          "name": "tag_assignment_decisions_hash_version_check",
+          "value": "length(\"tag_assignment_decisions\".\"input_hash\") = 64 AND \"tag_assignment_decisions\".\"taxonomy_version\" >= 1 AND \"tag_assignment_decisions\".\"site_content_version\" >= 1"
+        },
+        "tag_assignment_decisions_supersedes_check": {
+          "name": "tag_assignment_decisions_supersedes_check",
+          "value": "\"tag_assignment_decisions\".\"supersedes_decision_id\" IS NULL OR \"tag_assignment_decisions\".\"supersedes_decision_id\" <> \"tag_assignment_decisions\".\"id\""
+        }
+      }
+    },
+    "tag_parents": {
+      "name": "tag_parents",
+      "columns": {
+        "parent_tag_id": {
+          "name": "parent_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "child_tag_id": {
+          "name": "child_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tag_parents_parent_tag_id_tags_id_fk": {
+          "name": "tag_parents_parent_tag_id_tags_id_fk",
+          "tableFrom": "tag_parents",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "parent_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tag_parents_child_tag_id_tags_id_fk": {
+          "name": "tag_parents_child_tag_id_tags_id_fk",
+          "tableFrom": "tag_parents",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "child_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "tag_parents_parent_tag_id_child_tag_id_pk": {
+          "columns": [
+            "parent_tag_id",
+            "child_tag_id"
+          ],
+          "name": "tag_parents_parent_tag_id_child_tag_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tags": {
+      "name": "tags",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "canonical": {
+          "name": "canonical",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "automation_locked": {
+          "name": "automation_locked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "merged_into_tag_id": {
+          "name": "merged_into_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deprecated_at": {
+          "name": "deprecated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "tags_slug_unique": {
+          "name": "tags_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "tags_status_canonical_idx": {
+          "name": "tags_status_canonical_idx",
+          "columns": [
+            "status",
+            "canonical"
+          ],
+          "isUnique": false
+        },
+        "tags_merged_into_idx": {
+          "name": "tags_merged_into_idx",
+          "columns": [
+            "merged_into_tag_id"
+          ],
+          "isUnique": false,
+          "where": "\"tags\".\"merged_into_tag_id\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {
+        "tags_merged_into_tag_id_tags_id_fk": {
+          "name": "tags_merged_into_tag_id_tags_id_fk",
+          "tableFrom": "tags",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "merged_into_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "tags_slug_nonempty_check": {
+          "name": "tags_slug_nonempty_check",
+          "value": "length(trim(\"tags\".\"slug\")) > 0"
+        },
+        "tags_name_nonempty_check": {
+          "name": "tags_name_nonempty_check",
+          "value": "length(trim(\"tags\".\"name\")) > 0"
+        },
+        "tags_canonical_check": {
+          "name": "tags_canonical_check",
+          "value": "\"tags\".\"canonical\" IN (0, 1)"
+        },
+        "tags_automation_locked_check": {
+          "name": "tags_automation_locked_check",
+          "value": "\"tags\".\"automation_locked\" IN (0, 1)"
+        },
+        "tags_status_check": {
+          "name": "tags_status_check",
+          "value": "\"tags\".\"status\" IN ('active', 'deprecated', 'merged')"
+        },
+        "tags_revision_check": {
+          "name": "tags_revision_check",
+          "value": "\"tags\".\"revision\" >= 1"
+        },
+        "tags_lifecycle_check": {
+          "name": "tags_lifecycle_check",
+          "value": "(\"tags\".\"status\" = 'active' AND \"tags\".\"deprecated_at\" IS NULL AND \"tags\".\"merged_into_tag_id\" IS NULL) OR (\"tags\".\"status\" = 'deprecated' AND \"tags\".\"deprecated_at\" IS NOT NULL AND \"tags\".\"merged_into_tag_id\" IS NULL) OR (\"tags\".\"status\" = 'merged' AND \"tags\".\"deprecated_at\" IS NOT NULL AND \"tags\".\"merged_into_tag_id\" IS NOT NULL AND \"tags\".\"merged_into_tag_id\" <> \"tags\".\"id\")"
+        }
+      }
+    },
+    "taxonomy_audit_events": {
+      "name": "taxonomy_audit_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decision_id": {
+          "name": "decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_config_id": {
+          "name": "provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_model": {
+          "name": "provider_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "policy_config_id": {
+          "name": "policy_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "prompt_hash": {
+          "name": "prompt_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "schema_hash": {
+          "name": "schema_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "taxonomy_version_before": {
+          "name": "taxonomy_version_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "taxonomy_version_after": {
+          "name": "taxonomy_version_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scores": {
+          "name": "scores",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "before": {
+          "name": "before",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "after": {
+          "name": "after",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "release_sha": {
+          "name": "release_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rollback_of_event_id": {
+          "name": "rollback_of_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "compensates_event_id": {
+          "name": "compensates_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "taxonomy_audit_events_batch_idx": {
+          "name": "taxonomy_audit_events_batch_idx",
+          "columns": [
+            "batch_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_audit_events_entity_idx": {
+          "name": "taxonomy_audit_events_entity_idx",
+          "columns": [
+            "entity_type",
+            "entity_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_audit_events_job_idx": {
+          "name": "taxonomy_audit_events_job_idx",
+          "columns": [
+            "job_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_audit_events_rollback_idx": {
+          "name": "taxonomy_audit_events_rollback_idx",
+          "columns": [
+            "rollback_of_event_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_audit_events_batch_id_taxonomy_change_batches_id_fk": {
+          "name": "taxonomy_audit_events_batch_id_taxonomy_change_batches_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_change_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_job_id_taxonomy_jobs_id_fk": {
+          "name": "taxonomy_audit_events_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_decision_id_tag_assignment_decisions_id_fk": {
+          "name": "taxonomy_audit_events_decision_id_tag_assignment_decisions_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "tag_assignment_decisions",
+          "columnsFrom": [
+            "decision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_audit_events_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_policy_config_id_taxonomy_policy_configs_id_fk": {
+          "name": "taxonomy_audit_events_policy_config_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "policy_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_rollback_of_event_id_taxonomy_audit_events_id_fk": {
+          "name": "taxonomy_audit_events_rollback_of_event_id_taxonomy_audit_events_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_audit_events",
+          "columnsFrom": [
+            "rollback_of_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_audit_events_compensates_event_id_taxonomy_audit_events_id_fk": {
+          "name": "taxonomy_audit_events_compensates_event_id_taxonomy_audit_events_id_fk",
+          "tableFrom": "taxonomy_audit_events",
+          "tableTo": "taxonomy_audit_events",
+          "columnsFrom": [
+            "compensates_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_audit_events_actor_check": {
+          "name": "taxonomy_audit_events_actor_check",
+          "value": "\"taxonomy_audit_events\".\"actor_type\" IN ('system', 'provider', 'admin', 'migration')"
+        },
+        "taxonomy_audit_events_versions_check": {
+          "name": "taxonomy_audit_events_versions_check",
+          "value": "\"taxonomy_audit_events\".\"taxonomy_version_before\" >= 1 AND \"taxonomy_audit_events\".\"taxonomy_version_after\" >= 1"
+        },
+        "taxonomy_audit_events_hashes_check": {
+          "name": "taxonomy_audit_events_hashes_check",
+          "value": "(\"taxonomy_audit_events\".\"prompt_hash\" IS NULL OR length(\"taxonomy_audit_events\".\"prompt_hash\") = 64) AND (\"taxonomy_audit_events\".\"schema_hash\" IS NULL OR length(\"taxonomy_audit_events\".\"schema_hash\") = 64) AND (\"taxonomy_audit_events\".\"input_hash\" IS NULL OR length(\"taxonomy_audit_events\".\"input_hash\") = 64)"
+        },
+        "taxonomy_audit_events_json_check": {
+          "name": "taxonomy_audit_events_json_check",
+          "value": "json_valid(\"taxonomy_audit_events\".\"scores\") AND json_type(\"taxonomy_audit_events\".\"scores\") = 'object' AND json_valid(\"taxonomy_audit_events\".\"before\") AND json_valid(\"taxonomy_audit_events\".\"after\")"
+        },
+        "taxonomy_audit_events_links_check": {
+          "name": "taxonomy_audit_events_links_check",
+          "value": "(\"taxonomy_audit_events\".\"rollback_of_event_id\" IS NULL OR \"taxonomy_audit_events\".\"rollback_of_event_id\" <> \"taxonomy_audit_events\".\"id\") AND (\"taxonomy_audit_events\".\"compensates_event_id\" IS NULL OR \"taxonomy_audit_events\".\"compensates_event_id\" <> \"taxonomy_audit_events\".\"id\")"
+        }
+      }
+    },
+    "taxonomy_candidates": {
+      "name": "taxonomy_candidates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempt_id": {
+          "name": "attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "candidate_key": {
+          "name": "candidate_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "related_tag_id": {
+          "name": "related_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "normalized_concept": {
+          "name": "normalized_concept",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "proposed_name": {
+          "name": "proposed_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "proposed_slug": {
+          "name": "proposed_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_micros": {
+          "name": "confidence_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "margin_micros": {
+          "name": "margin_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rank": {
+          "name": "rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'proposed'"
+        },
+        "decision_reason": {
+          "name": "decision_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "taxonomy_candidates_job_key_unique": {
+          "name": "taxonomy_candidates_job_key_unique",
+          "columns": [
+            "job_id",
+            "candidate_key"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_candidates_concept_idx": {
+          "name": "taxonomy_candidates_concept_idx",
+          "columns": [
+            "normalized_concept",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_candidates_tag_idx": {
+          "name": "taxonomy_candidates_tag_idx",
+          "columns": [
+            "tag_id",
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_candidates_job_id_taxonomy_jobs_id_fk": {
+          "name": "taxonomy_candidates_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "taxonomy_candidates",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_candidates_attempt_id_taxonomy_job_attempts_id_fk": {
+          "name": "taxonomy_candidates_attempt_id_taxonomy_job_attempts_id_fk",
+          "tableFrom": "taxonomy_candidates",
+          "tableTo": "taxonomy_job_attempts",
+          "columnsFrom": [
+            "attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "taxonomy_candidates_tag_id_tags_id_fk": {
+          "name": "taxonomy_candidates_tag_id_tags_id_fk",
+          "tableFrom": "taxonomy_candidates",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_candidates_related_tag_id_tags_id_fk": {
+          "name": "taxonomy_candidates_related_tag_id_tags_id_fk",
+          "tableFrom": "taxonomy_candidates",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "related_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_candidates_kind_check": {
+          "name": "taxonomy_candidates_kind_check",
+          "value": "\"taxonomy_candidates\".\"kind\" IN ('existing_tag', 'novel_concept', 'alias', 'merge', 'parent_edge')"
+        },
+        "taxonomy_candidates_target_check": {
+          "name": "taxonomy_candidates_target_check",
+          "value": "(\"taxonomy_candidates\".\"kind\" = 'existing_tag' AND \"taxonomy_candidates\".\"tag_id\" IS NOT NULL) OR (\"taxonomy_candidates\".\"kind\" = 'novel_concept' AND \"taxonomy_candidates\".\"normalized_concept\" IS NOT NULL AND \"taxonomy_candidates\".\"proposed_name\" IS NOT NULL AND \"taxonomy_candidates\".\"proposed_slug\" IS NOT NULL) OR (\"taxonomy_candidates\".\"kind\" = 'alias' AND \"taxonomy_candidates\".\"tag_id\" IS NOT NULL AND \"taxonomy_candidates\".\"normalized_concept\" IS NOT NULL) OR (\"taxonomy_candidates\".\"kind\" IN ('merge', 'parent_edge') AND \"taxonomy_candidates\".\"tag_id\" IS NOT NULL AND \"taxonomy_candidates\".\"related_tag_id\" IS NOT NULL AND \"taxonomy_candidates\".\"tag_id\" <> \"taxonomy_candidates\".\"related_tag_id\")"
+        },
+        "taxonomy_candidates_payload_check": {
+          "name": "taxonomy_candidates_payload_check",
+          "value": "json_valid(\"taxonomy_candidates\".\"payload\") AND json_type(\"taxonomy_candidates\".\"payload\") = 'object'"
+        },
+        "taxonomy_candidates_score_check": {
+          "name": "taxonomy_candidates_score_check",
+          "value": "\"taxonomy_candidates\".\"confidence_micros\" BETWEEN 0 AND 1000000 AND (\"taxonomy_candidates\".\"margin_micros\" IS NULL OR \"taxonomy_candidates\".\"margin_micros\" BETWEEN 0 AND 1000000) AND \"taxonomy_candidates\".\"rank\" >= 0"
+        },
+        "taxonomy_candidates_status_check": {
+          "name": "taxonomy_candidates_status_check",
+          "value": "\"taxonomy_candidates\".\"status\" IN ('proposed', 'accepted', 'rejected', 'deferred', 'conflict') AND ((\"taxonomy_candidates\".\"status\" = 'proposed' AND \"taxonomy_candidates\".\"decided_at\" IS NULL) OR (\"taxonomy_candidates\".\"status\" <> 'proposed' AND \"taxonomy_candidates\".\"decided_at\" IS NOT NULL))"
+        }
+      }
+    },
+    "taxonomy_change_batches": {
+      "name": "taxonomy_change_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expected_taxonomy_version": {
+          "name": "expected_taxonomy_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resulting_taxonomy_version": {
+          "name": "resulting_taxonomy_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "parent_batch_id": {
+          "name": "parent_batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rollback_of_batch_id": {
+          "name": "rollback_of_batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "taxonomy_change_batches_status_idx": {
+          "name": "taxonomy_change_batches_status_idx",
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_change_batches_rollback_idx": {
+          "name": "taxonomy_change_batches_rollback_idx",
+          "columns": [
+            "rollback_of_batch_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_change_batches_parent_batch_id_taxonomy_change_batches_id_fk": {
+          "name": "taxonomy_change_batches_parent_batch_id_taxonomy_change_batches_id_fk",
+          "tableFrom": "taxonomy_change_batches",
+          "tableTo": "taxonomy_change_batches",
+          "columnsFrom": [
+            "parent_batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_change_batches_rollback_of_batch_id_taxonomy_change_batches_id_fk": {
+          "name": "taxonomy_change_batches_rollback_of_batch_id_taxonomy_change_batches_id_fk",
+          "tableFrom": "taxonomy_change_batches",
+          "tableTo": "taxonomy_change_batches",
+          "columnsFrom": [
+            "rollback_of_batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_change_batches_id_check": {
+          "name": "taxonomy_change_batches_id_check",
+          "value": "length(trim(\"taxonomy_change_batches\".\"id\")) > 0"
+        },
+        "taxonomy_change_batches_kind_check": {
+          "name": "taxonomy_change_batches_kind_check",
+          "value": "\"taxonomy_change_batches\".\"kind\" IN ('migration', 'classification', 'ontology', 'rollback')"
+        },
+        "taxonomy_change_batches_status_check": {
+          "name": "taxonomy_change_batches_status_check",
+          "value": "\"taxonomy_change_batches\".\"status\" IN ('planned', 'applying', 'applied', 'failed', 'rolling_back', 'rolled_back', 'partial')"
+        },
+        "taxonomy_change_batches_actor_check": {
+          "name": "taxonomy_change_batches_actor_check",
+          "value": "\"taxonomy_change_batches\".\"actor_type\" IN ('system', 'admin', 'migration')"
+        },
+        "taxonomy_change_batches_versions_check": {
+          "name": "taxonomy_change_batches_versions_check",
+          "value": "\"taxonomy_change_batches\".\"expected_taxonomy_version\" >= 1 AND (\"taxonomy_change_batches\".\"resulting_taxonomy_version\" IS NULL OR \"taxonomy_change_batches\".\"resulting_taxonomy_version\" >= \"taxonomy_change_batches\".\"expected_taxonomy_version\")"
+        },
+        "taxonomy_change_batches_links_check": {
+          "name": "taxonomy_change_batches_links_check",
+          "value": "(\"taxonomy_change_batches\".\"parent_batch_id\" IS NULL OR \"taxonomy_change_batches\".\"parent_batch_id\" <> \"taxonomy_change_batches\".\"id\") AND (\"taxonomy_change_batches\".\"rollback_of_batch_id\" IS NULL OR \"taxonomy_change_batches\".\"rollback_of_batch_id\" <> \"taxonomy_change_batches\".\"id\")"
+        }
+      }
+    },
+    "taxonomy_concept_evidence": {
+      "name": "taxonomy_concept_evidence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_concept": {
+          "name": "normalized_concept",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_config_id": {
+          "name": "provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "policy_config_id": {
+          "name": "policy_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempt_id": {
+          "name": "attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "evidence_hash": {
+          "name": "evidence_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evidence_snippet": {
+          "name": "evidence_snippet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_micros": {
+          "name": "confidence_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "taxonomy_concept_evidence_distinct_unique": {
+          "name": "taxonomy_concept_evidence_distinct_unique",
+          "columns": [
+            "normalized_concept",
+            "site_id",
+            "input_hash",
+            "source_key"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_concept_evidence_lookup_idx": {
+          "name": "taxonomy_concept_evidence_lookup_idx",
+          "columns": [
+            "normalized_concept",
+            "accepted",
+            "observed_at",
+            "site_id"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_concept_evidence_config_idx": {
+          "name": "taxonomy_concept_evidence_config_idx",
+          "columns": [
+            "provider_config_id",
+            "policy_config_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_concept_evidence_site_id_sites_id_fk": {
+          "name": "taxonomy_concept_evidence_site_id_sites_id_fk",
+          "tableFrom": "taxonomy_concept_evidence",
+          "tableTo": "sites",
+          "columnsFrom": [
+            "site_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_concept_evidence_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_concept_evidence_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_concept_evidence",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_concept_evidence_policy_config_id_taxonomy_policy_configs_id_fk": {
+          "name": "taxonomy_concept_evidence_policy_config_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "taxonomy_concept_evidence",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "policy_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_concept_evidence_job_id_taxonomy_jobs_id_fk": {
+          "name": "taxonomy_concept_evidence_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "taxonomy_concept_evidence",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "taxonomy_concept_evidence_attempt_id_taxonomy_job_attempts_id_fk": {
+          "name": "taxonomy_concept_evidence_attempt_id_taxonomy_job_attempts_id_fk",
+          "tableFrom": "taxonomy_concept_evidence",
+          "tableTo": "taxonomy_job_attempts",
+          "columnsFrom": [
+            "attempt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_concept_evidence_concept_check": {
+          "name": "taxonomy_concept_evidence_concept_check",
+          "value": "length(trim(\"taxonomy_concept_evidence\".\"normalized_concept\")) > 0"
+        },
+        "taxonomy_concept_evidence_source_check": {
+          "name": "taxonomy_concept_evidence_source_check",
+          "value": "\"taxonomy_concept_evidence\".\"source\" IN ('submitted_hint', 'deterministic', 'provider') AND ((\"taxonomy_concept_evidence\".\"source\" = 'provider' AND \"taxonomy_concept_evidence\".\"provider_config_id\" IS NOT NULL) OR (\"taxonomy_concept_evidence\".\"source\" <> 'provider' AND \"taxonomy_concept_evidence\".\"provider_config_id\" IS NULL))"
+        },
+        "taxonomy_concept_evidence_hash_check": {
+          "name": "taxonomy_concept_evidence_hash_check",
+          "value": "length(\"taxonomy_concept_evidence\".\"input_hash\") = 64 AND length(\"taxonomy_concept_evidence\".\"evidence_hash\") = 64"
+        },
+        "taxonomy_concept_evidence_score_check": {
+          "name": "taxonomy_concept_evidence_score_check",
+          "value": "\"taxonomy_concept_evidence\".\"confidence_micros\" BETWEEN 0 AND 1000000 AND \"taxonomy_concept_evidence\".\"accepted\" IN (0, 1)"
+        }
+      }
+    },
+    "taxonomy_job_attempts": {
+      "name": "taxonomy_job_attempts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempt_number": {
+          "name": "attempt_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_config_id": {
+          "name": "provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_request_id": {
+          "name": "provider_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_model": {
+          "name": "provider_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "response_hash": {
+          "name": "response_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_response": {
+          "name": "raw_response",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_response_expires_at": {
+          "name": "raw_response_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_summary": {
+          "name": "error_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "taxonomy_job_attempts_job_number_unique": {
+          "name": "taxonomy_job_attempts_job_number_unique",
+          "columns": [
+            "job_id",
+            "attempt_number"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_job_attempts_provider_idx": {
+          "name": "taxonomy_job_attempts_provider_idx",
+          "columns": [
+            "provider_config_id",
+            "started_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_job_attempts_raw_expiry_idx": {
+          "name": "taxonomy_job_attempts_raw_expiry_idx",
+          "columns": [
+            "raw_response_expires_at"
+          ],
+          "isUnique": false,
+          "where": "\"taxonomy_job_attempts\".\"raw_response\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_job_attempts_job_id_taxonomy_jobs_id_fk": {
+          "name": "taxonomy_job_attempts_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "taxonomy_job_attempts",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_job_attempts_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_job_attempts_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_job_attempts",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_job_attempts_number_check": {
+          "name": "taxonomy_job_attempts_number_check",
+          "value": "\"taxonomy_job_attempts\".\"attempt_number\" >= 1"
+        },
+        "taxonomy_job_attempts_status_check": {
+          "name": "taxonomy_job_attempts_status_check",
+          "value": "\"taxonomy_job_attempts\".\"status\" IN ('started', 'succeeded', 'retryable_failure', 'permanent_failure', 'invalid_response', 'cancelled')"
+        },
+        "taxonomy_job_attempts_hash_check": {
+          "name": "taxonomy_job_attempts_hash_check",
+          "value": "length(\"taxonomy_job_attempts\".\"request_hash\") = 64 AND (\"taxonomy_job_attempts\".\"response_hash\" IS NULL OR length(\"taxonomy_job_attempts\".\"response_hash\") = 64)"
+        },
+        "taxonomy_job_attempts_usage_check": {
+          "name": "taxonomy_job_attempts_usage_check",
+          "value": "(\"taxonomy_job_attempts\".\"input_tokens\" IS NULL OR \"taxonomy_job_attempts\".\"input_tokens\" >= 0) AND (\"taxonomy_job_attempts\".\"output_tokens\" IS NULL OR \"taxonomy_job_attempts\".\"output_tokens\" >= 0) AND (\"taxonomy_job_attempts\".\"latency_ms\" IS NULL OR \"taxonomy_job_attempts\".\"latency_ms\" >= 0)"
+        },
+        "taxonomy_job_attempts_completion_check": {
+          "name": "taxonomy_job_attempts_completion_check",
+          "value": "(\"taxonomy_job_attempts\".\"status\" = 'started') = (\"taxonomy_job_attempts\".\"completed_at\" IS NULL)"
+        },
+        "taxonomy_job_attempts_raw_retention_check": {
+          "name": "taxonomy_job_attempts_raw_retention_check",
+          "value": "(\"taxonomy_job_attempts\".\"raw_response\" IS NULL AND \"taxonomy_job_attempts\".\"raw_response_expires_at\" IS NULL) OR (\"taxonomy_job_attempts\".\"raw_response\" IS NOT NULL AND \"taxonomy_job_attempts\".\"raw_response_expires_at\" IS NOT NULL)"
+        }
+      }
+    },
+    "taxonomy_jobs": {
+      "name": "taxonomy_jobs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_key": {
+          "name": "job_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "concept_key": {
+          "name": "concept_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_content_version": {
+          "name": "site_content_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "taxonomy_version": {
+          "name": "taxonomy_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_config_id": {
+          "name": "provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "policy_config_id": {
+          "name": "policy_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "leased_until": {
+          "name": "leased_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error_summary": {
+          "name": "last_error_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "taxonomy_jobs_job_key_unique": {
+          "name": "taxonomy_jobs_job_key_unique",
+          "columns": [
+            "job_key"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_jobs_pending_idx": {
+          "name": "taxonomy_jobs_pending_idx",
+          "columns": [
+            "status",
+            "available_at",
+            "priority",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_jobs_lease_idx": {
+          "name": "taxonomy_jobs_lease_idx",
+          "columns": [
+            "leased_until"
+          ],
+          "isUnique": false,
+          "where": "\"taxonomy_jobs\".\"status\" = 'leased'"
+        },
+        "taxonomy_jobs_retry_idx": {
+          "name": "taxonomy_jobs_retry_idx",
+          "columns": [
+            "available_at"
+          ],
+          "isUnique": false,
+          "where": "\"taxonomy_jobs\".\"status\" = 'retry_wait'"
+        },
+        "taxonomy_jobs_site_config_hash_idx": {
+          "name": "taxonomy_jobs_site_config_hash_idx",
+          "columns": [
+            "site_id",
+            "input_hash",
+            "taxonomy_version",
+            "policy_config_id",
+            "provider_config_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_jobs_site_id_sites_id_fk": {
+          "name": "taxonomy_jobs_site_id_sites_id_fk",
+          "tableFrom": "taxonomy_jobs",
+          "tableTo": "sites",
+          "columnsFrom": [
+            "site_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_jobs_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_jobs_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_jobs",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_jobs_policy_config_id_taxonomy_policy_configs_id_fk": {
+          "name": "taxonomy_jobs_policy_config_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "taxonomy_jobs",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "policy_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_jobs_batch_id_taxonomy_change_batches_id_fk": {
+          "name": "taxonomy_jobs_batch_id_taxonomy_change_batches_id_fk",
+          "tableFrom": "taxonomy_jobs",
+          "tableTo": "taxonomy_change_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_jobs_id_check": {
+          "name": "taxonomy_jobs_id_check",
+          "value": "length(trim(\"taxonomy_jobs\".\"id\")) > 0"
+        },
+        "taxonomy_jobs_kind_check": {
+          "name": "taxonomy_jobs_kind_check",
+          "value": "\"taxonomy_jobs\".\"kind\" IN ('classify_site', 'reassess_concept', 'apply_ontology', 'rollback')"
+        },
+        "taxonomy_jobs_target_check": {
+          "name": "taxonomy_jobs_target_check",
+          "value": "(\"taxonomy_jobs\".\"kind\" = 'classify_site' AND \"taxonomy_jobs\".\"site_id\" IS NOT NULL AND \"taxonomy_jobs\".\"site_content_version\" >= 1) OR (\"taxonomy_jobs\".\"kind\" = 'reassess_concept' AND \"taxonomy_jobs\".\"concept_key\" IS NOT NULL) OR (\"taxonomy_jobs\".\"kind\" IN ('apply_ontology', 'rollback'))"
+        },
+        "taxonomy_jobs_hash_check": {
+          "name": "taxonomy_jobs_hash_check",
+          "value": "length(\"taxonomy_jobs\".\"input_hash\") = 64"
+        },
+        "taxonomy_jobs_status_check": {
+          "name": "taxonomy_jobs_status_check",
+          "value": "\"taxonomy_jobs\".\"status\" IN ('pending', 'leased', 'retry_wait', 'succeeded', 'settled', 'obsolete', 'dead', 'cancelled', 'degraded')"
+        },
+        "taxonomy_jobs_attempts_check": {
+          "name": "taxonomy_jobs_attempts_check",
+          "value": "\"taxonomy_jobs\".\"attempt_count\" >= 0 AND \"taxonomy_jobs\".\"max_attempts\" >= 1 AND \"taxonomy_jobs\".\"attempt_count\" <= \"taxonomy_jobs\".\"max_attempts\""
+        },
+        "taxonomy_jobs_lease_check": {
+          "name": "taxonomy_jobs_lease_check",
+          "value": "(\"taxonomy_jobs\".\"status\" = 'leased' AND \"taxonomy_jobs\".\"lease_owner\" IS NOT NULL AND \"taxonomy_jobs\".\"lease_token\" IS NOT NULL AND \"taxonomy_jobs\".\"leased_until\" IS NOT NULL) OR (\"taxonomy_jobs\".\"status\" <> 'leased' AND \"taxonomy_jobs\".\"lease_owner\" IS NULL AND \"taxonomy_jobs\".\"lease_token\" IS NULL AND \"taxonomy_jobs\".\"leased_until\" IS NULL)"
+        },
+        "taxonomy_jobs_terminal_check": {
+          "name": "taxonomy_jobs_terminal_check",
+          "value": "(\"taxonomy_jobs\".\"status\" IN ('succeeded', 'settled', 'obsolete', 'dead', 'cancelled', 'degraded')) = (\"taxonomy_jobs\".\"completed_at\" IS NOT NULL)"
+        }
+      }
+    },
+    "taxonomy_locks": {
+      "name": "taxonomy_locks",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resource_key": {
+          "name": "resource_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "site_id": {
+          "name": "site_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "related_tag_id": {
+          "name": "related_tag_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "alias": {
+          "name": "alias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "released_by": {
+          "name": "released_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "release_reason": {
+          "name": "release_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "taxonomy_locks_active_resource_unique": {
+          "name": "taxonomy_locks_active_resource_unique",
+          "columns": [
+            "resource_key"
+          ],
+          "isUnique": true,
+          "where": "\"taxonomy_locks\".\"released_at\" IS NULL"
+        },
+        "taxonomy_locks_site_idx": {
+          "name": "taxonomy_locks_site_idx",
+          "columns": [
+            "site_id",
+            "released_at"
+          ],
+          "isUnique": false
+        },
+        "taxonomy_locks_tag_idx": {
+          "name": "taxonomy_locks_tag_idx",
+          "columns": [
+            "tag_id",
+            "released_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_locks_site_id_sites_id_fk": {
+          "name": "taxonomy_locks_site_id_sites_id_fk",
+          "tableFrom": "taxonomy_locks",
+          "tableTo": "sites",
+          "columnsFrom": [
+            "site_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_locks_tag_id_tags_id_fk": {
+          "name": "taxonomy_locks_tag_id_tags_id_fk",
+          "tableFrom": "taxonomy_locks",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "taxonomy_locks_related_tag_id_tags_id_fk": {
+          "name": "taxonomy_locks_related_tag_id_tags_id_fk",
+          "tableFrom": "taxonomy_locks",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "related_tag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_locks_scope_check": {
+          "name": "taxonomy_locks_scope_check",
+          "value": "\"taxonomy_locks\".\"scope\" IN ('site_assignment', 'tag', 'alias', 'merge', 'parent_edge')"
+        },
+        "taxonomy_locks_target_check": {
+          "name": "taxonomy_locks_target_check",
+          "value": "(\"taxonomy_locks\".\"scope\" = 'site_assignment' AND \"taxonomy_locks\".\"site_id\" IS NOT NULL AND \"taxonomy_locks\".\"tag_id\" IS NOT NULL AND \"taxonomy_locks\".\"related_tag_id\" IS NULL AND \"taxonomy_locks\".\"alias\" IS NULL) OR (\"taxonomy_locks\".\"scope\" = 'tag' AND \"taxonomy_locks\".\"site_id\" IS NULL AND \"taxonomy_locks\".\"tag_id\" IS NOT NULL AND \"taxonomy_locks\".\"related_tag_id\" IS NULL AND \"taxonomy_locks\".\"alias\" IS NULL) OR (\"taxonomy_locks\".\"scope\" = 'alias' AND \"taxonomy_locks\".\"site_id\" IS NULL AND \"taxonomy_locks\".\"tag_id\" IS NOT NULL AND \"taxonomy_locks\".\"related_tag_id\" IS NULL AND \"taxonomy_locks\".\"alias\" IS NOT NULL) OR (\"taxonomy_locks\".\"scope\" IN ('merge', 'parent_edge') AND \"taxonomy_locks\".\"site_id\" IS NULL AND \"taxonomy_locks\".\"tag_id\" IS NOT NULL AND \"taxonomy_locks\".\"related_tag_id\" IS NOT NULL AND \"taxonomy_locks\".\"tag_id\" <> \"taxonomy_locks\".\"related_tag_id\" AND \"taxonomy_locks\".\"alias\" IS NULL)"
+        },
+        "taxonomy_locks_revision_check": {
+          "name": "taxonomy_locks_revision_check",
+          "value": "\"taxonomy_locks\".\"revision\" >= 1"
+        },
+        "taxonomy_locks_release_check": {
+          "name": "taxonomy_locks_release_check",
+          "value": "(\"taxonomy_locks\".\"released_at\" IS NULL AND \"taxonomy_locks\".\"released_by\" IS NULL AND \"taxonomy_locks\".\"release_reason\" IS NULL) OR (\"taxonomy_locks\".\"released_at\" IS NOT NULL AND \"taxonomy_locks\".\"released_by\" IS NOT NULL AND \"taxonomy_locks\".\"release_reason\" IS NOT NULL)"
+        }
+      }
+    },
+    "taxonomy_outbox": {
+      "name": "taxonomy_outbox",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'taxonomy_jobs'"
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "leased_until": {
+          "name": "leased_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dispatch_attempts": {
+          "name": "dispatch_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "dispatched_at": {
+          "name": "dispatched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "taxonomy_outbox_job_unique": {
+          "name": "taxonomy_outbox_job_unique",
+          "columns": [
+            "job_id"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_outbox_undispatched_idx": {
+          "name": "taxonomy_outbox_undispatched_idx",
+          "columns": [
+            "available_at",
+            "id"
+          ],
+          "isUnique": false,
+          "where": "\"taxonomy_outbox\".\"dispatched_at\" IS NULL"
+        },
+        "taxonomy_outbox_lease_idx": {
+          "name": "taxonomy_outbox_lease_idx",
+          "columns": [
+            "leased_until"
+          ],
+          "isUnique": false,
+          "where": "\"taxonomy_outbox\".\"dispatched_at\" IS NULL AND \"taxonomy_outbox\".\"leased_until\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_outbox_job_id_taxonomy_jobs_id_fk": {
+          "name": "taxonomy_outbox_job_id_taxonomy_jobs_id_fk",
+          "tableFrom": "taxonomy_outbox",
+          "tableTo": "taxonomy_jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_outbox_payload_check": {
+          "name": "taxonomy_outbox_payload_check",
+          "value": "json_valid(\"taxonomy_outbox\".\"payload\") AND json_type(\"taxonomy_outbox\".\"payload\") = 'object' AND json_type(\"taxonomy_outbox\".\"payload\", '$.jobId') = 'text'"
+        },
+        "taxonomy_outbox_attempts_check": {
+          "name": "taxonomy_outbox_attempts_check",
+          "value": "\"taxonomy_outbox\".\"dispatch_attempts\" >= 0"
+        },
+        "taxonomy_outbox_lease_check": {
+          "name": "taxonomy_outbox_lease_check",
+          "value": "(\"taxonomy_outbox\".\"lease_token\" IS NULL) = (\"taxonomy_outbox\".\"leased_until\" IS NULL)"
+        }
+      }
+    },
+    "taxonomy_policy_configs": {
+      "name": "taxonomy_policy_configs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assignment_limit": {
+          "name": "assignment_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "novel_evidence_site_threshold": {
+          "name": "novel_evidence_site_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assignment_confidence_micros": {
+          "name": "assignment_confidence_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ontology_confidence_micros": {
+          "name": "ontology_confidence_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "minimum_margin_micros": {
+          "name": "minimum_margin_micros",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hierarchy_max_depth": {
+          "name": "hierarchy_max_depth",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hierarchy_max_fanout": {
+          "name": "hierarchy_max_fanout",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ontology_provider_agreement": {
+          "name": "ontology_provider_agreement",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retry_budget": {
+          "name": "retry_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retry_base_seconds": {
+          "name": "retry_base_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retry_max_seconds": {
+          "name": "retry_max_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rollout_basis_points": {
+          "name": "rollout_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "daily_request_budget": {
+          "name": "daily_request_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "daily_token_budget": {
+          "name": "daily_token_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "schema_failure_trip_basis_points": {
+          "name": "schema_failure_trip_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "disagreement_trip_basis_points": {
+          "name": "disagreement_trip_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rollback_trip_basis_points": {
+          "name": "rollback_trip_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mutation_volume_trip_count": {
+          "name": "mutation_volume_trip_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "raw_response_retention_seconds": {
+          "name": "raw_response_retention_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shadow_minimum_samples": {
+          "name": "shadow_minimum_samples",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shadow_minimum_coverage_basis_points": {
+          "name": "shadow_minimum_coverage_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shadow_schema_success_basis_points": {
+          "name": "shadow_schema_success_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shadow_provider_agreement_basis_points": {
+          "name": "shadow_provider_agreement_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_hash": {
+          "name": "prompt_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "schema_hash": {
+          "name": "schema_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "taxonomy_policy_configs_revision_unique": {
+          "name": "taxonomy_policy_configs_revision_unique",
+          "columns": [
+            "revision"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_policy_configs_supersedes_id_taxonomy_policy_configs_id_fk": {
+          "name": "taxonomy_policy_configs_supersedes_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "taxonomy_policy_configs",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "supersedes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_policy_configs_positive_limits_check": {
+          "name": "taxonomy_policy_configs_positive_limits_check",
+          "value": "\"taxonomy_policy_configs\".\"revision\" >= 1 AND \"taxonomy_policy_configs\".\"assignment_limit\" BETWEEN 1 AND 100 AND \"taxonomy_policy_configs\".\"novel_evidence_site_threshold\" >= 1 AND \"taxonomy_policy_configs\".\"hierarchy_max_depth\" BETWEEN 1 AND 32 AND \"taxonomy_policy_configs\".\"hierarchy_max_fanout\" BETWEEN 1 AND 1000 AND \"taxonomy_policy_configs\".\"ontology_provider_agreement\" >= 1 AND \"taxonomy_policy_configs\".\"retry_budget\" BETWEEN 0 AND 100"
+        },
+        "taxonomy_policy_configs_confidence_check": {
+          "name": "taxonomy_policy_configs_confidence_check",
+          "value": "\"taxonomy_policy_configs\".\"assignment_confidence_micros\" BETWEEN 0 AND 1000000 AND \"taxonomy_policy_configs\".\"ontology_confidence_micros\" BETWEEN 0 AND 1000000 AND \"taxonomy_policy_configs\".\"minimum_margin_micros\" BETWEEN 0 AND 1000000"
+        },
+        "taxonomy_policy_configs_retry_check": {
+          "name": "taxonomy_policy_configs_retry_check",
+          "value": "\"taxonomy_policy_configs\".\"retry_base_seconds\" >= 1 AND \"taxonomy_policy_configs\".\"retry_max_seconds\" >= \"taxonomy_policy_configs\".\"retry_base_seconds\""
+        },
+        "taxonomy_policy_configs_budgets_check": {
+          "name": "taxonomy_policy_configs_budgets_check",
+          "value": "\"taxonomy_policy_configs\".\"daily_request_budget\" >= 0 AND \"taxonomy_policy_configs\".\"daily_token_budget\" >= 0 AND \"taxonomy_policy_configs\".\"mutation_volume_trip_count\" >= 0 AND \"taxonomy_policy_configs\".\"raw_response_retention_seconds\" >= 0 AND \"taxonomy_policy_configs\".\"shadow_minimum_samples\" >= 0"
+        },
+        "taxonomy_policy_configs_basis_points_check": {
+          "name": "taxonomy_policy_configs_basis_points_check",
+          "value": "\"taxonomy_policy_configs\".\"rollout_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"schema_failure_trip_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"disagreement_trip_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"rollback_trip_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"shadow_minimum_coverage_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"shadow_schema_success_basis_points\" BETWEEN 0 AND 10000 AND \"taxonomy_policy_configs\".\"shadow_provider_agreement_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "taxonomy_policy_configs_hashes_check": {
+          "name": "taxonomy_policy_configs_hashes_check",
+          "value": "length(\"taxonomy_policy_configs\".\"prompt_hash\") = 64 AND length(\"taxonomy_policy_configs\".\"schema_hash\") = 64"
+        },
+        "taxonomy_policy_configs_supersedes_check": {
+          "name": "taxonomy_policy_configs_supersedes_check",
+          "value": "\"taxonomy_policy_configs\".\"supersedes_id\" IS NULL OR \"taxonomy_policy_configs\".\"supersedes_id\" <> \"taxonomy_policy_configs\".\"id\""
+        }
+      }
+    },
+    "taxonomy_provider_configs": {
+      "name": "taxonomy_provider_configs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_kind": {
+          "name": "provider_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dialect": {
+          "name": "dialect",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "routing_group": {
+          "name": "routing_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "routing_role": {
+          "name": "routing_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'primary'"
+        },
+        "routing_priority": {
+          "name": "routing_priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "timeout_ms": {
+          "name": "timeout_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30000
+        },
+        "key_version": {
+          "name": "key_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_nonce": {
+          "name": "credential_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_ciphertext": {
+          "name": "credential_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_fingerprint": {
+          "name": "credential_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "taxonomy_provider_configs_name_revision_unique": {
+          "name": "taxonomy_provider_configs_name_revision_unique",
+          "columns": [
+            "name",
+            "revision"
+          ],
+          "isUnique": true
+        },
+        "taxonomy_provider_configs_routing_idx": {
+          "name": "taxonomy_provider_configs_routing_idx",
+          "columns": [
+            "enabled",
+            "routing_group",
+            "routing_priority"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "taxonomy_provider_configs_supersedes_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_provider_configs_supersedes_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_provider_configs",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "supersedes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_provider_configs_name_check": {
+          "name": "taxonomy_provider_configs_name_check",
+          "value": "length(trim(\"taxonomy_provider_configs\".\"name\")) > 0 AND length(trim(\"taxonomy_provider_configs\".\"routing_group\")) > 0"
+        },
+        "taxonomy_provider_configs_revision_check": {
+          "name": "taxonomy_provider_configs_revision_check",
+          "value": "\"taxonomy_provider_configs\".\"revision\" >= 1"
+        },
+        "taxonomy_provider_configs_kind_check": {
+          "name": "taxonomy_provider_configs_kind_check",
+          "value": "\"taxonomy_provider_configs\".\"provider_kind\" IN ('openai_compatible', 'gemini')"
+        },
+        "taxonomy_provider_configs_endpoint_check": {
+          "name": "taxonomy_provider_configs_endpoint_check",
+          "value": "lower(\"taxonomy_provider_configs\".\"endpoint\") LIKE 'https://%' AND instr(substr(\"taxonomy_provider_configs\".\"endpoint\", 9), '@') = 0"
+        },
+        "taxonomy_provider_configs_dialect_check": {
+          "name": "taxonomy_provider_configs_dialect_check",
+          "value": "(\"taxonomy_provider_configs\".\"provider_kind\" = 'openai_compatible' AND \"taxonomy_provider_configs\".\"dialect\" IN ('responses', 'chat_completions')) OR (\"taxonomy_provider_configs\".\"provider_kind\" = 'gemini' AND \"taxonomy_provider_configs\".\"dialect\" IS NULL)"
+        },
+        "taxonomy_provider_configs_routing_role_check": {
+          "name": "taxonomy_provider_configs_routing_role_check",
+          "value": "\"taxonomy_provider_configs\".\"routing_role\" IN ('primary', 'failover', 'consensus')"
+        },
+        "taxonomy_provider_configs_priority_check": {
+          "name": "taxonomy_provider_configs_priority_check",
+          "value": "\"taxonomy_provider_configs\".\"routing_priority\" >= 0"
+        },
+        "taxonomy_provider_configs_timeout_check": {
+          "name": "taxonomy_provider_configs_timeout_check",
+          "value": "\"taxonomy_provider_configs\".\"timeout_ms\" BETWEEN 1000 AND 120000"
+        },
+        "taxonomy_provider_configs_encryption_check": {
+          "name": "taxonomy_provider_configs_encryption_check",
+          "value": "\"taxonomy_provider_configs\".\"key_version\" >= 1 AND length(\"taxonomy_provider_configs\".\"credential_nonce\") >= 16 AND length(\"taxonomy_provider_configs\".\"credential_ciphertext\") >= 16 AND length(\"taxonomy_provider_configs\".\"credential_fingerprint\") >= 8"
+        },
+        "taxonomy_provider_configs_enabled_check": {
+          "name": "taxonomy_provider_configs_enabled_check",
+          "value": "\"taxonomy_provider_configs\".\"enabled\" IN (0, 1)"
+        },
+        "taxonomy_provider_configs_supersedes_check": {
+          "name": "taxonomy_provider_configs_supersedes_check",
+          "value": "\"taxonomy_provider_configs\".\"supersedes_id\" IS NULL OR \"taxonomy_provider_configs\".\"supersedes_id\" <> \"taxonomy_provider_configs\".\"id\""
+        }
+      }
+    },
+    "taxonomy_state": {
+      "name": "taxonomy_state",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "published_version": {
+          "name": "published_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "active_provider_config_id": {
+          "name": "active_provider_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active_policy_config_id": {
+          "name": "active_policy_config_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'disabled'"
+        },
+        "site_classification_enabled": {
+          "name": "site_classification_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "circuit_state": {
+          "name": "circuit_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'closed'"
+        },
+        "circuit_reason": {
+          "name": "circuit_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "circuit_opened_at": {
+          "name": "circuit_opened_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mode_changed_at": {
+          "name": "mode_changed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "taxonomy_state_active_provider_config_id_taxonomy_provider_configs_id_fk": {
+          "name": "taxonomy_state_active_provider_config_id_taxonomy_provider_configs_id_fk",
+          "tableFrom": "taxonomy_state",
+          "tableTo": "taxonomy_provider_configs",
+          "columnsFrom": [
+            "active_provider_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "taxonomy_state_active_policy_config_id_taxonomy_policy_configs_id_fk": {
+          "name": "taxonomy_state_active_policy_config_id_taxonomy_policy_configs_id_fk",
+          "tableFrom": "taxonomy_state",
+          "tableTo": "taxonomy_policy_configs",
+          "columnsFrom": [
+            "active_policy_config_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "taxonomy_state_singleton_check": {
+          "name": "taxonomy_state_singleton_check",
+          "value": "\"taxonomy_state\".\"id\" = 1"
+        },
+        "taxonomy_state_version_check": {
+          "name": "taxonomy_state_version_check",
+          "value": "\"taxonomy_state\".\"published_version\" >= 1"
+        },
+        "taxonomy_state_mode_check": {
+          "name": "taxonomy_state_mode_check",
+          "value": "\"taxonomy_state\".\"mode\" IN ('disabled', 'shadow', 'gradual', 'autonomous', 'degraded')"
+        },
+        "taxonomy_state_circuit_check": {
+          "name": "taxonomy_state_circuit_check",
+          "value": "\"taxonomy_state\".\"circuit_state\" IN ('closed', 'open', 'half_open') AND ((\"taxonomy_state\".\"circuit_state\" = 'closed' AND \"taxonomy_state\".\"circuit_opened_at\" IS NULL) OR (\"taxonomy_state\".\"circuit_state\" <> 'closed' AND \"taxonomy_state\".\"circuit_opened_at\" IS NOT NULL))"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

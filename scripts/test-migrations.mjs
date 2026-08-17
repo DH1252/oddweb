@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -38,7 +39,14 @@ try {
   const migrationFiles = readdirSync(join(root, 'drizzle'))
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
     .sort()
-  for (const name of migrationFiles.slice(0, -1)) {
+  const taxonomyMigrationIndex = migrationFiles.findIndex((name) =>
+    readFileSync(join(root, 'drizzle', name), 'utf8').includes(
+      'CREATE TABLE `taxonomy_state`',
+    ),
+  )
+  if (taxonomyMigrationIndex < 1)
+    throw new Error('Could not locate the taxonomy migration boundary.')
+  for (const name of migrationFiles.slice(0, taxonomyMigrationIndex)) {
     copyFileSync(join(root, 'drizzle', name), join(migrations, name))
   }
   run('npx', [
@@ -72,10 +80,9 @@ try {
     INSERT INTO site_tags (site_id,tag_id,raw_name) VALUES
       (51,61,'Listen'), (51,61,'Radio'), (51,62,'Radio copy');
   `)
-  copyFileSync(
-    join(root, 'drizzle', migrationFiles.at(-1)),
-    join(migrations, migrationFiles.at(-1)),
-  )
+  for (const name of migrationFiles.slice(taxonomyMigrationIndex)) {
+    copyFileSync(join(root, 'drizzle', name), join(migrations, name))
+  }
   run('npx', [
     'wrangler',
     'd1',

@@ -83,6 +83,8 @@ function mapState(row: Row): TaxonomyState {
     activeProviderConfigId: nullableInteger(row, 'active_provider_config_id'),
     activePolicyConfigId: nullableInteger(row, 'active_policy_config_id'),
     mode: text(row, 'mode') as TaxonomyMode,
+    siteClassificationEnabled:
+      integer(row, 'site_classification_enabled') === 1,
     circuitState: text(row, 'circuit_state') as TaxonomyState['circuitState'],
     circuitReason: nullableText(row, 'circuit_reason'),
     circuitOpenedAt: nullableInteger(row, 'circuit_opened_at'),
@@ -2750,6 +2752,34 @@ export class TaxonomyRepository {
       '1',
       { mode: state.mode },
       { mode },
+      now,
+      releaseSha,
+      actorId,
+    )
+  }
+
+  async setSiteClassificationEnabled(
+    enabled: boolean,
+    now: number,
+    releaseSha = 'unknown',
+    actorId = 'system',
+  ): Promise<void> {
+    const state = await this.loadState()
+    if (state.siteClassificationEnabled === enabled) return
+    const changed = await changes(
+      this.db,
+      `UPDATE taxonomy_state SET site_classification_enabled = ?, updated_at = ?
+       WHERE id = 1 AND site_classification_enabled = ?`,
+      [enabled ? 1 : 0, now, state.siteClassificationEnabled ? 1 : 0],
+    )
+    if (!changed)
+      throw new Error('Site classification setting changed concurrently')
+    await this.auditControlPlane(
+      'site_classification_changed',
+      'taxonomy_state',
+      '1',
+      { siteClassificationEnabled: state.siteClassificationEnabled },
+      { siteClassificationEnabled: enabled },
       now,
       releaseSha,
       actorId,

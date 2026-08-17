@@ -14,6 +14,7 @@ import {
   readPublicDirectoryPage,
   readPublicPopularPage,
   readPublicSiteDetail,
+  readPublicSurprise,
   readPublicSupportData,
   readPublicTagPage,
   readTagSuggestions,
@@ -48,6 +49,11 @@ const tagPageInput = z.object({
   exclude: tagsInput,
   page: z.number().int().min(0).max(10_000).default(0),
 })
+const surpriseInput = directoryInput.pick({
+  query: true,
+  include: true,
+  exclude: true,
+})
 const tagSuggestionInput = z.object({
   query: z.string().max(tagInputMaxLength).default(''),
   selected: tagsInput,
@@ -59,6 +65,10 @@ export const getPublicDirectoryPage = createServerFn({ method: 'GET' })
   .handler(({ data }) =>
     cachePublicRead('directory', data, () => readPublicDirectoryPage(data)),
   )
+
+export const getPublicSurprise = createServerFn({ method: 'POST' })
+  .validator((data) => surpriseInput.parse(data))
+  .handler(({ data }) => readPublicSurprise(data))
 
 export const getPublicPopularPage = createServerFn({ method: 'GET' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))

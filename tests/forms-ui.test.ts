@@ -223,6 +223,9 @@ test('automation jobs expose every server-retryable status', async () => {
     /retryJobs\(data\.jobIds\)[\s\S]*dispatchTaxonomyOutbox\(env, \{ limit: 100 \}\)/,
   )
   assert.match(taxonomyAdmin, /export const dispatchTaxonomyOutboxNow/)
+  assert.match(taxonomyAdmin, /export const setSiteClassificationEnabled/)
+  assert.match(admin, /Disable site classification/)
+  assert.match(admin, /Enable site classification/)
 })
 
 test('suspense-backed result controls update inside transitions', async () => {
@@ -292,6 +295,24 @@ test('suspense-backed result controls update inside transitions', async () => {
   assert.match(
     tags,
     /useQuery\(\{[\s\S]*tagPageQueryOptions[\s\S]*placeholderData: keepPreviousData[\s\S]*initialTagPage/,
+  )
+})
+
+test('surprise navigation requests a fresh filtered site', async () => {
+  const [directory, publicData] = await Promise.all([
+    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/server/public-data.ts', import.meta.url), 'utf8'),
+  ])
+
+  assert.match(
+    directory,
+    /getPublicSurprise\(\{[\s\S]*query: deferredQuery, include, exclude/,
+  )
+  assert.match(directory, /disabled=\{surpriseMutation\.isPending\}/)
+  assert.doesNotMatch(directory, /directoryData\.surpriseSlug/)
+  assert.match(
+    publicData,
+    /getPublicSurprise = createServerFn\(\{ method: 'POST' \}\)[\s\S]*readPublicSurprise\(data\)/,
   )
 })
 

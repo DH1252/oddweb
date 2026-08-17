@@ -40,6 +40,7 @@ import {
   publicSupportQueryOptions,
 } from '../queries/oddweb'
 import { signGuestbook, submitSite as submitSiteMutation } from '../server/data'
+import { getPublicSurprise } from '../server/public-data'
 import {
   SITE_ORIGIN,
   absoluteUrl,
@@ -181,6 +182,12 @@ function DirectoryPage() {
   const submissionMutation = useMutation({
     mutationFn: (form: FormData) => submitSiteMutation({ data: form }),
   })
+  const surpriseMutation = useMutation({
+    mutationFn: () =>
+      getPublicSurprise({
+        data: { query: deferredQuery, include, exclude },
+      }),
+  })
   const submitPending = submissionMutation.isPending
 
   useEffect(() => {
@@ -254,16 +261,21 @@ function DirectoryPage() {
     startTransition(() => setPopularPage(nextPage))
   }
 
-  function surprise() {
-    if (!directoryData.surpriseSlug) {
-      setNotice('No matching sites are available to surprise you.')
+  async function surprise() {
+    setNotice('')
+    setNoticeError(false)
+    try {
+      const site = await surpriseMutation.mutateAsync()
+      if (!site) {
+        setNotice('No matching sites are available to surprise you.')
+        setNoticeError(true)
+        return
+      }
+      navigate({ to: '/sites/$slug', params: { slug: site.slug } })
+    } catch {
+      setNotice('Could not find a surprise site. Please try again.')
       setNoticeError(true)
-      return
     }
-    navigate({
-      to: '/sites/$slug',
-      params: { slug: directoryData.surpriseSlug },
-    })
   }
 
   async function addGuestbookEntry(event: FormEvent<HTMLFormElement>) {
@@ -402,9 +414,11 @@ function DirectoryPage() {
               type="button"
               className={buttonClass}
               onClick={surprise}
+              disabled={surpriseMutation.isPending}
+              aria-busy={surpriseMutation.isPending}
               data-od-id="shuffle-button"
             >
-              Surprise Me
+              {surpriseMutation.isPending ? 'Finding a site...' : 'Surprise Me'}
             </button>
           </div>
         </div>

@@ -44,6 +44,7 @@ const policyIdInput = z.strictObject({ policyConfigId: positiveId })
 const modeInput = z.strictObject({
   mode: z.enum(['disabled', 'shadow', 'gradual', 'autonomous', 'degraded']),
 })
+const siteClassificationInput = z.strictObject({ enabled: z.boolean() })
 const backfillInput = z.strictObject({
   cursor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   limit: z.number().int().min(1).max(100),
@@ -334,6 +335,18 @@ export const transitionTaxonomyMode = createServerFn({ method: 'POST' })
     await service().setMode(data.mode, context.admin.username)
     await publishTaxonomyChange()
     return { mode: data.mode, dashboard: await readTaxonomyDashboard(env.DB) }
+  })
+
+export const setSiteClassificationEnabled = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => siteClassificationInput.parse(data))
+  .handler(async ({ data, context }) => {
+    await service().setSiteClassificationEnabled(
+      data.enabled,
+      context.admin.username,
+    )
+    await publishTaxonomyChange()
+    return { dashboard: await readTaxonomyDashboard(env.DB) }
   })
 
 export const triggerTaxonomyBackfill = createServerFn({ method: 'POST' })

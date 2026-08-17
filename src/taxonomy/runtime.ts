@@ -129,22 +129,17 @@ function promptFor(snapshot: CandidateSnapshot): string {
 
 async function enqueueFreshClassification(input: {
   repository: TaxonomyRepository
-  job: TaxonomyJob
   snapshot: CandidateSnapshot
   now: number
 }): Promise<void> {
-  const { repository, job, snapshot, now } = input
-  if (
-    snapshot.site.contentVersion !== job.siteContentVersion ||
-    snapshot.site.classificationInputHash !== job.inputHash
-  ) {
-    return
-  }
+  const { repository, snapshot, now } = input
+  const inputHash = snapshot.site.classificationInputHash
+  if (!inputHash) return
   const state = await repository.loadState()
   const policy = await repository.loadPolicy(state.activePolicyConfigId)
   const jobKey = taxonomyJobKey({
     siteId: snapshot.site.id,
-    inputHash: job.inputHash,
+    inputHash,
     taxonomyVersion: state.publishedVersion,
     classifierVersion: `${policy.id}-${state.activeProviderConfigId ?? 0}`,
   })
@@ -154,7 +149,7 @@ async function enqueueFreshClassification(input: {
       jobKey,
       kind: 'classify_site',
       siteId: snapshot.site.id,
-      inputHash: job.inputHash,
+      inputHash,
       siteContentVersion: snapshot.site.contentVersion,
       taxonomyVersion: state.publishedVersion,
       providerConfigId: state.activeProviderConfigId,
@@ -609,6 +604,21 @@ export async function processTaxonomyMessage(
         mutations: 0,
       }
     }
+    if (job.kind === 'classify_site' && !state.siteClassificationEnabled) {
+      await repository.settleJob(
+        job,
+        'degraded',
+        now,
+        'site_classification_disabled',
+        'Site classification is disabled by the operator.',
+      )
+      return {
+        jobId,
+        status: 'degraded',
+        attempts: job.attemptCount,
+        mutations: 0,
+      }
+    }
     if (job.kind === 'reassess_concept' || job.kind === 'apply_ontology') {
       return await processOntologyJob({
         repository,
@@ -635,10 +645,8 @@ export async function processTaxonomyMessage(
         mutations: 0,
       }
     }
-    const snapshot = await repository.candidateSnapshot(
-      job,
-      boundedLimit(options.candidateLimit, 250, 500),
-    )
+    const candidateLimit = boundedLimit(options.candidateLimit, 250, 500)
+    const snapshot = await repository.candidateSnapshot(job, candidateLimit)
     if (
       !snapshot ||
       snapshot.site.contentVersion !== job.siteContentVersion ||
@@ -650,7 +658,7 @@ export async function processTaxonomyMessage(
         state.activePolicyConfigId !== job.policyConfigId)
     ) {
       if (snapshot) {
-        await enqueueFreshClassification({ repository, job, snapshot, now })
+        await enqueueFreshClassification({ repository, snapshot, now })
       }
       await repository.settleJob(
         job,
@@ -682,6 +690,17 @@ export async function processTaxonomyMessage(
       now,
     })
     if (!(await repository.classificationInputCurrent(job))) {
+      const currentSnapshot = await repository.candidateSnapshot(
+        job,
+        candidateLimit,
+      )
+      if (currentSnapshot) {
+        await enqueueFreshClassification({
+          repository,
+          snapshot: currentSnapshot,
+          now,
+        })
+      }
       await repository.settleJob(
         job,
         'obsolete',

@@ -74,6 +74,7 @@ import {
   rollbackTaxonomyBatch,
   rollbackTaxonomyEvent,
   rollbackTaxonomySite,
+  setSiteClassificationEnabled,
   testTaxonomyProvider,
   updateTaxonomyProvider,
   transitionTaxonomyMode,
@@ -1286,6 +1287,10 @@ function AutomationSection({
     mutationFn: (mode: TaxonomyMode) =>
       transitionTaxonomyMode({ data: { mode } }),
   })
+  const siteClassificationMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setSiteClassificationEnabled({ data: { enabled } }),
+  })
   const circuitMutation = useMutation({
     mutationFn: () => resetTaxonomyCircuit(),
   })
@@ -1331,6 +1336,7 @@ function AutomationSection({
     policyCreateMutation.isPending ||
     policyActivateMutation.isPending ||
     modeMutation.isPending ||
+    siteClassificationMutation.isPending ||
     circuitMutation.isPending
 
   async function submitProvider(event: FormEvent<HTMLFormElement>) {
@@ -1641,6 +1647,24 @@ function AutomationSection({
     } catch (error) {
       showStatus(
         await handleAdminError(error, 'Could not change automation mode.'),
+        'error',
+      )
+    }
+  }
+
+  async function changeSiteClassification(enabled: boolean) {
+    try {
+      const result = await siteClassificationMutation.mutateAsync(enabled)
+      setAuditPage(0)
+      await installDashboard(result.dashboard)
+      await invalidateTaxonomy('audit', 'jobs')
+      showStatus(
+        `Site classification ${enabled ? 'enabled' : 'disabled'}.`,
+        'success',
+      )
+    } catch (error) {
+      showStatus(
+        await handleAdminError(error, 'Could not change site classification.'),
         'error',
       )
     }
@@ -1987,6 +2011,23 @@ function AutomationSection({
               ))}
               <button
                 type="button"
+                className={`${dashboard.state.siteClassificationEnabled ? buttonClass : selectedButtonClass} min-h-9`}
+                aria-pressed={!dashboard.state.siteClassificationEnabled}
+                disabled={controlPlanePending}
+                onClick={() =>
+                  changeSiteClassification(
+                    !dashboard.state.siteClassificationEnabled,
+                  )
+                }
+              >
+                {siteClassificationMutation.isPending
+                  ? 'Changing...'
+                  : dashboard.state.siteClassificationEnabled
+                    ? 'Disable site classification'
+                    : 'Enable site classification'}
+              </button>
+              <button
+                type="button"
                 className={`${dangerButtonClass} min-h-9`}
                 disabled={controlPlanePending}
                 onClick={resetCircuit}
@@ -2011,7 +2052,8 @@ function AutomationSection({
           <p id="automation-mode-help" className="mt-2 mb-0 text-xs text-muted">
             Promotion is sequential: disabled to shadow, shadow to gradual after
             the readiness gate, then gradual to autonomous. Degraded mode
-            requires a circuit reset.
+            requires a circuit reset. Site classification can be disabled
+            independently without stopping concept reassessment.
           </p>
         </AutomationBox>
 

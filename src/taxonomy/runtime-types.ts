@@ -22,6 +22,7 @@ export interface TaxonomyState {
   activeProviderConfigId: number | null
   activePolicyConfigId: number | null
   mode: TaxonomyMode
+  siteClassificationEnabled: boolean
   circuitState: 'closed' | 'open' | 'half_open'
   circuitReason: string | null
   circuitOpenedAt: number | null

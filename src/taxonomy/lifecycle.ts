@@ -339,7 +339,8 @@ export async function prepareSiteTaxonomyLifecycle(
          JOIN taxonomy_state state ON state.id = 1
           JOIN taxonomy_policy_configs policy
            ON policy.id = state.active_policy_config_id
-          WHERE ${target.sql} AND site.status = 'active'
+           WHERE ${target.sql} AND site.status = 'active'
+             AND state.site_classification_enabled = 1
          ON CONFLICT(job_key) DO NOTHING`,
       )
       .bind(
@@ -357,8 +358,9 @@ export async function prepareSiteTaxonomyLifecycle(
           JOIN taxonomy_policy_configs policy
             ON policy.id = state.active_policy_config_id
           JOIN taxonomy_jobs job ON job.job_key = ${jobKey}
-          WHERE ${target.sql} AND site.status = 'active'
-         ON CONFLICT(job_id) DO NOTHING`,
+           WHERE ${target.sql} AND site.status = 'active'
+             AND state.site_classification_enabled = 1
+          ON CONFLICT(job_id) DO NOTHING`,
       )
       .bind(target.value, `outbox-${crypto.randomUUID()}`),
   )

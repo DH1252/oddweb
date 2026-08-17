@@ -10,6 +10,7 @@ import { z } from 'zod'
 import {
   addGuestbookEntry,
   consumePublicRateLimit,
+  consumeSubmissionRateLimit,
   createSite,
   createSubmission,
   setGuestbookVisibility,
@@ -30,6 +31,7 @@ import { deferVisitAccounting } from './visit-accounting'
 import { publishRealtimeEvent } from './realtime'
 
 const daySeconds = 24 * 60 * 60
+const submissionWindowSeconds = 3 * 60 * 60
 
 const guestbookInput = z.object({
   name: z.string().trim().min(1).max(24),
@@ -67,7 +69,7 @@ const tagMergeInput = z.object({
 export const submitSite = createServerFn({ method: 'POST' })
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
-    await enforcePublicRateLimit('submission', 3, daySeconds)
+    await enforcePublicRateLimit('submission', 15, submissionWindowSeconds)
     const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
     try {
       const result = await createSubmission({
@@ -429,7 +431,10 @@ async function enforcePublicRateLimit(
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'local'
   const key = await hmacKey(secret, `public:${action}:ip:${ip}`)
-  const result = await consumePublicRateLimit(key, limit, windowSeconds)
+  const result =
+    action === 'submission'
+      ? await consumeSubmissionRateLimit(key, limit, windowSeconds)
+      : await consumePublicRateLimit(key, limit, windowSeconds)
   if (!result.allowed) {
     if (silentlyIgnore) return false
     setResponseStatus(429)
