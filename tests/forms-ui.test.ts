@@ -152,7 +152,7 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.doesNotMatch(admin, /!bg-brown !text-paper/)
 })
 
-test('automation jobs expose every server-retryable terminal status', async () => {
+test('automation jobs expose every server-retryable status', async () => {
   const admin = await readFile(
     new URL('../src/routes/admin.tsx', import.meta.url),
     'utf8',
@@ -160,7 +160,7 @@ test('automation jobs expose every server-retryable terminal status', async () =
 
   assert.match(
     admin,
-    /function isRetryableJobStatus[\s\S]*status === 'dead'[\s\S]*status === 'settled'[\s\S]*status === 'degraded'/,
+    /function isRetryableJobStatus[\s\S]*status === 'pending'[\s\S]*status === 'retry_wait'[\s\S]*status === 'leased'[\s\S]*status === 'dead'[\s\S]*status === 'settled'[\s\S]*status === 'degraded'/,
   )
   assert.equal(
     [
@@ -170,6 +170,18 @@ test('automation jobs expose every server-retryable terminal status', async () =
     ].length,
     2,
   )
+  assert.match(admin, /dispatchTaxonomyOutboxNow/)
+  assert.match(admin, /Dispatch pending now/)
+
+  const taxonomyAdmin = await readFile(
+    new URL('../src/server/taxonomy-admin.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    taxonomyAdmin,
+    /retryJobs\(data\.jobIds\)[\s\S]*dispatchTaxonomyOutbox\(env, \{ limit: 100 \}\)/,
+  )
+  assert.match(taxonomyAdmin, /export const dispatchTaxonomyOutboxNow/)
 })
 
 test('suspense-backed result controls update inside transitions', async () => {

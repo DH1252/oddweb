@@ -957,7 +957,9 @@ export class TaxonomyService {
              available_at = ?, lease_owner = NULL, lease_token = NULL,
              leased_until = NULL, completed_at = NULL, updated_at = ?,
              last_error_code = NULL, last_error_summary = NULL
-             WHERE id = ? AND status IN ('dead', 'settled', 'degraded')`,
+             WHERE id = ? AND status IN (
+               'pending', 'retry_wait', 'leased', 'dead', 'settled', 'degraded'
+             )`,
           )
           .bind(now, now, id),
         this.repository.db

@@ -59,6 +59,7 @@ import {
   createTaxonomyProvider,
   disableTaxonomyProvider,
   decideTaxonomyCandidate,
+  dispatchTaxonomyOutboxNow,
   enableTaxonomyProvider,
   releaseTaxonomyLock,
   resetTaxonomyCircuit,
@@ -1172,6 +1173,9 @@ function AutomationSection({
   const retryMutation = useMutation({
     mutationFn: (jobIds: string[]) => retryTaxonomyJobs({ data: { jobIds } }),
   })
+  const dispatchMutation = useMutation({
+    mutationFn: () => dispatchTaxonomyOutboxNow(),
+  })
   const rollbackMutation = useMutation({
     mutationFn: (input: RollbackInput) => {
       if (input.kind === 'event')
@@ -1508,7 +1512,7 @@ function AutomationSection({
     if (!selectedJobs.length) return
     if (
       !window.confirm(
-        `Retry ${selectedJobs.length} selected dead or settled jobs?`,
+        `Retry ${selectedJobs.length} selected jobs? They will return to pending and be dispatched to the queue.`,
       )
     )
       return
@@ -1516,10 +1520,31 @@ function AutomationSection({
       const result = await retryMutation.mutateAsync(selectedJobs)
       setSelectedJobs([])
       await invalidateTaxonomy('jobs', 'dashboard')
-      showStatus(`${result.retried} jobs returned to the queue.`, 'success')
+      showStatus(
+        `${result.retried} jobs returned to the queue${result.dispatched ? `, ${result.dispatched} dispatched` : ''}.`,
+        'success',
+      )
     } catch (error) {
       showStatus(
         await handleAdminError(error, 'Could not retry selected jobs.'),
+        'error',
+      )
+    }
+  }
+
+  async function dispatchPendingJobs() {
+    try {
+      const result = await dispatchMutation.mutateAsync()
+      await invalidateTaxonomy('jobs', 'dashboard')
+      showStatus(
+        result.dispatched
+          ? `${result.dispatched} pending jobs dispatched to the queue.`
+          : 'No undispatched outbox rows were ready.',
+        result.dispatched ? 'success' : '',
+      )
+    } catch (error) {
+      showStatus(
+        await handleAdminError(error, 'Could not dispatch pending jobs.'),
         'error',
       )
     }
@@ -2627,14 +2652,35 @@ function AutomationSection({
             <button
               type="button"
               className={primaryButtonClass}
-              disabled={!selectedJobs.length || retryMutation.isPending}
+              disabled={
+                !selectedJobs.length ||
+                retryMutation.isPending ||
+                dispatchMutation.isPending
+              }
               onClick={retrySelectedJobs}
             >
               {retryMutation.isPending
                 ? 'Retrying...'
                 : `Retry selected (${selectedJobs.length})`}
             </button>
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={dispatchMutation.isPending || retryMutation.isPending}
+              onClick={dispatchPendingJobs}
+            >
+              {dispatchMutation.isPending
+                ? 'Dispatching...'
+                : 'Dispatch pending now'}
+            </button>
           </div>
+          <p className="mt-0 mb-2 font-mono text-xs text-muted">
+            Pending, waiting, leased, dead, settled, and degraded jobs can be
+            retried. Retry resets them to pending and sends them to the queue
+            immediately. Dispatch pending now flushes the outbox without waiting
+            for cron. After a release, resume taxonomy queue delivery if jobs
+            stay pending.
+          </p>
           {jobs.items.length ? (
             <>
               <ul className="m-0 grid list-none gap-2 p-0 md:hidden">
@@ -4529,7 +4575,14 @@ const jobStatusOptions: TaxonomyJobStatus[] = [
 ]
 
 function isRetryableJobStatus(status: unknown): boolean {
-  return status === 'dead' || status === 'settled' || status === 'degraded'
+  return (
+    status === 'pending' ||
+    status === 'retry_wait' ||
+    status === 'leased' ||
+    status === 'dead' ||
+    status === 'settled' ||
+    status === 'degraded'
+  )
 }
 
 const jobKindOptions: TaxonomyJobKind[] = [

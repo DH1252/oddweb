@@ -502,7 +502,10 @@ export async function processTaxonomyMessage(
     now,
     leaseSeconds,
   )
-  if (!job) return { jobId, status: 'ignored', attempts: 0, mutations: 0 }
+  if (!job) {
+    await repository.rearmRunnableOutbox(jobId, now)
+    return { jobId, status: 'ignored', attempts: 0, mutations: 0 }
+  }
   const deadline = new AbortController()
   const parentAbort = () => deadline.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', parentAbort, { once: true })
@@ -520,7 +523,20 @@ export async function processTaxonomyMessage(
   const runtimeOptions = { ...options, signal: deadline.signal }
   try {
     if (!(await repository.renewJobLease(job, now, leaseSeconds))) {
-      return { jobId, status: 'ignored', attempts: 0, mutations: 0 }
+      await repository.retryJob(
+        job,
+        now,
+        now,
+        'lease_renew_failed',
+        'Lease renewal failed before processing started.',
+      )
+      await repository.rearmRunnableOutbox(jobId, now)
+      return {
+        jobId,
+        status: 'retry_wait',
+        attempts: job.attemptCount,
+        mutations: 0,
+      }
     }
     const state = await repository.loadState()
     const policy = await repository.loadPolicy(

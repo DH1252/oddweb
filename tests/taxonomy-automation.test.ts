@@ -3137,6 +3137,147 @@ test('inactive automation settlements are recoverable through atomic degraded re
   )
 })
 
+test('retry recovers pending, waiting, and leased jobs and dispatches them', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 19_500_000 })
+  const sent: string[] = []
+  const runtimeEnv = {
+    ...env,
+    TAXONOMY_QUEUE: mockQueue(async (message) => {
+      sent.push(
+        typeof message === 'object' &&
+          message !== null &&
+          'jobId' in message &&
+          typeof message.jobId === 'string'
+          ? message.jobId
+          : '',
+      )
+    }),
+  }
+  const statuses = ['pending', 'retry_wait', 'leased'] as const
+  const jobIds: string[] = []
+  for (const [index, status] of statuses.entries()) {
+    const siteId = index + 1
+    await insertSite(db, siteId)
+    const jobId = await service.enqueueSite(siteId)
+    assert.ok(jobId)
+    jobIds.push(jobId)
+    await db
+      .prepare(
+        `UPDATE taxonomy_jobs SET status = ?, attempt_count = 2,
+         available_at = 20000, last_error_code = 'stale',
+         lease_owner = CASE WHEN ? = 'leased' THEN 'worker' ELSE NULL END,
+         lease_token = CASE WHEN ? = 'leased' THEN 'token' ELSE NULL END,
+         leased_until = CASE WHEN ? = 'leased' THEN 20000 ELSE NULL END
+         WHERE id = ?`,
+      )
+      .bind(status, status, status, status, jobId)
+      .run()
+    await db
+      .prepare(
+        'UPDATE taxonomy_outbox SET dispatched_at = 19000 WHERE job_id = ?',
+      )
+      .bind(jobId)
+      .run()
+  }
+  assert.equal(await service.retryJobs(jobIds), 3)
+  assert.deepEqual(
+    (
+      await db
+        .prepare(
+          `SELECT status, attempt_count AS attemptCount, last_error_code AS error
+           FROM taxonomy_jobs WHERE id IN (?, ?, ?) ORDER BY site_id`,
+        )
+        .bind(...jobIds)
+        .all()
+    ).results,
+    [
+      { status: 'pending', attemptCount: 0, error: null },
+      { status: 'pending', attemptCount: 0, error: null },
+      { status: 'pending', attemptCount: 0, error: null },
+    ],
+  )
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_outbox
+         WHERE job_id IN (?, ?, ?) AND dispatched_at IS NULL`,
+      )
+      .bind(...jobIds)
+      .first('count(*)'),
+    3,
+  )
+  assert.equal(
+    await dispatchTaxonomyOutbox(runtimeEnv, { now: () => 19_500_000 }),
+    3,
+  )
+  assert.deepEqual(sent.sort(), [...jobIds].sort())
+})
+
+test('ignored leases rearm runnable pending outbox rows', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  const repository = new TaxonomyRepository(db)
+  await insertSite(db, 1)
+  await repository.enqueueJob(
+    {
+      id: 'rearm-job',
+      jobKey: 'rearm-key',
+      kind: 'classify_site',
+      siteId: 1,
+      inputHash: hash,
+      siteContentVersion: 1,
+      taxonomyVersion: 1,
+      policyConfigId: 1,
+      maxAttempts: 3,
+    },
+    19_600,
+  )
+  await db
+    .prepare(
+      "UPDATE taxonomy_outbox SET dispatched_at = 19600 WHERE job_id = 'rearm-job'",
+    )
+    .run()
+  assert.equal(await repository.rearmRunnableOutbox('rearm-job', 19_600), true)
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT dispatched_at FROM taxonomy_outbox WHERE job_id = 'rearm-job'",
+      )
+      .first('dispatched_at'),
+    null,
+  )
+  await db
+    .prepare(
+      `UPDATE taxonomy_jobs SET available_at = 30000, status = 'retry_wait'
+       WHERE id = 'rearm-job'`,
+    )
+    .run()
+  await db
+    .prepare(
+      "UPDATE taxonomy_outbox SET dispatched_at = 19600 WHERE job_id = 'rearm-job'",
+    )
+    .run()
+  assert.equal(await repository.rearmRunnableOutbox('rearm-job', 19_600), false)
+  const env = { ...serviceEnv(db), TAXONOMY_QUEUE: mockQueue() }
+  assert.equal(
+    (
+      await processTaxonomyMessage({ jobId: 'rearm-job' }, env, {
+        now: () => 19_600_000,
+      })
+    ).status,
+    'ignored',
+  )
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT dispatched_at FROM taxonomy_outbox WHERE job_id = 'rearm-job'",
+      )
+      .first('dispatched_at'),
+    19_600,
+  )
+})
+
 test('ontology consensus uses the deterministic required voter subset', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertTag(db, 1)

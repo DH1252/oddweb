@@ -2539,6 +2539,23 @@ export class TaxonomyRepository {
     return leased
   }
 
+  async rearmRunnableOutbox(jobId: string, now: number): Promise<boolean> {
+    return Boolean(
+      await changes(
+        this.db,
+        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+         lease_token = NULL, leased_until = NULL,
+         last_error = 'Queue delivery rearmed after an ignored lease.'
+         WHERE job_id = ? AND EXISTS (
+           SELECT 1 FROM taxonomy_jobs
+           WHERE id = ? AND status IN ('pending', 'retry_wait')
+             AND available_at <= ? AND attempt_count < max_attempts
+         )`,
+        [now, jobId, jobId, now],
+      ),
+    )
+  }
+
   async completeOutbox(id: string, token: string, now: number): Promise<void> {
     await changes(
       this.db,

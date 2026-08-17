@@ -13,7 +13,7 @@ import {
   listTaxonomyProviders,
   readTaxonomyDashboard,
 } from '../db/taxonomy-admin-repository'
-import { createTaxonomyService } from '../taxonomy'
+import { createTaxonomyService, dispatchTaxonomyOutbox } from '../taxonomy'
 import { adminAuthMiddleware } from './auth'
 import {
   taxonomyPolicyCreateSchema,
@@ -352,8 +352,18 @@ export const releaseTaxonomyLock = createServerFn({ method: 'POST' })
 export const retryTaxonomyJobs = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => retryInput.parse(data))
-  .handler(async ({ data }) => ({
-    retried: await service().retryJobs(data.jobIds),
+  .handler(async ({ data }) => {
+    const retried = await service().retryJobs(data.jobIds)
+    const dispatched = retried
+      ? await dispatchTaxonomyOutbox(env, { limit: 100 })
+      : 0
+    return { retried, dispatched }
+  })
+
+export const dispatchTaxonomyOutboxNow = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .handler(async () => ({
+    dispatched: await dispatchTaxonomyOutbox(env, { limit: 100 }),
   }))
 
 export const resetTaxonomyCircuit = createServerFn({ method: 'POST' })
