@@ -325,6 +325,56 @@ async function saveProposal(input: {
   return id
 }
 
+async function proposalAlreadyApplied(
+  repository: TaxonomyRepository,
+  proposal: OntologyProposal,
+): Promise<boolean> {
+  if (proposal.kind === 'concept') {
+    return Boolean(
+      await repository.db
+        .prepare(
+          `SELECT 1 FROM tags
+           WHERE slug = ? AND name = ? AND canonical = 1 AND status = 'active'`,
+        )
+        .bind(
+          normalizeProposedSlug(proposal.proposedSlug),
+          proposal.proposedName,
+        )
+        .first('1'),
+    )
+  }
+  if (proposal.kind === 'alias') {
+    return Boolean(
+      await repository.db
+        .prepare('SELECT 1 FROM tag_aliases WHERE alias = ? AND tag_id = ?')
+        .bind(
+          normalizeTaxonomyTag(proposal.alias),
+          Number(proposal.targetTagId),
+        )
+        .first('1'),
+    )
+  }
+  if (proposal.kind === 'parent') {
+    return Boolean(
+      await repository.db
+        .prepare(
+          'SELECT 1 FROM tag_parents WHERE parent_tag_id = ? AND child_tag_id = ?',
+        )
+        .bind(Number(proposal.parentTagId), Number(proposal.childTagId))
+        .first('1'),
+    )
+  }
+  return Boolean(
+    await repository.db
+      .prepare(
+        `SELECT 1 FROM tags
+         WHERE id = ? AND status = 'merged' AND merged_into_tag_id = ?`,
+      )
+      .bind(Number(proposal.sourceTagId), Number(proposal.targetTagId))
+      .first('1'),
+  )
+}
+
 export async function processOntologyJob(input: {
   repository: TaxonomyRepository
   env: TaxonomyRuntimeEnv
@@ -416,44 +466,7 @@ export async function processOntologyJob(input: {
     const proposal = ontologyProposalSchema.parse(
       JSON.parse(String(row.payload)),
     )
-    const alreadyApplied =
-      proposal.kind === 'concept'
-        ? await input.repository.db
-            .prepare(
-              `SELECT 1 FROM tags WHERE slug = ? AND name = ? AND canonical = 1 AND status = 'active'`,
-            )
-            .bind(
-              normalizeProposedSlug(proposal.proposedSlug),
-              proposal.proposedName,
-            )
-            .first('1')
-        : proposal.kind === 'alias'
-          ? await input.repository.db
-              .prepare(
-                'SELECT 1 FROM tag_aliases WHERE alias = ? AND tag_id = ?',
-              )
-              .bind(
-                normalizeTaxonomyTag(proposal.alias),
-                Number(proposal.targetTagId),
-              )
-              .first('1')
-          : proposal.kind === 'parent'
-            ? await input.repository.db
-                .prepare(
-                  'SELECT 1 FROM tag_parents WHERE parent_tag_id = ? AND child_tag_id = ?',
-                )
-                .bind(Number(proposal.parentTagId), Number(proposal.childTagId))
-                .first('1')
-            : await input.repository.db
-                .prepare(
-                  `SELECT 1 FROM tags WHERE id = ? AND status = 'merged' AND merged_into_tag_id = ?`,
-                )
-                .bind(
-                  Number(proposal.sourceTagId),
-                  Number(proposal.targetTagId),
-                )
-                .first('1')
-    if (alreadyApplied) {
+    if (await proposalAlreadyApplied(input.repository, proposal)) {
       await input.repository.settleAlreadyAppliedCandidate(
         input.job.conceptKey,
         input.job,
@@ -572,7 +585,16 @@ export async function processOntologyJob(input: {
     })
   }
   const knownIds = new Set(context.tags.map((tag) => String(tag.id)))
-  const proposals = policyValidatedProposals(results, input.policy, knownIds)
+  const proposals = (
+    await Promise.all(
+      policyValidatedProposals(results, input.policy, knownIds).map(
+        async (proposal) =>
+          (await proposalAlreadyApplied(input.repository, proposal))
+            ? null
+            : proposal,
+      ),
+    )
+  ).filter((proposal): proposal is OntologyProposal => proposal !== null)
   const revisions = new Map(context.tags.map((tag) => [tag.id, tag.revision]))
   let mutations = 0
   const selected: Array<{ candidateId: string; proposal: OntologyProposal }> =

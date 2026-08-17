@@ -3665,6 +3665,76 @@ test('ontology prompt resolves eligible placeholders and accepts a no-op respons
   assert.match(requestBody, /evidenceSiteThreshold/)
 })
 
+test('reassessing an existing parent edge does not republish the taxonomy', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  await insertTag(db, 2)
+  await db
+    .prepare(
+      'INSERT INTO tag_parents (parent_tag_id, child_tag_id) VALUES (2, 1)',
+    )
+    .run()
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 20_300_000 })
+  const providerId = await addProvider(service, {
+    name: 'existing-parent-primary',
+    credential: 'existing-parent-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      'UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1 WHERE id = 1',
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('existing parent')
+  assert.ok(jobId)
+
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 20_301_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            schemaVersion: 1,
+            proposals: [
+              {
+                kind: 'parent',
+                parentTagId: '2',
+                childTagId: '1',
+                confidence: 0.99,
+                evidence: 'The existing parent relationship is appropriate.',
+              },
+            ],
+          }),
+        }),
+    },
+  )
+
+  assert.deepEqual(result, {
+    jobId,
+    status: 'settled',
+    attempts: 1,
+    mutations: 0,
+  })
+  assert.equal(
+    await db
+      .prepare('SELECT published_version FROM taxonomy_state')
+      .first('published_version'),
+    1,
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT revision FROM tags WHERE id = 1')
+      .first('revision'),
+    1,
+  )
+})
+
 test('classification consensus voters run concurrently under one fenced lease', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)
