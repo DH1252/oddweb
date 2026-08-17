@@ -325,7 +325,7 @@ test('surprise navigation requests a fresh filtered site', async () => {
   assert.doesNotMatch(directory, /directoryData\.surpriseSlug/)
   assert.match(
     publicData,
-    /getPublicSurprise = createServerFn\(\{ method: 'POST' \}\)[\s\S]*readPublicSurprise\(data\)/,
+    /getPublicSurprise = createServerFn\(\{ method: 'POST' \}\)[\s\S]*\.handler\(\(\{ data \}\) => readPublicSurprise\(data\)\)/,
   )
 })
 

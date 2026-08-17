@@ -530,7 +530,7 @@ export async function processTaxonomyMessage(
   options: RuntimeOptions = {},
 ): Promise<ProcessingResult> {
   const { jobId } = parseQueueMessage(message)
-  const repository = new TaxonomyRepository(env.DB)
+  const repository = new TaxonomyRepository(env.DB, env.TAXONOMY_QUEUE)
   const now = unixSeconds(options)
   const leaseSeconds = boundedLimit(
     options.leaseSeconds,
@@ -852,7 +852,7 @@ export async function dispatchTaxonomyOutbox(
   env: TaxonomyRuntimeEnv,
   options: RuntimeOptions & { limit?: number } = {},
 ): Promise<number> {
-  const repository = new TaxonomyRepository(env.DB)
+  const repository = new TaxonomyRepository(env.DB, env.TAXONOMY_QUEUE)
   const now = unixSeconds(options)
   const rows = await repository.leaseOutbox(
     boundedLimit(options.limit, 25, 100),
@@ -876,7 +876,7 @@ export async function runTaxonomyMaintenance(
   env: TaxonomyRuntimeEnv,
   options: RuntimeOptions & { outboxLimit?: number } = {},
 ): Promise<MaintenanceResult> {
-  const repository = new TaxonomyRepository(env.DB)
+  const repository = new TaxonomyRepository(env.DB, env.TAXONOMY_QUEUE)
   const now = unixSeconds(options)
   const maintenance = await repository.maintenance(now)
   const state = await repository.loadState()

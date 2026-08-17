@@ -102,7 +102,7 @@ writeFileSync(
           },
         ],
       },
-      triggers: { crons: ['*/5 * * * *'] },
+      triggers: { crons: ['* * * * *'] },
       durable_objects: {
         bindings: [{ name: 'REALTIME_HUB', class_name: 'RealtimeHub' }],
       },

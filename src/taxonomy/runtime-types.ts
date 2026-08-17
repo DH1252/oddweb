@@ -7,6 +7,7 @@ export type TaxonomyServiceEnv = {
   DB: Env['DB']
   RELEASE_SHA: string
   TAXONOMY_MASTER_KEY_V1: string
+  TAXONOMY_QUEUE?: Env['TAXONOMY_QUEUE']
 }
 
 export type TaxonomyRuntimeEnv = TaxonomyServiceEnv & {

@@ -10,6 +10,7 @@ import {
   prepareSiteTaxonomyLifecycle,
   preserveRawTagHints,
 } from '../taxonomy/lifecycle'
+import { dispatchTaxonomyOutbox } from '../taxonomy/runtime'
 import { updateSiteFromSnapshot } from '../taxonomy/site-update'
 import { getDb } from './index'
 import {
@@ -298,6 +299,7 @@ export async function createSite(input: {
     ),
     ...lifecycle,
   ])
+  await dispatchTaxonomyOutbox(env, { limit: 25 })
   const site = (
     await db
       .select({ id: sitesTable.id })
@@ -409,6 +411,7 @@ export async function moderateSubmission(
         changed,
         lifecycle,
       })
+      await dispatchTaxonomyOutbox(env, { limit: 25 })
       return
     }
     const slug = await uniqueSiteSlug(submission.name)
@@ -467,6 +470,7 @@ export async function moderateSubmission(
       ),
       ...lifecycle,
     ])
+    await dispatchTaxonomyOutbox(env, { limit: 25 })
   } else {
     await env.DB.batch([
       env.DB.prepare(
@@ -531,7 +535,9 @@ export async function updateSite(input: {
     )
   }
 
-  return updateSiteFromSnapshot(env.DB, input, existing)
+  const result = await updateSiteFromSnapshot(env.DB, input, existing)
+  await dispatchTaxonomyOutbox(env, { limit: 25 })
+  return result
 }
 
 async function taxonomyPublishedVersion(db: D1Database = env.DB) {

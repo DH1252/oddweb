@@ -137,7 +137,7 @@ export class TaxonomyService {
   constructor(env: TaxonomyServiceEnv, options: RuntimeOptions = {}) {
     this.env = env
     this.options = options
-    this.repository = new TaxonomyRepository(env.DB)
+    this.repository = new TaxonomyRepository(env.DB, env.TAXONOMY_QUEUE)
   }
 
   async setMode(mode: TaxonomyMode, actorId = 'admin'): Promise<void> {

@@ -10,8 +10,10 @@ export function processTaxonomyMessage(jobId: string) {
   return process({ jobId }, env)
 }
 
-export function dispatchTaxonomyOutbox() {
-  return dispatch(env)
+export function dispatchTaxonomyOutbox(
+  options: Parameters<typeof dispatch>[1] = {},
+) {
+  return dispatch(env, options)
 }
 
 export function runTaxonomyMaintenance() {

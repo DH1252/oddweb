@@ -223,9 +223,11 @@ interface AssignmentSettlementInput {
 
 export class TaxonomyRepository {
   readonly db: D1Database
+  readonly queue: Env['TAXONOMY_QUEUE'] | null
 
-  constructor(db: D1Database) {
+  constructor(db: D1Database, queue?: Env['TAXONOMY_QUEUE']) {
     this.db = db
+    this.queue = queue ?? null
   }
 
   async loadState(): Promise<TaxonomyState> {
@@ -331,7 +333,56 @@ export class TaxonomyRepository {
         [`outbox:${job.id}`, payload, now, now, job.jobKey],
       ),
     ])
-    return (result[0]?.meta.changes ?? 0) > 0
+    const inserted = (result[0]?.meta.changes ?? 0) > 0
+    if (inserted) await this.dispatchEnqueuedJob(job.id, now)
+    return inserted
+  }
+
+  private async dispatchEnqueuedJob(jobId: string, now: number): Promise<void> {
+    if (!this.queue) return
+    try {
+      const rows = await all(
+        this.db,
+        `SELECT id FROM taxonomy_outbox
+         WHERE job_id = ? AND dispatched_at IS NULL AND available_at <= ?
+           AND (leased_until IS NULL OR leased_until < ?)
+         ORDER BY available_at, id LIMIT 1`,
+        [jobId, now, now],
+      )
+      for (const row of rows) {
+        const id = text(row, 'id')
+        const token = crypto.randomUUID()
+        const leased = await changes(
+          this.db,
+          `UPDATE taxonomy_outbox SET lease_token = ?, leased_until = ?,
+           dispatch_attempts = dispatch_attempts + 1
+           WHERE id = ? AND dispatched_at IS NULL
+             AND (leased_until IS NULL OR leased_until < ?)`,
+          [token, now + 60, id, now],
+        )
+        if (!leased) continue
+        try {
+          await this.queue.send({ jobId })
+          await changes(
+            this.db,
+            `UPDATE taxonomy_outbox SET dispatched_at = ?, lease_token = NULL,
+             leased_until = NULL, last_error = NULL
+             WHERE id = ? AND lease_token = ?`,
+            [now, id, token],
+          )
+        } catch (error) {
+          await changes(
+            this.db,
+            `UPDATE taxonomy_outbox SET available_at = ?, lease_token = NULL,
+             leased_until = NULL, last_error = ?
+             WHERE id = ? AND lease_token = ?`,
+            [now + 60, String(error).slice(0, 500), id, token],
+          )
+        }
+      }
+    } catch {
+      // Best effort only; scheduled maintenance reconciles the outbox.
+    }
   }
 
   async leaseJob(

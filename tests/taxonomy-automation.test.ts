@@ -3105,6 +3105,46 @@ test('a new site keeps one classification job through repeated taxonomy revision
   )
 })
 
+test('enqueued taxonomy jobs dispatch to the queue immediately', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  const sent: unknown[] = []
+  const repository = new TaxonomyRepository(
+    db,
+    mockQueue(async (message) => {
+      sent.push(message)
+    }),
+  )
+  const inserted = await repository.enqueueJob(
+    {
+      id: 'immediate-dispatch-job',
+      jobKey: `site:1:input:${'a'.repeat(64)}:taxonomy:1:classifier:1-1`,
+      kind: 'classify_site',
+      siteId: 1,
+      inputHash: 'a'.repeat(64),
+      siteContentVersion: 1,
+      taxonomyVersion: 1,
+      providerConfigId: null,
+      policyConfigId: null,
+      priority: 0,
+      maxAttempts: 3,
+    },
+    19_000_000,
+  )
+  assert.equal(inserted, true)
+  assert.deepEqual(sent, [{ jobId: 'immediate-dispatch-job' }])
+  const outbox = await db
+    .prepare(
+      `SELECT dispatched_at AS dispatchedAt, job_id AS jobId
+       FROM taxonomy_outbox WHERE job_id = ?`,
+    )
+    .bind('immediate-dispatch-job')
+    .first()
+  assert.ok(outbox)
+  assert.ok(outbox.dispatchedAt !== null)
+  assert.ok(outbox.jobId === 'immediate-dispatch-job')
+})
+
 test('site classification can be disabled without stopping concept reassessment', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)

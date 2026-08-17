@@ -2,6 +2,7 @@ import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
 import { env } from 'cloudflare:workers'
 
 import {
+  dispatchTaxonomyOutbox,
   processTaxonomyMessage,
   runTaxonomyMaintenance,
 } from './taxonomy/processor'
@@ -35,6 +36,7 @@ export default {
             }
 
             const result = await processTaxonomyMessage(message.body.jobId)
+            await dispatchTaxonomyOutbox({ limit: 25 })
             await publishRealtimeEvent({ type: 'taxonomy.changed' })
             if (result.mutations > 0) {
               await publishRealtimeEvent({ type: 'directory.changed' })

@@ -156,9 +156,9 @@ export function validateTaxonomyConfig(config, expected) {
   if (consumers.length !== 1)
     failures.push('exactly one taxonomy queue consumer must be configured')
   const crons = config.triggers?.crons ?? []
-  if (crons.length !== 1 || crons[0] !== '*/5 * * * *')
+  if (crons.length !== 1 || crons[0] !== '* * * * *')
     failures.push(
-      'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
+      'the taxonomy maintenance cron must be exactly * * * * * with no additional schedules',
     )
   if (!config.secrets?.required?.includes('TAXONOMY_MASTER_KEY_V1'))
     failures.push(

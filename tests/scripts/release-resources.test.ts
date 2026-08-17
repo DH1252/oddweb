@@ -63,7 +63,7 @@ function taxonomyConfig() {
         },
       ],
     },
-    triggers: { crons: ['*/5 * * * *'] },
+    triggers: { crons: ['* * * * *'] },
     d1_databases: [
       {
         binding: 'DB',
@@ -87,7 +87,7 @@ test('taxonomy resource config requires isolated queues, cron, D1, R2, and secre
   assert.deepEqual(validateTaxonomyConfig(invalid, expected), [
     'TAXONOMY_QUEUE must produce to the explicit queue test-taxonomy',
     'the taxonomy consumer DLQ must be test-taxonomy-dlq',
-    'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
+    'the taxonomy maintenance cron must be exactly * * * * * with no additional schedules',
     'TAXONOMY_MASTER_KEY_V1 must be declared as a required secret',
     'the DB binding must declare a D1 database name and ID',
     'the THUMBNAILS binding must declare an R2 bucket name',
@@ -122,7 +122,7 @@ test('Worker trigger state reads exact cron and custom-domain assignments', asyn
               },
               { hostname: 'other.example', service: 'other-worker' },
             ]
-          : { schedules: [{ cron: '*/5 * * * *' }] },
+          : { schedules: [{ cron: '* * * * *' }] },
       }),
       { headers: { 'content-type': 'application/json' } },
     )
@@ -133,7 +133,7 @@ test('Worker trigger state reads exact cron and custom-domain assignments', asyn
       { CLOUDFLARE_ACCOUNT_ID: 'account', CLOUDFLARE_API_TOKEN: 'token' },
       request,
     ),
-    { crons: ['*/5 * * * *'], customDomains: ['test.example'] },
+    { crons: ['* * * * *'], customDomains: ['test.example'] },
   )
   assert.ok(requests.some((url) => url.includes('/schedules')))
   assert.ok(requests.some((url) => url.includes('service=test-worker')))
@@ -145,7 +145,7 @@ test('staging predeploy validation checks provisioned resources without requirin
     calls.push(args)
     if (_command === 'node') {
       return JSON.stringify({
-        crons: ['*/5 * * * *'],
+        crons: ['* * * * *'],
         customDomains: ['test.example'],
       })
     }
@@ -183,7 +183,7 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
     calls.push(args)
     if (_command === 'node') {
       return JSON.stringify({
-        crons: ['*/5 * * * *'],
+        crons: ['* * * * *'],
         customDomains: ['test.example'],
       })
     }
@@ -263,13 +263,13 @@ test('local and remote trigger validation reject additional trigger state', () =
   })
   assert.deepEqual(validateTaxonomyConfig(local, expected), [
     'exactly one taxonomy queue consumer must be configured',
-    'the taxonomy maintenance cron must be exactly */5 * * * * with no additional schedules',
+    'the taxonomy maintenance cron must be exactly * * * * * with no additional schedules',
   ])
 
   const execute = (_command: string, args: string[]) => {
     if (_command === 'node') {
       return JSON.stringify({
-        crons: ['*/5 * * * *', '0 * * * *'].sort(),
+        crons: ['* * * * *', '0 * * * *'].sort(),
         customDomains: ['extra.example', 'test.example'],
       })
     }
@@ -326,7 +326,7 @@ test('postdeploy validation reports an invalid consumer and missing handlers', (
   const execute = (_command: string, args: string[]) => {
     if (_command === 'node') {
       return JSON.stringify({
-        crons: ['*/5 * * * *'],
+        crons: ['* * * * *'],
         customDomains: ['test.example'],
       })
     }
@@ -380,7 +380,7 @@ test('combined production preflight runs both resource and handler validation', 
     calls.push(args)
     if (_command === 'node') {
       return JSON.stringify({
-        crons: ['*/5 * * * *'],
+        crons: ['* * * * *'],
         customDomains: ['test.example'],
       })
     }
@@ -1919,7 +1919,7 @@ function productionConfig(tags: string[]) {
         },
       ],
     },
-    triggers: { crons: ['*/5 * * * *'] },
+    triggers: { crons: ['* * * * *'] },
     durable_objects: {
       bindings: [{ name: 'REALTIME_HUB', class_name: 'RealtimeHub' }],
     },
