@@ -11,6 +11,9 @@ test('realtime events accept bounded public changes', () => {
   assert.deepEqual(parseRealtimeEvent({ type: 'directory.changed' }), {
     type: 'directory.changed',
   })
+  assert.deepEqual(parseRealtimeEvent({ type: 'taxonomy.changed' }), {
+    type: 'taxonomy.changed',
+  })
   assert.deepEqual(
     parseRealtimeEvent({
       type: 'site.viewed',
@@ -19,6 +22,18 @@ test('realtime events accept bounded public changes', () => {
     }),
     { type: 'site.viewed', slug: 'radio-garden', views: 42 },
   )
+})
+
+test('realtime resyncs admin and taxonomy state after missed events', async () => {
+  const source = await readFile(
+    new URL('../src/components/realtime-sync.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /const resync = async/)
+  assert.match(source, /queryKey: \['oddweb', 'admin'\]/)
+  assert.match(source, /queryKey: \['oddweb', 'tags'\]/)
+  assert.match(source, /event\.type === 'taxonomy\.changed'/)
+  assert.match(source, /void resync\(\)[\s\S]*if \(!socket/)
 })
 
 test('realtime events reject malformed or unbounded messages', () => {

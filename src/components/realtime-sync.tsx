@@ -12,8 +12,12 @@ export function RealtimeSync() {
     let stopped = false
     let attempts = 0
 
-    const refreshPublicData = async () => {
-      await queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] })
+    const resync = async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
+      ])
     }
 
     const refreshSiteView = async (slug: string) => {
@@ -28,6 +32,7 @@ export function RealtimeSync() {
           queryKey: ['oddweb', 'public', 'site', slug],
         }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
       ])
     }
 
@@ -37,7 +42,7 @@ export function RealtimeSync() {
       socket = new WebSocket(`${protocol}//${location.host}/api/realtime`)
       socket.addEventListener('open', () => {
         attempts = 0
-        void refreshPublicData()
+        void resync()
       })
       socket.addEventListener('message', async (message) => {
         if (typeof message.data !== 'string' || message.data === 'pong') return
@@ -46,8 +51,9 @@ export function RealtimeSync() {
           if (!event) return
           if (event.type === 'directory.changed') {
             await Promise.all([
-              refreshPublicData(),
+              queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
               queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
+              queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
             ])
           } else if (event.type === 'guestbook.changed') {
             await Promise.all([
@@ -58,6 +64,10 @@ export function RealtimeSync() {
                 queryKey: ['oddweb', 'admin', 'guestbook'],
               }),
             ])
+          } else if (event.type === 'taxonomy.changed') {
+            await queryClient.invalidateQueries({
+              queryKey: ['oddweb', 'admin', 'taxonomy'],
+            })
           } else {
             await refreshSiteView(event.slug)
           }
@@ -76,8 +86,9 @@ export function RealtimeSync() {
       if (document.visibilityState === 'hidden') {
         if (reconnectTimer) clearTimeout(reconnectTimer)
         socket?.close(1000, 'Page hidden')
-      } else if (!socket || socket.readyState === WebSocket.CLOSED) {
-        connect()
+      } else {
+        void resync()
+        if (!socket || socket.readyState === WebSocket.CLOSED) connect()
       }
     }
 

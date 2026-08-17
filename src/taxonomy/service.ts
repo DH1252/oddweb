@@ -873,8 +873,8 @@ export class TaxonomyService {
         this.repository.db
           .prepare(
             `UPDATE taxonomy_state SET active_policy_config_id = ?,
-         mode = CASE WHEN mode IN ('gradual', 'autonomous') THEN 'shadow' ELSE mode END,
-         mode_changed_at = CASE WHEN mode IN ('gradual', 'autonomous') THEN ? ELSE mode_changed_at END,
+          mode = CASE WHEN mode IN ('gradual', 'autonomous') THEN 'shadow' ELSE mode END,
+          mode_changed_at = CASE WHEN mode IN ('gradual', 'autonomous') THEN ? ELSE mode_changed_at END,
          updated_at = ?
          WHERE id = 1 AND EXISTS (SELECT 1 FROM taxonomy_policy_configs WHERE id = ?)`,
           )

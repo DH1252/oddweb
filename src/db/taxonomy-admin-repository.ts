@@ -279,10 +279,17 @@ export async function readTaxonomyDashboard(
     state.activePolicyConfigId === null
       ? null
       : await repository.loadPolicy(state.activePolicyConfigId)
+  const providers = await repository.loadProviderRoute(
+    state.activeProviderConfigId,
+  )
+  const requiredVoters =
+    1 +
+    providers.filter(({ routingRole }) => routingRole === 'consensus').length
   const [readiness, circuit, usage, totals, statuses] = await Promise.all([
     repository.shadowReadinessMetrics({
       policyConfigId: state.activePolicyConfigId,
       providerConfigId: state.activeProviderConfigId,
+      requiredVoters,
     }),
     repository.circuitMetrics(Math.floor(Date.now() / 1_000)),
     repository.budgetUsage(Math.floor(Date.now() / 1_000)),

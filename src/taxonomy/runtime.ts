@@ -604,14 +604,18 @@ export async function processTaxonomyMessage(
       !snapshot ||
       snapshot.site.contentVersion !== job.siteContentVersion ||
       snapshot.site.classificationInputHash !== job.inputHash ||
-      state.publishedVersion !== job.taxonomyVersion
+      state.publishedVersion !== job.taxonomyVersion ||
+      (job.providerConfigId !== null &&
+        state.activeProviderConfigId !== job.providerConfigId) ||
+      (job.policyConfigId !== null &&
+        state.activePolicyConfigId !== job.policyConfigId)
     ) {
       await repository.settleJob(
         job,
         'obsolete',
         now,
         'stale_input',
-        'Site or taxonomy version changed.',
+        'Site, taxonomy, provider, or policy configuration changed.',
       )
       return {
         jobId,

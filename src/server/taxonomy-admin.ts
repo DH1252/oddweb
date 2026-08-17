@@ -15,6 +15,7 @@ import {
 } from '../db/taxonomy-admin-repository'
 import { createTaxonomyService, dispatchTaxonomyOutbox } from '../taxonomy'
 import { adminAuthMiddleware } from './auth'
+import { publishRealtimeEvent } from './realtime'
 import {
   taxonomyPolicyRevisionSchema,
   taxonomyProviderCreateSchema,
@@ -150,6 +151,13 @@ function service() {
   return createTaxonomyService(env)
 }
 
+async function publishTaxonomyChange(directoryChanged = false) {
+  await publishRealtimeEvent({ type: 'taxonomy.changed' })
+  if (directoryChanged) {
+    await publishRealtimeEvent({ type: 'directory.changed' })
+  }
+}
+
 export const getTaxonomyDashboard = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
   .handler(() => readTaxonomyDashboard(env.DB))
@@ -171,23 +179,31 @@ export const createTaxonomyProvider = createServerFn({ method: 'POST' })
       enabled: false,
       actorId: context.admin.username,
     })
-    if (!data.enabled) return { id, enabled: false, enableError: null }
-    try {
-      return {
-        id,
-        enabled: await service().enableProvider(id, context.admin.username),
-        enableError: null,
-      }
-    } catch (error) {
-      return {
-        id,
-        enabled: false,
-        enableError:
-          error instanceof Error
-            ? error.message
-            : 'Provider test failed; the revision remains disabled.',
-      }
-    }
+    const result = !data.enabled
+      ? { id, enabled: false, enableError: null }
+      : await (async () => {
+          try {
+            return {
+              id,
+              enabled: await service().enableProvider(
+                id,
+                context.admin.username,
+              ),
+              enableError: null,
+            }
+          } catch (error) {
+            return {
+              id,
+              enabled: false,
+              enableError:
+                error instanceof Error
+                  ? error.message
+                  : 'Provider test failed; the revision remains disabled.',
+            }
+          }
+        })()
+    await publishTaxonomyChange()
+    return result
   })
 
 export const updateTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -195,33 +211,35 @@ export const updateTaxonomyProvider = createServerFn({ method: 'POST' })
   .validator((data) => taxonomyProviderUpdateSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { apiKey, providerConfigId, ...patch } = data
-    return {
-      updated: await service().updateProviderConfig({
-        providerConfigId,
-        name: patch.name,
-        endpoint: patch.endpoint,
-        model: patch.model,
-        dialect:
-          data.providerKind === 'gemini' ? null : (patch.dialect ?? undefined),
-        routingGroup: patch.routingGroup,
-        routingRole: patch.routingRole,
-        routingPriority: patch.routingPriority,
-        timeoutMs: patch.timeoutMs,
-        credential: apiKey,
-        actorId: context.admin.username,
-      }),
-    }
+    const updated = await service().updateProviderConfig({
+      providerConfigId,
+      name: patch.name,
+      endpoint: patch.endpoint,
+      model: patch.model,
+      dialect:
+        data.providerKind === 'gemini' ? null : (patch.dialect ?? undefined),
+      routingGroup: patch.routingGroup,
+      routingRole: patch.routingRole,
+      routingPriority: patch.routingPriority,
+      timeoutMs: patch.timeoutMs,
+      credential: apiKey,
+      actorId: context.admin.username,
+    })
+    if (updated) await publishTaxonomyChange()
+    return { updated }
   })
 
 export const deleteTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => providerIdInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    deleted: await service().deleteProviderConfig(
+  .handler(async ({ data, context }) => {
+    const deleted = await service().deleteProviderConfig(
       data.providerConfigId,
       context.admin.username,
-    ),
-  }))
+    )
+    if (deleted) await publishTaxonomyChange()
+    return { deleted }
+  })
 
 export const testTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
@@ -236,32 +254,38 @@ export const testTaxonomyProvider = createServerFn({ method: 'POST' })
 export const disableTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => providerIdInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    disabled: await service().disableProvider(
+  .handler(async ({ data, context }) => {
+    const disabled = await service().disableProvider(
       data.providerConfigId,
       context.admin.username,
-    ),
-  }))
+    )
+    if (disabled) await publishTaxonomyChange()
+    return { disabled }
+  })
 
 export const enableTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => providerIdInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    enabled: await service().enableProvider(
+  .handler(async ({ data, context }) => {
+    const enabled = await service().enableProvider(
       data.providerConfigId,
       context.admin.username,
-    ),
-  }))
+    )
+    if (enabled) await publishTaxonomyChange()
+    return { enabled }
+  })
 
 export const activateTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => providerIdInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    activated: await service().activateProvider(
+  .handler(async ({ data, context }) => {
+    const activated = await service().activateProvider(
       data.providerConfigId,
       context.admin.username,
-    ),
-  }))
+    )
+    if (activated) await publishTaxonomyChange()
+    return { activated }
+  })
 
 export const getTaxonomyPolicies = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
@@ -273,37 +297,47 @@ export const createTaxonomyPolicy = createServerFn({ method: 'POST' })
   .validator((data) => taxonomyPolicyRevisionSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supersedesPolicyConfigId, ...policy } = data
-    return {
-      id: await service().createPolicyRevision(
-        policy,
-        context.admin.username,
-        supersedesPolicyConfigId,
-      ),
-    }
+    const id = await service().createPolicyRevision(
+      policy,
+      context.admin.username,
+      supersedesPolicyConfigId,
+    )
+    await publishTaxonomyChange()
+    return { id }
   })
 
 export const activateTaxonomyPolicy = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => policyIdInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    activated: await service().activatePolicy(
+  .handler(async ({ data, context }) => {
+    const activated = await service().activatePolicy(
       data.policyConfigId,
       context.admin.username,
-    ),
-  }))
+    )
+    if (activated) await publishTaxonomyChange()
+    return { activated }
+  })
 
 export const transitionTaxonomyMode = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => modeInput.parse(data))
   .handler(async ({ data, context }) => {
     await service().setMode(data.mode, context.admin.username)
+    await publishTaxonomyChange()
     return { mode: data.mode }
   })
 
 export const triggerTaxonomyBackfill = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => backfillInput.parse(data))
-  .handler(({ data }) => service().backfill(data.cursor, data.limit))
+  .handler(async ({ data }) => {
+    const result = await service().backfill(data.cursor, data.limit)
+    const dispatched = result.enqueued
+      ? await dispatchTaxonomyOutbox(env, { limit: 100 })
+      : 0
+    if (result.enqueued || dispatched) await publishTaxonomyChange()
+    return { ...result, dispatched }
+  })
 
 export const getTaxonomyJobs = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
@@ -323,9 +357,14 @@ export const getTaxonomyCandidates = createServerFn({ method: 'GET' })
 export const decideTaxonomyCandidate = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => candidateDecisionInput.parse(data))
-  .handler(({ data, context }) =>
-    service().decideCandidate({ ...data, actorId: context.admin.username }),
-  )
+  .handler(async ({ data, context }) => {
+    const result = await service().decideCandidate({
+      ...data,
+      actorId: context.admin.username,
+    })
+    if (result.decided) await publishTaxonomyChange()
+    return result
+  })
 
 export const getTaxonomyAuditEvents = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
@@ -345,23 +384,27 @@ export const getTaxonomyLocks = createServerFn({ method: 'GET' })
 export const createTaxonomyLock = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => lockCreateInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    id: await service().createLock({
+  .handler(async ({ data, context }) => {
+    const id = await service().createLock({
       ...data,
       actorId: context.admin.username,
-    }),
-  }))
+    })
+    await publishTaxonomyChange()
+    return { id }
+  })
 
 export const releaseTaxonomyLock = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => lockReleaseInput.parse(data))
-  .handler(async ({ data, context }) => ({
-    released: await service().releaseLock(
+  .handler(async ({ data, context }) => {
+    const released = await service().releaseLock(
       data.id,
       context.admin.username,
       data.reason,
-    ),
-  }))
+    )
+    if (released) await publishTaxonomyChange()
+    return { released }
+  })
 
 export const retryTaxonomyJobs = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
@@ -371,39 +414,58 @@ export const retryTaxonomyJobs = createServerFn({ method: 'POST' })
     const dispatched = retried
       ? await dispatchTaxonomyOutbox(env, { limit: 100 })
       : 0
+    if (retried || dispatched) await publishTaxonomyChange()
     return { retried, dispatched }
   })
 
 export const dispatchTaxonomyOutboxNow = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
-  .handler(async () => ({
-    dispatched: await dispatchTaxonomyOutbox(env, { limit: 100 }),
-  }))
+  .handler(async () => {
+    const dispatched = await dispatchTaxonomyOutbox(env, { limit: 100 })
+    if (dispatched) await publishTaxonomyChange()
+    return { dispatched }
+  })
 
 export const resetTaxonomyCircuit = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .handler(async ({ context }) => {
     await service().resetCircuit(context.admin.username)
+    await publishTaxonomyChange()
     return { mode: 'shadow' as const, circuitState: 'closed' as const }
   })
 
 export const rollbackTaxonomyEvent = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => rollbackEventInput.parse(data))
-  .handler(({ data, context }) =>
-    service().rollbackEvent(data.eventId, context.admin.username),
-  )
+  .handler(async ({ data, context }) => {
+    const result = await service().rollbackEvent(
+      data.eventId,
+      context.admin.username,
+    )
+    await publishTaxonomyChange(true)
+    return result
+  })
 
 export const rollbackTaxonomySite = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => rollbackSiteInput.parse(data))
-  .handler(({ data, context }) =>
-    service().rollbackSite(data.siteId, context.admin.username),
-  )
+  .handler(async ({ data, context }) => {
+    const result = await service().rollbackSite(
+      data.siteId,
+      context.admin.username,
+    )
+    await publishTaxonomyChange(true)
+    return result
+  })
 
 export const rollbackTaxonomyBatch = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => rollbackBatchInput.parse(data))
-  .handler(({ data, context }) =>
-    service().rollbackBatch(data.batchId, context.admin.username),
-  )
+  .handler(async ({ data, context }) => {
+    const result = await service().rollbackBatch(
+      data.batchId,
+      context.admin.username,
+    )
+    await publishTaxonomyChange(true)
+    return result
+  })

@@ -1,6 +1,7 @@
 export type RealtimeEvent =
   | { type: 'directory.changed' }
   | { type: 'guestbook.changed' }
+  | { type: 'taxonomy.changed' }
   | { type: 'site.viewed'; slug: string; views: number }
 
 export function parseRealtimeEvent(value: unknown): RealtimeEvent | null {
@@ -8,7 +9,8 @@ export function parseRealtimeEvent(value: unknown): RealtimeEvent | null {
   const event = value as Record<string, unknown>
   if (
     event.type === 'directory.changed' ||
-    event.type === 'guestbook.changed'
+    event.type === 'guestbook.changed' ||
+    event.type === 'taxonomy.changed'
   ) {
     return { type: event.type }
   }

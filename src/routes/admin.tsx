@@ -1460,9 +1460,10 @@ function AutomationSection({
       const result = await policyActivateMutation.mutateAsync(policyConfigId)
       if (!result.activated)
         throw new Error('Policy revision was not activated')
+      setPolicyPage(0)
       await invalidateTaxonomy('policies', 'dashboard')
       showStatus(
-        'Policy revision activated. Elevated modes returned to shadow.',
+        'Policy revision activated. Backfill current-policy samples before promotion; elevated modes returned to shadow.',
         'success',
       )
     } catch (error) {
@@ -1525,8 +1526,8 @@ function AutomationSection({
       setBackfillCursor(result.nextCursor)
       await invalidateTaxonomy('dashboard', 'jobs')
       showStatus(
-        `Backfill scanned ${result.scanned} sites and queued ${result.enqueued}.${result.nextCursor === null ? ' Backfill complete.' : ''}`,
-        result.nextCursor === null ? 'success' : '',
+        `Backfill scanned ${result.scanned} sites, enqueued ${result.enqueued}, and dispatched ${result.dispatched}. ${result.nextCursor === null ? 'Scanning is complete; jobs remain pending until the queue consumer processes them.' : 'Continue scanning to cover remaining sites.'}`,
+        '',
       )
     } catch (error) {
       showStatus(

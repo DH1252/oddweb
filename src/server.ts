@@ -35,6 +35,7 @@ export default {
             }
 
             const result = await processTaxonomyMessage(message.body.jobId)
+            await publishRealtimeEvent({ type: 'taxonomy.changed' })
             if (result.mutations > 0) {
               await publishRealtimeEvent({ type: 'directory.changed' })
             }
@@ -56,8 +57,16 @@ export default {
     }
   },
   async scheduled() {
-    await runWithReleaseInvocation('scheduled', runTaxonomyMaintenance, {
-      database: env.DB,
-    })
+    const invocation = await runWithReleaseInvocation(
+      'scheduled',
+      runTaxonomyMaintenance,
+      { database: env.DB },
+    )
+    if (
+      invocation.admitted &&
+      Object.values(invocation.value).some((value) => value > 0)
+    ) {
+      await publishRealtimeEvent({ type: 'taxonomy.changed' })
+    }
   },
 }

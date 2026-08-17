@@ -307,3 +307,19 @@ test('policy revisions can be edited into audited successor revisions', async ()
   assert.match(admin, /Save as new revision/)
   assert.match(admin, /preserves the selected[\s\S]*revision unchanged/)
 })
+
+test('policy activation resets history pagination and backfill reports delivery separately', async () => {
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    admin,
+    /async function activatePolicy[\s\S]*setPolicyPage\(0\)[\s\S]*invalidateTaxonomy\('policies', 'dashboard'\)/,
+  )
+  assert.match(admin, /enqueued \$\{result\.enqueued\}, and dispatched/)
+  assert.match(
+    admin,
+    /jobs remain pending until the queue consumer processes them/,
+  )
+})

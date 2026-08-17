@@ -6,6 +6,23 @@ import {
   taxonomyProviderCreateSchema,
 } from '../src/server/taxonomy-admin-validation'
 
+test('taxonomy control-plane mutations publish synchronization events', async () => {
+  const source = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(
+      new URL('../src/server/taxonomy-admin.ts', import.meta.url),
+      'utf8',
+    ),
+  )
+  assert.match(
+    source,
+    /publishRealtimeEvent\(\{ type: 'taxonomy\.changed' \}\)/,
+  )
+  assert.match(
+    source,
+    /triggerTaxonomyBackfill[\s\S]*dispatchTaxonomyOutbox\(env, \{ limit: 100 \}\)/,
+  )
+})
+
 const provider = {
   name: 'OpenAI primary',
   providerKind: 'openai_compatible' as const,
