@@ -598,7 +598,7 @@ function DirectoryPage() {
               {communityFilings.slice(0, 6).map((filing) => (
                 <li
                   key={filing.url}
-                  className="border-t border-dotted border-muted py-2 first:border-t-0 sm:border-t-0 sm:border-l sm:px-3 sm:first:border-l-0"
+                  className="border-t border-dotted border-muted py-2 first:border-t-0 sm:border-t-0 sm:border-l sm:px-3 sm:nth-[3n+1]:border-l-0"
                 >
                   {filing.thumbnailKey ? (
                     <ItemThumbnail
