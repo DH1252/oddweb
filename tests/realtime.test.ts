@@ -8,6 +8,9 @@ test('realtime events accept bounded public changes', () => {
   assert.deepEqual(parseRealtimeEvent({ type: 'guestbook.changed' }), {
     type: 'guestbook.changed',
   })
+  assert.deepEqual(parseRealtimeEvent({ type: 'submission.changed' }), {
+    type: 'submission.changed',
+  })
   assert.deepEqual(parseRealtimeEvent({ type: 'directory.changed' }), {
     type: 'directory.changed',
   })
@@ -33,6 +36,12 @@ test('realtime resyncs admin and taxonomy state after missed events', async () =
   assert.match(source, /queryKey: \['oddweb', 'admin'\]/)
   assert.match(source, /queryKey: \['oddweb', 'tags'\]/)
   assert.match(source, /event\.type === 'taxonomy\.changed'/)
+  assert.match(source, /event\.type === 'submission\.changed'/)
+  assert.match(source, /queryKey: \['oddweb', 'admin', 'submissions'\]/)
+  assert.match(source, /queryKey: \['oddweb', 'admin', 'overview'\]/)
+  assert.match(source, /queryKey: \['oddweb', 'admin', 'sites'\]/)
+  assert.match(source, /queryKey: \['oddweb', 'admin', 'site'\]/)
+  assert.match(source, /queryKey: \['oddweb', 'public', 'support'\]/)
   assert.match(source, /void resync\(\)[\s\S]*if \(!socket/)
 })
 
@@ -47,6 +56,17 @@ test('realtime events reject malformed or unbounded messages', () => {
     null,
   )
   assert.equal(parseRealtimeEvent({ type: 'unknown' }), null)
+})
+
+test('public submissions publish a realtime event', async () => {
+  const source = await readFile(
+    new URL('../src/server/data.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /export const submitSite[\s\S]*publishRealtimeEvent\(\{ type: 'submission\.changed' \}\)/,
+  )
 })
 
 test('realtime Durable Object uses a hibernating WebSocket binding', async () => {

@@ -647,19 +647,26 @@ export async function processTaxonomyMessage(
     }
     const candidateLimit = boundedLimit(options.candidateLimit, 250, 500)
     const snapshot = await repository.candidateSnapshot(job, candidateLimit)
-    if (
-      !snapshot ||
-      snapshot.site.contentVersion !== job.siteContentVersion ||
-      snapshot.site.classificationInputHash !== job.inputHash ||
-      state.publishedVersion !== job.taxonomyVersion ||
-      (job.providerConfigId !== null &&
-        state.activeProviderConfigId !== job.providerConfigId) ||
-      (job.policyConfigId !== null &&
-        state.activePolicyConfigId !== job.policyConfigId)
-    ) {
-      if (snapshot) {
-        await enqueueFreshClassification({ repository, snapshot, now })
+    if (!snapshot) {
+      await repository.settleJob(
+        job,
+        'obsolete',
+        now,
+        'stale_input',
+        'The site is no longer available for classification.',
+      )
+      return {
+        jobId,
+        status: 'obsolete',
+        attempts: job.attemptCount,
+        mutations: 0,
       }
+    }
+    if (
+      snapshot.site.contentVersion !== job.siteContentVersion ||
+      snapshot.site.classificationInputHash !== job.inputHash
+    ) {
+      await enqueueFreshClassification({ repository, snapshot, now })
       await repository.settleJob(
         job,
         'obsolete',
@@ -670,6 +677,42 @@ export async function processTaxonomyMessage(
       return {
         jobId,
         status: 'obsolete',
+        attempts: job.attemptCount,
+        mutations: 0,
+      }
+    }
+    if (
+      state.publishedVersion !== job.taxonomyVersion ||
+      (job.providerConfigId !== null &&
+        state.activeProviderConfigId !== job.providerConfigId) ||
+      (job.policyConfigId !== null &&
+        state.activePolicyConfigId !== job.policyConfigId)
+    ) {
+      const repointed = await repository.repointClassifyJob(
+        job,
+        state,
+        policy,
+        now,
+      )
+      if (!repointed) {
+        await enqueueFreshClassification({ repository, snapshot, now })
+        await repository.settleJob(
+          job,
+          'obsolete',
+          now,
+          'stale_input',
+          'Site, taxonomy, provider, or policy configuration changed.',
+        )
+        return {
+          jobId,
+          status: 'obsolete',
+          attempts: job.attemptCount,
+          mutations: 0,
+        }
+      }
+      return {
+        jobId,
+        status: 'retry_wait',
         attempts: job.attemptCount,
         mutations: 0,
       }

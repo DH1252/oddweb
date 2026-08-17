@@ -89,6 +89,7 @@ export const submitSite = createServerFn({ method: 'POST' })
           key: result.previousThumbnailKey,
         })
       }
+      await publishRealtimeEvent({ type: 'submission.changed' })
       return {
         submitted: true as const,
         thumbnailKey: thumbnail?.key ?? null,

@@ -3024,24 +3024,84 @@ test('classification requeues current site input after a concurrent taxonomy rev
     { now: () => 17_701_000 },
   )
 
-  assert.equal(result.status, 'obsolete')
+  assert.equal(result.status, 'retry_wait')
   assert.deepEqual(
     await db
       .prepare(
-        `SELECT status, taxonomy_version AS taxonomyVersion,
-                site_content_version AS siteContentVersion,
-                input_hash AS inputHash
-         FROM taxonomy_jobs
-         WHERE kind = 'classify_site' AND id <> ?`,
+        `SELECT id, status, taxonomy_version AS taxonomyVersion,
+                attempt_count AS attemptCount, input_hash AS inputHash
+         FROM taxonomy_jobs WHERE kind = 'classify_site'`,
       )
-      .bind(jobId)
       .first(),
     {
+      id: jobId,
       status: 'pending',
       taxonomyVersion: 2,
-      siteContentVersion: 1,
+      attemptCount: 0,
       inputHash: sourceJob.inputHash,
     },
+  )
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site'`,
+      )
+      .first('count(*)'),
+    1,
+  )
+})
+
+test('a new site keeps one classification job through repeated taxonomy revisions', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 17_800_000 })
+  const providerId = await addProvider(service, {
+    name: 'stable-version-provider',
+    credential: 'stable-version-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueSite(1)
+  assert.ok(jobId)
+
+  for (const version of [2, 3, 4]) {
+    await db
+      .prepare('UPDATE taxonomy_state SET published_version = ?')
+      .bind(version)
+      .run()
+    const result = await processTaxonomyMessage(
+      { jobId },
+      { ...env, TAXONOMY_QUEUE: mockQueue() },
+      { now: () => 17_800_000 + version * 1_000 },
+    )
+    assert.equal(result.status, 'retry_wait')
+    assert.deepEqual(
+      await db
+        .prepare(
+          `SELECT id, status, taxonomy_version AS taxonomyVersion,
+                  attempt_count AS attemptCount
+           FROM taxonomy_jobs WHERE kind = 'classify_site'`,
+        )
+        .first(),
+      {
+        id: jobId,
+        status: 'pending',
+        taxonomyVersion: version,
+        attemptCount: 0,
+      },
+    )
+  }
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site'`,
+      )
+      .first('count(*)'),
+    1,
   )
 })
 

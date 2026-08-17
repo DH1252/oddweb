@@ -1,4 +1,4 @@
-import { sha256Hex, stableJson } from './normalize'
+import { sha256Hex, stableJson, taxonomyJobKey } from './normalize'
 import type {
   CandidateSnapshot,
   ProviderConfig,
@@ -451,6 +451,55 @@ export class TaxonomyRepository {
         `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?, lease_token = NULL,
          leased_until = NULL WHERE job_id = ? AND ? = 0`,
         [availableAt, job.id, terminal ? 1 : 0],
+      ),
+    ])
+    return (result[0]?.meta.changes ?? 0) > 0
+  }
+
+  async repointClassifyJob(
+    job: TaxonomyJob,
+    state: TaxonomyState,
+    policy: RuntimePolicy,
+    now: number,
+  ): Promise<boolean> {
+    if (job.kind !== 'classify_site' || job.siteId === null) return false
+    const jobKey = taxonomyJobKey({
+      siteId: job.siteId,
+      inputHash: job.inputHash,
+      taxonomyVersion: state.publishedVersion,
+      classifierVersion: `${policy.id}-${state.activeProviderConfigId ?? 0}`,
+    })
+    const result = await this.db.batch([
+      statement(
+        this.db,
+        `UPDATE taxonomy_jobs SET job_key = ?, taxonomy_version = ?,
+         provider_config_id = ?, policy_config_id = ?, status = 'pending',
+         available_at = ?, attempt_count = 0, lease_owner = NULL,
+         lease_token = NULL, leased_until = NULL, completed_at = NULL,
+         updated_at = ?, last_error_code = NULL, last_error_summary = NULL
+         WHERE id = ? AND status = 'leased' AND lease_token = ?
+           AND NOT EXISTS (SELECT 1 FROM taxonomy_jobs WHERE job_key = ? AND id <> ?)`,
+        [
+          jobKey,
+          state.publishedVersion,
+          state.activeProviderConfigId ?? null,
+          policy.id,
+          now,
+          now,
+          job.id,
+          job.leaseToken,
+          jobKey,
+          job.id,
+        ],
+      ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+         lease_token = NULL, leased_until = NULL, last_error = NULL
+         WHERE job_id = ? AND EXISTS (
+           SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'pending'
+         )`,
+        [now, job.id, job.id],
       ),
     ])
     return (result[0]?.meta.changes ?? 0) > 0

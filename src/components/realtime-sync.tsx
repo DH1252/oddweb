@@ -9,6 +9,7 @@ export function RealtimeSync() {
   useEffect(() => {
     let socket: WebSocket | undefined
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    let taxonomyRefreshTimer: ReturnType<typeof setTimeout> | undefined
     let stopped = false
     let attempts = 0
 
@@ -32,6 +33,21 @@ export function RealtimeSync() {
           queryKey: ['oddweb', 'public', 'site', slug],
         }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
+      ])
+    }
+
+    const refreshTaxonomy = async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin', 'taxonomy'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin', 'overview'],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'tags'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'sites'] }),
+        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'site'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
       ])
     }
@@ -64,10 +80,24 @@ export function RealtimeSync() {
                 queryKey: ['oddweb', 'admin', 'guestbook'],
               }),
             ])
+          } else if (event.type === 'submission.changed') {
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: ['oddweb', 'admin', 'submissions'],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: ['oddweb', 'admin', 'overview'],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: ['oddweb', 'public', 'support'],
+              }),
+            ])
           } else if (event.type === 'taxonomy.changed') {
-            await queryClient.invalidateQueries({
-              queryKey: ['oddweb', 'admin', 'taxonomy'],
-            })
+            if (taxonomyRefreshTimer) clearTimeout(taxonomyRefreshTimer)
+            taxonomyRefreshTimer = setTimeout(() => {
+              taxonomyRefreshTimer = undefined
+              void refreshTaxonomy()
+            }, 400)
           } else {
             await refreshSiteView(event.slug)
           }
@@ -97,6 +127,7 @@ export function RealtimeSync() {
     return () => {
       stopped = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (taxonomyRefreshTimer) clearTimeout(taxonomyRefreshTimer)
       document.removeEventListener('visibilitychange', handleVisibility)
       socket?.close(1000, 'Page closed')
     }
