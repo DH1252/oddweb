@@ -339,15 +339,15 @@ test('mode changes install the authoritative dashboard before UI reconciliation'
   )
 })
 
-test('admin data bypasses HTTP and React Query caches', async () => {
+test('admin data bypasses HTTP caches without destabilizing Suspense queries', async () => {
   const [auth, queries] = await Promise.all([
     readFile(new URL('../src/server/auth.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/queries/oddweb.ts', import.meta.url), 'utf8'),
   ])
   assert.match(auth, /Cache-Control', 'private, no-store, max-age=0'/)
   assert.match(queries, /const adminQueryFreshness = \{[\s\S]*staleTime: 0/)
-  assert.match(queries, /gcTime: 0/)
-  assert.match(queries, /refetchOnMount: 'always'/)
-  assert.match(queries, /refetchOnReconnect: 'always'/)
-  assert.match(queries, /refetchOnWindowFocus: 'always'/)
+  assert.match(queries, /gcTime: 5 \* 60_000/)
+  assert.match(queries, /refetchOnMount: true/)
+  assert.match(queries, /refetchOnReconnect: true/)
+  assert.match(queries, /refetchOnWindowFocus: true/)
 })

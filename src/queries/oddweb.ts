@@ -32,10 +32,10 @@ import type { PublicDirectoryInput } from '../db/public-repository'
 
 const adminQueryFreshness = {
   staleTime: 0,
-  gcTime: 0,
-  refetchOnMount: 'always',
-  refetchOnReconnect: 'always',
-  refetchOnWindowFocus: 'always',
+  gcTime: 5 * 60_000,
+  refetchOnMount: true,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
 } as const
 
 export const directoryQueryOptions = (input: PublicDirectoryInput) =>
