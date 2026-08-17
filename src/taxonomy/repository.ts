@@ -2841,31 +2841,53 @@ export class TaxonomyRepository {
         }
   }
 
-  async shadowReadinessMetrics(
-    since: number,
-    requiredVoters = 1,
-  ): Promise<{
+  async shadowReadinessMetrics(input: {
+    policyConfigId: number | null
+    providerConfigId: number | null
+    requiredVoters?: number
+  }): Promise<{
     samples: number
     coverageBasisPoints: number
     schemaSuccessBasisPoints: number
     agreementBasisPoints: number
   }> {
+    const requiredVoters = input.requiredVoters ?? 1
     const row = await first(
       this.db,
       `SELECT
-       (SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site' AND completed_at >= ? AND status = 'settled') AS samples,
+       (SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site' AND status = 'settled'
+        AND policy_config_id = ? AND provider_config_id = ?) AS samples,
        (SELECT count(*) FROM sites WHERE status = 'active') AS eligible,
        (SELECT count(DISTINCT site_id) FROM taxonomy_jobs WHERE kind = 'classify_site'
-        AND completed_at >= ? AND status = 'settled') AS covered,
-       (SELECT count(*) FROM taxonomy_job_attempts WHERE completed_at >= ?) AS attempts,
-       (SELECT count(*) FROM taxonomy_job_attempts WHERE completed_at >= ? AND status = 'succeeded') AS succeeded,
+         AND status = 'settled' AND policy_config_id = ? AND provider_config_id = ?) AS covered,
+       (SELECT count(*) FROM taxonomy_job_attempts attempt JOIN taxonomy_jobs job ON job.id = attempt.job_id
+        WHERE job.kind = 'classify_site' AND job.policy_config_id = ? AND job.provider_config_id = ?) AS attempts,
+       (SELECT count(*) FROM taxonomy_job_attempts attempt JOIN taxonomy_jobs job ON job.id = attempt.job_id
+        WHERE attempt.status = 'succeeded' AND job.kind = 'classify_site'
+          AND job.policy_config_id = ? AND job.provider_config_id = ?) AS succeeded,
        (SELECT count(*) FROM taxonomy_jobs job WHERE job.kind = 'classify_site'
-        AND job.completed_at >= ? AND job.status = 'settled'
-        AND (SELECT count(DISTINCT attempt.provider_config_id)
-             FROM taxonomy_job_attempts attempt
-             WHERE attempt.job_id = job.id AND attempt.status = 'succeeded') >= ?) AS voter_complete,
-       (SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site' AND completed_at >= ? AND last_error_code = 'provider_disagreement') AS disagreements`,
-      [since, since, since, since, since, requiredVoters, since],
+         AND job.status = 'settled' AND job.policy_config_id = ? AND job.provider_config_id = ?
+         AND (SELECT count(DISTINCT attempt.provider_config_id)
+              FROM taxonomy_job_attempts attempt
+              WHERE attempt.job_id = job.id AND attempt.status = 'succeeded') >= ?) AS voter_complete,
+       (SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site'
+        AND policy_config_id = ? AND provider_config_id = ?
+        AND last_error_code = 'provider_disagreement') AS disagreements`,
+      [
+        input.policyConfigId,
+        input.providerConfigId,
+        input.policyConfigId,
+        input.providerConfigId,
+        input.policyConfigId,
+        input.providerConfigId,
+        input.policyConfigId,
+        input.providerConfigId,
+        input.policyConfigId,
+        input.providerConfigId,
+        requiredVoters,
+        input.policyConfigId,
+        input.providerConfigId,
+      ],
     )
     if (!row) {
       return {

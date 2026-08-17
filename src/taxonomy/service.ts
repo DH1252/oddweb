@@ -164,10 +164,11 @@ export class TaxonomyService {
         1 +
         providers.filter(({ routingRole }) => routingRole === 'consensus')
           .length
-      const metrics = await this.repository.shadowReadinessMetrics(
-        state.modeChangedAt,
+      const metrics = await this.repository.shadowReadinessMetrics({
+        policyConfigId: state.activePolicyConfigId,
+        providerConfigId: state.activeProviderConfigId,
         requiredVoters,
-      )
+      })
       if (
         metrics.samples < Math.max(1, policy.shadowMinimumSamples) ||
         metrics.coverageBasisPoints <

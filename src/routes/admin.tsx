@@ -623,7 +623,6 @@ function AdminPage() {
                 onChange={(event) => {
                   startTransition(() => {
                     setReviewFilter(event.target.value as ReviewStatus | 'all')
-                    setSubmissionPage(0)
                   })
                 }}
                 className={fieldClass}
@@ -767,7 +766,6 @@ function AdminPage() {
                   onChange={(event) => {
                     startTransition(() => {
                       setSiteFilter(event.target.value as EntryStatus | 'all')
-                      setSitePage(0)
                     })
                   }}
                   className={fieldClass}
@@ -2400,7 +2398,6 @@ function AutomationSection({
                 onChange={(event) => {
                   startTransition(() => {
                     setCandidateStatus(parseCandidateStatus(event.target.value))
-                    setCandidatePage(0)
                   })
                 }}
               >
@@ -2422,7 +2419,6 @@ function AutomationSection({
                 onChange={(event) => {
                   startTransition(() => {
                     setCandidateKind(parseCandidateKind(event.target.value))
-                    setCandidatePage(0)
                   })
                 }}
               >
@@ -2633,7 +2629,6 @@ function AutomationSection({
                     setJobStatus(
                       (event.target.value || null) as TaxonomyJobStatus | null,
                     )
-                    setJobPage(0)
                     setSelectedJobs([])
                   })
                 }}
@@ -2658,7 +2653,6 @@ function AutomationSection({
                     setJobKind(
                       (event.target.value || null) as TaxonomyJobKind | null,
                     )
-                    setJobPage(0)
                     setSelectedJobs([])
                   })
                 }}
@@ -3123,7 +3117,6 @@ function AutomationSection({
                   setBatchStatus(
                     (event.target.value || null) as TaxonomyBatchStatus | null,
                   )
-                  setBatchPage(0)
                 })
               }}
             >
@@ -3213,7 +3206,6 @@ function AutomationSection({
               onChange={(event) => {
                 startTransition(() => {
                   setLockState(event.target.value as typeof lockState)
-                  setLockPage(0)
                 })
               }}
             >

@@ -507,7 +507,7 @@ test('mode gates require configuration, readiness metrics, ordering, and a close
         provider_config_id, policy_config_id, status, max_attempts, available_at,
         created_at, updated_at, completed_at)
        VALUES ('ready-job', 'ready-key', 'classify_site', 1, ?, 1, 1, ?, 1,
-               'settled', 1, 4000, 4000, 4000, 4000)`,
+                'settled', 1, 3999, 3999, 3999, 3999)`,
     )
     .bind(hash, providerId)
     .run()
@@ -516,7 +516,7 @@ test('mode gates require configuration, readiness metrics, ordering, and a close
       `INSERT INTO taxonomy_job_attempts
        (id, job_id, attempt_number, provider_config_id, status, provider_model,
         request_hash, input_tokens, output_tokens, started_at, completed_at)
-       VALUES ('ready-attempt', 'ready-job', 1, ?, 'succeeded', 'model', ?, 1, 1, 4000, 4000)`,
+        VALUES ('ready-attempt', 'ready-job', 1, ?, 'succeeded', 'model', ?, 1, 1, 3999, 3999)`,
     )
     .bind(providerId, hash)
     .run()

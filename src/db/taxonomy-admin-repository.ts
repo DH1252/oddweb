@@ -280,7 +280,10 @@ export async function readTaxonomyDashboard(
       ? null
       : await repository.loadPolicy(state.activePolicyConfigId)
   const [readiness, circuit, usage, totals, statuses] = await Promise.all([
-    repository.shadowReadinessMetrics(state.modeChangedAt),
+    repository.shadowReadinessMetrics({
+      policyConfigId: state.activePolicyConfigId,
+      providerConfigId: state.activeProviderConfigId,
+    }),
     repository.circuitMetrics(Math.floor(Date.now() / 1_000)),
     repository.budgetUsage(Math.floor(Date.now() / 1_000)),
     db

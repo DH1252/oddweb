@@ -222,6 +222,21 @@ test('suspense-backed result controls update inside transitions', async () => {
     ].length,
     8,
   )
+  for (const [label, pageSetter] of [
+    ['Show status', 'setSubmissionPage'],
+    ['Show records', 'setSitePage'],
+    ['Candidate status', 'setCandidatePage'],
+    ['Candidate kind', 'setCandidatePage'],
+    ['Job status', 'setJobPage'],
+    ['Job kind', 'setJobPage'],
+    ['Batch status', 'setBatchPage'],
+    ['Lock state', 'setLockPage'],
+  ]) {
+    assert.doesNotMatch(
+      admin,
+      new RegExp(`${label}[\\s\\S]{0,800}?${pageSetter}\\(0\\)`),
+    )
+  }
   assert.match(
     directory,
     /value=\{sort\}[\s\S]*startTransition\(\(\) => \{[\s\S]*setSort\(event\.target\.value as SortMode\)[\s\S]*setPage\(0\)/,
