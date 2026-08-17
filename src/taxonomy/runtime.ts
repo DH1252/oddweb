@@ -813,14 +813,19 @@ export async function processTaxonomyMessage(
     const retryable =
       !(error instanceof TaxonomyProviderError) || error.retryable
     if (retryable && job.attemptCount < job.maxAttempts) {
+      const budgetReset = Math.floor(now / 86_400) * 86_400 + 86_400 + 30
+      const retryAt =
+        error instanceof TaxonomyProviderError && error.code === 'rate_limit'
+          ? budgetReset
+          : now +
+            retryDelaySeconds(
+              job.attemptCount,
+              policy.retryBaseSeconds,
+              policy.retryMaxSeconds,
+            )
       await repository.retryJob(
         job,
-        now +
-          retryDelaySeconds(
-            job.attemptCount,
-            policy.retryBaseSeconds,
-            policy.retryMaxSeconds,
-          ),
+        retryAt,
         now,
         error instanceof TaxonomyProviderError ? error.code : 'runtime_error',
         summary(error),

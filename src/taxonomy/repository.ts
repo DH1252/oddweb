@@ -557,6 +557,44 @@ export class TaxonomyRepository {
     return (result[0]?.meta.changes ?? 0) > 0
   }
 
+  async repointOntologyJob(
+    job: TaxonomyJob,
+    state: TaxonomyState,
+    now: number,
+  ): Promise<boolean> {
+    if (job.kind === 'classify_site' || job.conceptKey === null) return false
+    const result = await this.db.batch([
+      statement(
+        this.db,
+        `UPDATE taxonomy_jobs SET policy_config_id = ?, status = 'pending',
+         available_at = ?, attempt_count = 0, lease_owner = NULL,
+         lease_token = NULL, leased_until = NULL, completed_at = NULL,
+         updated_at = ?, last_error_code = NULL, last_error_summary = NULL
+         WHERE id = ? AND status = 'leased' AND lease_token = ?
+           AND policy_config_id IS NOT NULL
+           AND policy_config_id <> ?`,
+        [
+          state.activePolicyConfigId,
+          now,
+          now,
+          job.id,
+          job.leaseToken,
+          state.activePolicyConfigId,
+        ],
+      ),
+      statement(
+        this.db,
+        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+         lease_token = NULL, leased_until = NULL, last_error = NULL
+         WHERE job_id = ? AND EXISTS (
+           SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'pending'
+         )`,
+        [now, job.id, job.id],
+      ),
+    ])
+    return (result[0]?.meta.changes ?? 0) > 0
+  }
+
   async candidateSnapshot(
     job: TaxonomyJob,
     limit: number,

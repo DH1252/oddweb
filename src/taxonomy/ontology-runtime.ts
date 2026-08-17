@@ -413,6 +413,24 @@ export async function processOntologyJob(input: {
   policy: RuntimePolicy
   now: number
 }): Promise<ProcessingResult> {
+  if (
+    input.job.policyConfigId !== null &&
+    input.state.activePolicyConfigId !== input.job.policyConfigId
+  ) {
+    const repointed = await input.repository.repointOntologyJob(
+      input.job,
+      input.state,
+      input.now,
+    )
+    if (repointed) {
+      return {
+        jobId: input.job.id,
+        status: 'retry_wait',
+        attempts: input.job.attemptCount,
+        mutations: 0,
+      }
+    }
+  }
   if (input.job.kind === 'apply_ontology') {
     if (!input.job.conceptKey)
       throw new Error('Ontology application job has no candidate id')
@@ -583,6 +601,12 @@ export async function processOntologyJob(input: {
       break
     } catch (error) {
       if (config === primary.at(-1)) {
+        if (
+          error instanceof TaxonomyProviderError &&
+          error.code === 'rate_limit'
+        ) {
+          throw error
+        }
         throw new TaxonomyProviderError(
           'Required ontology primary voter failed',
           {

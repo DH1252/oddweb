@@ -3394,6 +3394,136 @@ test('forced reassessment enqueues after a settled concept job at the same versi
   )
 })
 
+test('ontology budget exhaustion surfaces the real error and retries at the next budget reset', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 90_000_000 })
+  const providerId = await addProvider(service, {
+    name: 'budget-exhausted-provider',
+    credential: 'budget-exhausted-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1,
+       daily_request_budget = 0 WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('budget concept')
+  assert.ok(jobId)
+  let fetchCalls = 0
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 90_000_000,
+      fetch: async () => {
+        fetchCalls += 1
+        return Response.json({ output_text: JSON.stringify({}) })
+      },
+    },
+  )
+  assert.equal(result.status, 'retry_wait')
+  assert.equal(fetchCalls, 0)
+  assert.deepEqual(
+    await db
+      .prepare(
+        `SELECT last_error_code, last_error_summary, available_at, attempt_count
+         FROM taxonomy_jobs WHERE id = ?`,
+      )
+      .bind(jobId)
+      .first(),
+    {
+      last_error_code: 'rate_limit',
+      last_error_summary: 'Daily taxonomy provider budget exhausted',
+      available_at: 172_830,
+      attempt_count: 1,
+    },
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT count(*) FROM taxonomy_job_attempts')
+      .first('count(*)'),
+    0,
+  )
+})
+
+test('pending ontology jobs follow the activated policy revision', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 16_200_000 })
+  const providerId = await addProvider(service, {
+    name: 'policy-follow-provider',
+    credential: 'policy-follow-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1
+       WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('policy pin')
+  assert.ok(jobId)
+  const policy = await service.repository.loadPolicy(1)
+  const { id: _id, revision: _revision, ...policyInput } = policy
+  const nextPolicyId = await service.createPolicyRevision(
+    { ...policyInput, dailyRequestBudget: 500 },
+    'admin',
+  )
+  await service.activatePolicy(nextPolicyId)
+  let fetchCalls = 0
+  const first = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 16_201_000,
+      fetch: async () => {
+        fetchCalls += 1
+        return Response.json({
+          output_text: JSON.stringify({ schemaVersion: 1, proposals: [] }),
+        })
+      },
+    },
+  )
+  assert.equal(first.status, 'retry_wait')
+  assert.equal(fetchCalls, 0)
+  assert.deepEqual(
+    await db
+      .prepare(
+        `SELECT policy_config_id AS policyConfigId, attempt_count AS attemptCount,
+                status FROM taxonomy_jobs WHERE id = ?`,
+      )
+      .bind(jobId)
+      .first(),
+    {
+      policyConfigId: nextPolicyId,
+      attemptCount: 0,
+      status: 'pending',
+    },
+  )
+  const second = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 16_202_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({ schemaVersion: 1, proposals: [] }),
+        }),
+    },
+  )
+  assert.equal(second.status, 'settled')
+})
+
 test('site classification can be disabled without stopping concept reassessment', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)
