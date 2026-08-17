@@ -106,18 +106,15 @@ test('an active detail observer receives invalidated query data', async () => {
   assert.match(source, /useSuspenseQuery\(siteDetailQueryOptions\(slug\)\)/)
 })
 
-test('realtime directory refresh invalidates route loader metadata', async () => {
+test('realtime directory refresh invalidates query data without reloading routes', async () => {
   const source = await readFile(
     new URL('../src/components/realtime-sync.tsx', import.meta.url),
     'utf8',
   )
 
   assert.match(source, /await queryClient\.invalidateQueries/)
-  assert.match(source, /await router\.invalidate\(\)/)
-  assert.match(
-    source,
-    /const refreshSiteView = async[\s\S]*await Promise\.all[\s\S]*await router\.invalidate\(\)/,
-  )
+  assert.match(source, /const refreshSiteView = async[\s\S]*await Promise\.all/)
+  assert.doesNotMatch(source, /useRouter|router\.invalidate/)
   assert.match(source, /await refreshSiteView\(event\.slug\)/)
 })
 

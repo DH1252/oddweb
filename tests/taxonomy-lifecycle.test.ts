@@ -448,7 +448,7 @@ test('D1 lifecycle batch atomically assigns tags and creates an idempotent pendi
 const schema = `
 CREATE TABLE sites (
   id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, content_version INTEGER NOT NULL,
-  classification_input_hash TEXT
+  classification_input_hash TEXT, status TEXT NOT NULL DEFAULT 'active'
 );
 CREATE TABLE tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL,

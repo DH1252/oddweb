@@ -162,7 +162,7 @@ function mapJob(row: Row): TaxonomyJob {
     status: text(row, 'status'),
     attemptCount: integer(row, 'attempt_count'),
     maxAttempts: integer(row, 'max_attempts'),
-    leaseToken: text(row, 'lease_token'),
+    leaseToken: nullableText(row, 'lease_token') ?? '',
   }
 }
 
@@ -345,6 +345,15 @@ export class TaxonomyRepository {
       this.db,
       `SELECT * FROM taxonomy_jobs WHERE id = ? AND lease_token = ? AND status = 'leased'`,
       [jobId, token],
+    )
+    return row ? mapJob(row) : null
+  }
+
+  async loadJob(jobId: string): Promise<TaxonomyJob | null> {
+    const row = await first(
+      this.db,
+      'SELECT * FROM taxonomy_jobs WHERE id = ?',
+      [jobId],
     )
     return row ? mapJob(row) : null
   }
@@ -2284,8 +2293,22 @@ export class TaxonomyRepository {
            AND EXISTS (SELECT 1 FROM sites
                        WHERE id = ?3 AND status = 'active' AND content_version = ?4
                          AND classification_input_hash = ?5)
-           AND (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?6
-           AND NOT EXISTS (
+            AND (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?6
+           AND (
+             NOT EXISTS (
+               SELECT 1 FROM json_each(?7) decision
+               WHERE json_extract(decision.value, '$.outcome') = 'applied'
+             )
+             OR EXISTS (
+               SELECT 1 FROM taxonomy_state state
+               WHERE state.id = 1
+                 AND state.mode IN ('gradual', 'autonomous')
+                 AND state.circuit_state = 'closed'
+                 AND state.active_provider_config_id IS ?8
+                 AND state.active_policy_config_id IS ?9
+             )
+           )
+            AND NOT EXISTS (
              SELECT 1 FROM json_each(?7) decision
              WHERE NOT EXISTS (
                SELECT 1 FROM tags tag
@@ -2332,6 +2355,8 @@ export class TaxonomyRepository {
           firstInput.job.inputHash,
           firstInput.job.taxonomyVersion,
           decisions,
+          firstInput.job.providerConfigId,
+          firstInput.job.policyConfigId,
         ],
       ),
       statement(
@@ -2644,6 +2669,13 @@ export class TaxonomyRepository {
     actorId = 'system',
   ): Promise<void> {
     const state = await this.loadState()
+    const changed = await changes(
+      this.db,
+      `UPDATE taxonomy_state SET mode = ?, mode_changed_at = ?, updated_at = ?
+       WHERE id = 1 AND mode = ?`,
+      [mode, now, now, state.mode],
+    )
+    if (!changed) throw new Error('Taxonomy mode changed concurrently')
     await this.auditControlPlane(
       'mode_changed',
       'taxonomy_state',
@@ -2653,11 +2685,6 @@ export class TaxonomyRepository {
       now,
       releaseSha,
       actorId,
-      statement(
-        this.db,
-        `UPDATE taxonomy_state SET mode = ?, mode_changed_at = ?, updated_at = ? WHERE id = 1 AND mode = ?`,
-        [mode, now, now, state.mode],
-      ),
     )
   }
 
@@ -2778,6 +2805,7 @@ export class TaxonomyRepository {
   async circuitMetrics(now: number): Promise<{
     attempts: number
     schemaFailures: number
+    classifications: number
     disagreements: number
     rollbacks: number
     mutations: number
@@ -2786,17 +2814,19 @@ export class TaxonomyRepository {
     const row = await first(
       this.db,
       `SELECT
-       (SELECT count(*) FROM taxonomy_job_attempts WHERE started_at >= ?) AS attempts,
-       (SELECT count(*) FROM taxonomy_job_attempts WHERE started_at >= ? AND status = 'invalid_response') AS schema_failures,
-       (SELECT count(*) FROM taxonomy_jobs WHERE updated_at >= ? AND last_error_code = 'provider_disagreement') AS disagreements,
-       (SELECT count(*) FROM taxonomy_change_batches WHERE created_at >= ? AND kind = 'rollback' AND status IN ('applied','partial')) AS rollbacks,
-       (SELECT count(*) FROM taxonomy_audit_events WHERE created_at >= ? AND event_type IN ('assignment_add','assignment_remove','canonical_created','alias_created','tags_merged','parent_created')) AS mutations`,
-      [since, since, since, since, since],
+       (SELECT count(*) FROM taxonomy_job_attempts WHERE started_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1))) AS attempts,
+       (SELECT count(*) FROM taxonomy_job_attempts WHERE started_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1)) AND status = 'invalid_response') AS schema_failures,
+       (SELECT count(*) FROM taxonomy_jobs WHERE kind = 'classify_site' AND updated_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1)) AND status IN ('settled','retry_wait','dead','degraded')) AS classifications,
+       (SELECT count(*) FROM taxonomy_jobs WHERE updated_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1)) AND last_error_code = 'provider_disagreement') AS disagreements,
+       (SELECT count(*) FROM taxonomy_change_batches WHERE created_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1)) AND kind = 'rollback' AND status IN ('applied','partial')) AS rollbacks,
+       (SELECT count(*) FROM taxonomy_audit_events WHERE created_at > max(?, (SELECT mode_changed_at FROM taxonomy_state WHERE id = 1)) AND event_type IN ('assignment_add','assignment_remove','canonical_created','alias_created','tags_merged','parent_created')) AS mutations`,
+      [since, since, since, since, since, since],
     )
     return row
       ? {
           attempts: integer(row, 'attempts'),
           schemaFailures: integer(row, 'schema_failures'),
+          classifications: integer(row, 'classifications'),
           disagreements: integer(row, 'disagreements'),
           rollbacks: integer(row, 'rollbacks'),
           mutations: integer(row, 'mutations'),
@@ -2804,6 +2834,7 @@ export class TaxonomyRepository {
       : {
           attempts: 0,
           schemaFailures: 0,
+          classifications: 0,
           disagreements: 0,
           rollbacks: 0,
           mutations: 0,

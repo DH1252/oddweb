@@ -148,6 +148,7 @@ const adminPageSize = 12
 const automationPageSize = 20
 
 export const Route = createFileRoute('/admin')({
+  shouldReload: false,
   beforeLoad: async ({ location }) => {
     const session = await getAdminSession()
     if (!session.authenticated) {
@@ -1678,7 +1679,7 @@ function AutomationSection({
       </dl>
 
       <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_1fr]">
-        <AutomationBox title="Counts and 24-hour circuit signals">
+        <AutomationBox title="Counts and current-mode circuit signals">
           <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {Object.entries({
               'Enabled providers': dashboard.counts.enabledProviders,

@@ -140,7 +140,7 @@ export class TaxonomyService {
     this.repository = new TaxonomyRepository(env.DB)
   }
 
-  async setMode(mode: TaxonomyMode): Promise<void> {
+  async setMode(mode: TaxonomyMode, actorId = 'admin'): Promise<void> {
     const now = nowSeconds(this.options)
     const state = await this.repository.loadState()
     if (mode === state.mode) return
@@ -160,11 +160,10 @@ export class TaxonomyService {
       const providers = await this.repository.loadProviderRoute(
         state.activeProviderConfigId,
       )
-      const requiredVoters = Math.max(
-        1,
-        providers.filter(({ routingRole }) => routingRole !== 'failover')
-          .length,
-      )
+      const requiredVoters =
+        1 +
+        providers.filter(({ routingRole }) => routingRole === 'consensus')
+          .length
       const metrics = await this.repository.shadowReadinessMetrics(
         state.modeChangedAt,
         requiredVoters,
@@ -196,13 +195,13 @@ export class TaxonomyService {
     ) {
       throw new Error('An active taxonomy policy is required')
     }
-    await this.repository.setMode(mode, now, releaseSha(this.env), 'admin')
+    await this.repository.setMode(mode, now, releaseSha(this.env), actorId)
   }
 
-  async resetCircuit(): Promise<void> {
+  async resetCircuit(actorId = 'admin'): Promise<void> {
     const now = nowSeconds(this.options)
-    await this.repository.closeCircuit(now, releaseSha(this.env), 'admin')
-    await this.setMode('shadow')
+    await this.repository.closeCircuit(now, releaseSha(this.env), actorId)
+    await this.setMode('shadow', actorId)
   }
 
   async createProviderConfig(input: {
@@ -665,7 +664,10 @@ export class TaxonomyService {
     return true
   }
 
-  async disableProvider(providerConfigId: number): Promise<boolean> {
+  async disableProvider(
+    providerConfigId: number,
+    actorId = 'admin',
+  ): Promise<boolean> {
     const now = nowSeconds(this.options)
     const config = await this.repository.loadProvider(providerConfigId)
     if (!config) return false
@@ -682,7 +684,7 @@ export class TaxonomyService {
       { enabled: false },
       now,
       releaseSha(this.env),
-      'admin',
+      actorId,
       [
         this.repository.db
           .prepare(
@@ -842,7 +844,10 @@ export class TaxonomyService {
     return result.meta.last_row_id
   }
 
-  async activatePolicy(policyConfigId: number): Promise<boolean> {
+  async activatePolicy(
+    policyConfigId: number,
+    actorId = 'admin',
+  ): Promise<boolean> {
     const now = nowSeconds(this.options)
     await this.repository.loadPolicy(policyConfigId)
     await this.repository.auditControlPlane(
@@ -853,7 +858,7 @@ export class TaxonomyService {
       { active: true },
       now,
       releaseSha(this.env),
-      'admin',
+      actorId,
       [
         this.repository.db
           .prepare(
@@ -950,6 +955,25 @@ export class TaxonomyService {
     const now = nowSeconds(this.options)
     let retried = 0
     for (const id of ids) {
+      const job = await this.repository.loadJob(id)
+      if (!job) continue
+      if (job.kind === 'classify_site' && job.siteId !== null) {
+        const state = await this.repository.loadState()
+        const site = (
+          await this.repository.backfillSites(job.siteId - 1, 1)
+        ).find((candidate) => candidate.id === job.siteId)
+        const current =
+          site !== undefined &&
+          site.contentVersion === job.siteContentVersion &&
+          site.classificationInputHash === job.inputHash &&
+          state.publishedVersion === job.taxonomyVersion &&
+          state.activeProviderConfigId === job.providerConfigId &&
+          state.activePolicyConfigId === job.policyConfigId
+        if (!current) {
+          if (await this.enqueueSite(job.siteId)) retried += 1
+          continue
+        }
+      }
       const results = await this.repository.db.batch([
         this.repository.db
           .prepare(

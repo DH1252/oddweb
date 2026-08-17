@@ -235,8 +235,11 @@ export const testTaxonomyProvider = createServerFn({ method: 'POST' })
 export const disableTaxonomyProvider = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => providerIdInput.parse(data))
-  .handler(async ({ data }) => ({
-    disabled: await service().disableProvider(data.providerConfigId),
+  .handler(async ({ data, context }) => ({
+    disabled: await service().disableProvider(
+      data.providerConfigId,
+      context.admin.username,
+    ),
   }))
 
 export const enableTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -274,15 +277,18 @@ export const createTaxonomyPolicy = createServerFn({ method: 'POST' })
 export const activateTaxonomyPolicy = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => policyIdInput.parse(data))
-  .handler(async ({ data }) => ({
-    activated: await service().activatePolicy(data.policyConfigId),
+  .handler(async ({ data, context }) => ({
+    activated: await service().activatePolicy(
+      data.policyConfigId,
+      context.admin.username,
+    ),
   }))
 
 export const transitionTaxonomyMode = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => modeInput.parse(data))
-  .handler(async ({ data }) => {
-    await service().setMode(data.mode)
+  .handler(async ({ data, context }) => {
+    await service().setMode(data.mode, context.admin.username)
     return { mode: data.mode }
   })
 
@@ -368,8 +374,8 @@ export const dispatchTaxonomyOutboxNow = createServerFn({ method: 'POST' })
 
 export const resetTaxonomyCircuit = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
-  .handler(async () => {
-    await service().resetCircuit()
+  .handler(async ({ context }) => {
+    await service().resetCircuit(context.admin.username)
     return { mode: 'shadow' as const, circuitState: 'closed' as const }
   })
 

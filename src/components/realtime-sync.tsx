@@ -1,12 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 import { parseRealtimeEvent } from '../realtime/events'
 
 export function RealtimeSync() {
   const queryClient = useQueryClient()
-  const router = useRouter()
 
   useEffect(() => {
     let socket: WebSocket | undefined
@@ -16,7 +14,6 @@ export function RealtimeSync() {
 
     const refreshPublicData = async () => {
       await queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] })
-      await router.invalidate()
     }
 
     const refreshSiteView = async (slug: string) => {
@@ -32,7 +29,6 @@ export function RealtimeSync() {
         }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
       ])
-      await router.invalidate()
     }
 
     const connect = () => {
@@ -93,7 +89,7 @@ export function RealtimeSync() {
       document.removeEventListener('visibilitychange', handleVisibility)
       socket?.close(1000, 'Page closed')
     }
-  }, [queryClient, router])
+  }, [queryClient])
 
   return null
 }

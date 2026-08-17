@@ -456,20 +456,29 @@ async function evaluateCircuit(
     const schemaRate = Math.floor(
       (metrics.schemaFailures * 10_000) / metrics.attempts,
     )
-    const disagreementRate = Math.floor(
-      (metrics.disagreements * 10_000) / metrics.attempts,
-    )
+    const disagreementRate = metrics.classifications
+      ? Math.floor((metrics.disagreements * 10_000) / metrics.classifications)
+      : 0
     const rollbackRate = Math.floor(
       (metrics.rollbacks * 10_000) / metrics.attempts,
     )
-    if (schemaRate >= policy.schemaFailureTripBasisPoints) {
+    if (
+      policy.schemaFailureTripBasisPoints > 0 &&
+      schemaRate >= policy.schemaFailureTripBasisPoints
+    ) {
       await repository.openCircuit('Schema failure threshold exceeded.', now)
-    } else if (disagreementRate >= policy.disagreementTripBasisPoints) {
+    } else if (
+      policy.disagreementTripBasisPoints > 0 &&
+      disagreementRate >= policy.disagreementTripBasisPoints
+    ) {
       await repository.openCircuit(
         'Provider disagreement threshold exceeded.',
         now,
       )
-    } else if (rollbackRate >= policy.rollbackTripBasisPoints) {
+    } else if (
+      policy.rollbackTripBasisPoints > 0 &&
+      rollbackRate >= policy.rollbackTripBasisPoints
+    ) {
       await repository.openCircuit('Rollback threshold exceeded.', now)
     }
   }

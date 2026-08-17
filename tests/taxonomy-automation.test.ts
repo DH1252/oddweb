@@ -785,7 +785,11 @@ test('maintenance trips the circuit at schema and mutation thresholds', async (c
     priority: 0,
   })
   await service.activateProvider(providerId)
-  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  await db
+    .prepare(
+      "UPDATE taxonomy_state SET mode = 'autonomous', mode_changed_at = 0",
+    )
+    .run()
   await insertSite(db, 1)
   await db
     .prepare(
@@ -815,6 +819,59 @@ test('maintenance trips the circuit at schema and mutation thresholds', async (c
   assert.equal(state.mode, 'degraded')
   assert.equal(state.circuitState, 'open')
   assert.match(state.circuitReason ?? '', /Schema failure/)
+})
+
+test('circuit reset excludes schema failures from the prior mode epoch', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 5_100_000 })
+  const providerId = await addProvider(service, {
+    name: 'reset-circuit-provider',
+    credential: 'reset-circuit-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await insertSite(db, 1)
+  await db
+    .prepare(
+      `INSERT INTO taxonomy_jobs
+       (id, job_key, kind, site_id, input_hash, site_content_version, taxonomy_version,
+        policy_config_id, status, max_attempts, available_at, created_at, updated_at,
+        completed_at)
+       VALUES ('prior-mode-job', 'prior-mode-key', 'classify_site', 1, ?, 1, 1,
+               1, 'settled', 1, 5099, 5099, 5099, 5099)`,
+    )
+    .bind(hash)
+    .run()
+  await db
+    .prepare(
+      `INSERT INTO taxonomy_job_attempts
+       (id, job_id, attempt_number, provider_config_id, status, provider_model,
+        request_hash, started_at, completed_at)
+        VALUES ('prior-mode-failure', 'prior-mode-job', 1, ?, 'invalid_response',
+               'model', ?, 5099, 5099)`,
+    )
+    .bind(providerId, hash)
+    .run()
+  await db
+    .prepare(
+      `UPDATE taxonomy_state SET mode = 'degraded', circuit_state = 'open',
+       circuit_reason = 'Schema failure threshold exceeded.', circuit_opened_at = 5099,
+       mode_changed_at = 5099`,
+    )
+    .run()
+
+  await service.resetCircuit()
+  await runTaxonomyMaintenance(
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    { now: () => 5_100_000 },
+  )
+
+  const state = await service.repository.loadState()
+  assert.equal(state.mode, 'shadow')
+  assert.equal(state.circuitState, 'closed')
+  assert.equal(state.circuitReason, null)
 })
 
 test('distinct-site evidence, ontology locks, and graph guards block unsafe publication', async (context) => {
@@ -3213,6 +3270,39 @@ test('retry recovers pending, waiting, and leased jobs and dispatches them', asy
     3,
   )
   assert.deepEqual(sent.sort(), [...jobIds].sort())
+})
+
+test('retrying a stale classification job enqueues current work instead', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  const service = new TaxonomyService(serviceEnv(db), { now: () => 19_700_000 })
+  const staleJobId = await service.enqueueSite(1)
+  assert.ok(staleJobId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_jobs SET status = 'degraded', completed_at = 19699,
+       last_error_code = 'stale_input' WHERE id = ?`,
+    )
+    .bind(staleJobId)
+    .run()
+  await db.prepare('UPDATE taxonomy_state SET published_version = 2').run()
+
+  assert.equal(await service.retryJobs([staleJobId]), 1)
+  const jobs = (
+    await db
+      .prepare(
+        `SELECT id, taxonomy_version AS taxonomyVersion, status
+         FROM taxonomy_jobs ORDER BY taxonomy_version`,
+      )
+      .all()
+  ).results
+  assert.deepEqual(jobs[0], {
+    id: staleJobId,
+    taxonomyVersion: 1,
+    status: 'degraded',
+  })
+  assert.equal(jobs[1]?.taxonomyVersion, 2)
+  assert.equal(jobs[1]?.status, 'pending')
 })
 
 test('ignored leases rearm runnable pending outbox rows', async (context) => {

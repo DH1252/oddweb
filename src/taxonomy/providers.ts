@@ -82,6 +82,7 @@ interface SharedProviderConfig {
   timeoutMs?: number
   maxResponseBytes?: number
   maxRetries?: number
+  maxOutputTokens?: number
 }
 
 export interface OpenAICompatibleConfig extends SharedProviderConfig {
@@ -100,6 +101,7 @@ interface ResolvedLimits {
   timeoutMs: number
   maxResponseBytes: number
   maxRetries: number
+  maxOutputTokens: number
 }
 
 interface RawProviderResult {
@@ -132,6 +134,7 @@ function resolveLimits(config: SharedProviderConfig): ResolvedLimits {
   const timeoutMs = config.timeoutMs ?? 20_000
   const maxResponseBytes = config.maxResponseBytes ?? 256_000
   const maxRetries = config.maxRetries ?? 2
+  const maxOutputTokens = config.maxOutputTokens ?? 1_024
   if (!config.apiKey || !config.model) {
     throw new TaxonomyProviderError(
       'Provider credentials and model are required',
@@ -163,7 +166,17 @@ function resolveLimits(config: SharedProviderConfig): ResolvedLimits {
       retryable: false,
     })
   }
-  return { timeoutMs, maxResponseBytes, maxRetries }
+  if (
+    !Number.isInteger(maxOutputTokens) ||
+    maxOutputTokens < 1 ||
+    maxOutputTokens > 16_384
+  ) {
+    throw new TaxonomyProviderError('Invalid provider output token limit', {
+      code: 'configuration',
+      retryable: false,
+    })
+  }
+  return { timeoutMs, maxResponseBytes, maxRetries, maxOutputTokens }
 }
 
 async function readBoundedResponse(
@@ -259,26 +272,7 @@ function sanitizeProviderSchema(value: unknown): unknown {
   return output
 }
 
-function providerErrorDetail(bodyText: string): string | null {
-  try {
-    const body = JSON.parse(bodyText) as Record<string, unknown>
-    const error = body.error
-    if (typeof error === 'string' && error.trim()) {
-      return error.replaceAll(/\s+/g, ' ').trim().slice(0, 200)
-    }
-    if (error && typeof error === 'object') {
-      const message = (error as Record<string, unknown>).message
-      if (typeof message === 'string' && message.trim()) {
-        return message.replaceAll(/\s+/g, ' ').trim().slice(0, 200)
-      }
-    }
-  } catch {
-    return null
-  }
-  return null
-}
-
-function responseError(status: number, bodyText = ''): TaxonomyProviderError {
+function responseError(status: number): TaxonomyProviderError {
   if (status === 401 || status === 403) {
     return new TaxonomyProviderError('Provider authentication failed', {
       code: 'authentication',
@@ -304,17 +298,11 @@ function responseError(status: number, bodyText = ''): TaxonomyProviderError {
     )
   }
   const retryable = status === 408 || status === 409 || status >= 500
-  const detail = providerErrorDetail(bodyText)
-  return new TaxonomyProviderError(
-    detail
-      ? `Provider request failed (${status}): ${detail}`
-      : `Provider request failed (${status})`,
-    {
-      code: status >= 500 ? 'server' : 'invalid_response',
-      retryable,
-      status,
-    },
-  )
+  return new TaxonomyProviderError(`Provider request failed (${status})`, {
+    code: status >= 500 ? 'server' : 'invalid_response',
+    retryable,
+    status,
+  })
 }
 
 function retryDelay(response: Response | undefined, attempt: number): number {
@@ -372,7 +360,7 @@ async function executeRequest(
         signal: controller.signal,
       })
       const text = await readBoundedResponse(response, limits.maxResponseBytes)
-      if (!response.ok) throw responseError(response.status, text)
+      if (!response.ok) throw responseError(response.status)
       let body: unknown
       try {
         body = JSON.parse(text)
@@ -659,6 +647,7 @@ export function createOpenAICompatibleProvider(
       const body = isResponses
         ? {
             model: config.model,
+            max_output_tokens: limits.maxOutputTokens,
             input: [
               { role: 'system', content: request.systemPrompt },
               { role: 'user', content: request.userPrompt },
@@ -674,6 +663,7 @@ export function createOpenAICompatibleProvider(
           }
         : {
             model: config.model,
+            max_tokens: limits.maxOutputTokens,
             messages: [
               { role: 'system', content: request.systemPrompt },
               { role: 'user', content: request.userPrompt },
@@ -723,6 +713,7 @@ export function createGeminiProvider(
     async generateStructured<T>(request: StructuredProviderRequest<T>) {
       const body = {
         model: config.model,
+        generation_config: { max_output_tokens: limits.maxOutputTokens },
         input: request.userPrompt,
         system_instruction: request.systemPrompt,
         response_format: {

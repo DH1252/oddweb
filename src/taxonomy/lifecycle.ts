@@ -334,12 +334,12 @@ export async function prepareSiteTaxonomyLifecycle(
          SELECT ?2, ${jobKey}, 'classify_site', site.id, ?3, ?4,
                 state.published_version, state.active_provider_config_id,
                 state.active_policy_config_id, 'pending',
-                coalesce(policy.retry_budget, 0) + 1
+                 policy.retry_budget + 1
          FROM sites site
          JOIN taxonomy_state state ON state.id = 1
-         LEFT JOIN taxonomy_policy_configs policy
+          JOIN taxonomy_policy_configs policy
            ON policy.id = state.active_policy_config_id
-         WHERE ${target.sql}
+          WHERE ${target.sql} AND site.status = 'active'
          ON CONFLICT(job_key) DO NOTHING`,
       )
       .bind(
@@ -351,11 +351,13 @@ export async function prepareSiteTaxonomyLifecycle(
     db
       .prepare(
         `INSERT INTO taxonomy_outbox (id, job_id, payload)
-         SELECT ?2, job.id, json_object('jobId', job.id)
-         FROM sites site
-         JOIN taxonomy_state state ON state.id = 1
-         JOIN taxonomy_jobs job ON job.job_key = ${jobKey}
-         WHERE ${target.sql}
+          SELECT ?2, job.id, json_object('jobId', job.id)
+          FROM sites site
+          JOIN taxonomy_state state ON state.id = 1
+          JOIN taxonomy_policy_configs policy
+            ON policy.id = state.active_policy_config_id
+          JOIN taxonomy_jobs job ON job.job_key = ${jobKey}
+          WHERE ${target.sql} AND site.status = 'active'
          ON CONFLICT(job_id) DO NOTHING`,
       )
       .bind(target.value, `outbox-${crypto.randomUUID()}`),
@@ -403,11 +405,13 @@ export async function prepareSiteTaxonomyLifecycle(
                   state.active_policy_config_id, job.id,
                   json_extract(evidence.value, '$.evidenceHash'),
                   json_extract(evidence.value, '$.rawName'), 1000000, 1
-           FROM sites site
-           JOIN taxonomy_state state ON state.id = 1
-           JOIN taxonomy_jobs job ON job.job_key = ${jobKey}
+            FROM sites site
+            JOIN taxonomy_state state ON state.id = 1
+            JOIN taxonomy_policy_configs policy
+              ON policy.id = state.active_policy_config_id
+            JOIN taxonomy_jobs job ON job.job_key = ${jobKey}
            JOIN json_each(?3) evidence
-           WHERE ${target.sql}
+            WHERE ${target.sql} AND site.status = 'active'
            ON CONFLICT(normalized_concept, site_id, input_hash, source_key)
            DO NOTHING`,
         )

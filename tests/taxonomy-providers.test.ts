@@ -83,6 +83,7 @@ test('OpenAI Responses sends strict JSON schema and normalizes output and usage'
   assert.equal(schemaVersion?.const, undefined)
   assert.deepEqual(schemaVersion?.enum, [1])
   assert.equal(decisions?.maxItems, undefined)
+  assert.equal(sent.max_output_tokens, 1_024)
   assert.deepEqual(result.data, decision)
   assert.deepEqual(result.usage, {
     inputTokens: 12,
@@ -384,7 +385,7 @@ test('provider fetch is invoked without the runtime object as its receiver', asy
   assert.equal(receiver, undefined)
 })
 
-test('failed classification requests keep the provider status and error detail', async () => {
+test('failed classification requests keep the provider status without storing error details', async () => {
   const provider = createOpenAICompatibleProvider(
     {
       apiKey: 'secret',
@@ -413,7 +414,7 @@ test('failed classification requests keep the provider status and error detail',
       assert.equal(error.status, 400)
       assert.equal(error.retryable, false)
       assert.match(error.message, /400/)
-      assert.match(error.message, /maxItems is not supported/)
+      assert.doesNotMatch(error.message, /maxItems is not supported/)
       return true
     },
   )
