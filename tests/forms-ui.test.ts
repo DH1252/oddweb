@@ -323,3 +323,31 @@ test('policy activation resets history pagination and backfill reports delivery 
     /jobs remain pending until the queue consumer processes them/,
   )
 })
+
+test('mode changes install the authoritative dashboard before UI reconciliation', async () => {
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    admin,
+    /async function changeMode[\s\S]*modeMutation\.mutateAsync\(mode\)[\s\S]*queryClient\.setQueryData[\s\S]*result\.dashboard/,
+  )
+  assert.match(
+    admin,
+    /cancelQueries\(\{ queryKey \}\)[\s\S]*invalidateQueries[\s\S]*refetchQueries/,
+  )
+})
+
+test('admin data bypasses HTTP and React Query caches', async () => {
+  const [auth, queries] = await Promise.all([
+    readFile(new URL('../src/server/auth.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/queries/oddweb.ts', import.meta.url), 'utf8'),
+  ])
+  assert.match(auth, /Cache-Control', 'private, no-store, max-age=0'/)
+  assert.match(queries, /const adminQueryFreshness = \{[\s\S]*staleTime: 0/)
+  assert.match(queries, /gcTime: 0/)
+  assert.match(queries, /refetchOnMount: 'always'/)
+  assert.match(queries, /refetchOnReconnect: 'always'/)
+  assert.match(queries, /refetchOnWindowFocus: 'always'/)
+})

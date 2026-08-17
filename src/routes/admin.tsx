@@ -1128,11 +1128,18 @@ function AutomationSection({
   )
   async function invalidateTaxonomy(...scopes: string[]) {
     await Promise.all(
-      scopes.map((scope) =>
-        queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'admin', 'taxonomy', scope],
-        }),
-      ),
+      scopes.map(async (scope) => {
+        const queryKey = ['oddweb', 'admin', 'taxonomy', scope]
+        await queryClient.cancelQueries({ queryKey })
+        await queryClient.invalidateQueries({
+          queryKey,
+          refetchType: 'active',
+        })
+        await queryClient.refetchQueries({
+          queryKey,
+          type: 'active',
+        })
+      }),
     )
   }
 
@@ -1484,8 +1491,11 @@ function AutomationSection({
 
   async function changeMode(mode: TaxonomyMode) {
     try {
-      await modeMutation.mutateAsync(mode)
-      await invalidateTaxonomy('dashboard')
+      const result = await modeMutation.mutateAsync(mode)
+      queryClient.setQueryData(
+        taxonomyDashboardQueryOptions().queryKey,
+        result.dashboard,
+      )
       showStatus(`Automation mode changed to ${modeLabel(mode)}.`, 'success')
     } catch (error) {
       showStatus(
@@ -1501,8 +1511,11 @@ function AutomationSection({
     )
       return
     try {
-      await circuitMutation.mutateAsync()
-      await invalidateTaxonomy('dashboard')
+      const result = await circuitMutation.mutateAsync()
+      queryClient.setQueryData(
+        taxonomyDashboardQueryOptions().queryKey,
+        result.dashboard,
+      )
       showStatus('Circuit reset. Automation is in shadow mode.', 'success')
     } catch (error) {
       showStatus(

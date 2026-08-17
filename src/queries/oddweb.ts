@@ -30,6 +30,14 @@ import {
 
 import type { PublicDirectoryInput } from '../db/public-repository'
 
+const adminQueryFreshness = {
+  staleTime: 0,
+  gcTime: 0,
+  refetchOnMount: 'always',
+  refetchOnReconnect: 'always',
+  refetchOnWindowFocus: 'always',
+} as const
+
 export const directoryQueryOptions = (input: PublicDirectoryInput) =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'directory', input],
@@ -86,7 +94,7 @@ export const adminOverviewQueryOptions = () =>
   queryOptions({
     queryKey: ['oddweb', 'admin', 'overview'],
     queryFn: () => getAdminOverview(),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const adminSubmissionsQueryOptions = (
@@ -96,7 +104,7 @@ export const adminSubmissionsQueryOptions = (
   queryOptions({
     queryKey: ['oddweb', 'admin', 'submissions', { page, status }],
     queryFn: () => getAdminSubmissions({ data: { page, status } }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const adminSitesQueryOptions = (input: {
@@ -109,35 +117,35 @@ export const adminSitesQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'sites', input],
     queryFn: () => getAdminSites({ data: input }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const adminSiteQueryOptions = (id: number) =>
   queryOptions({
     queryKey: ['oddweb', 'admin', 'site', id],
     queryFn: () => getAdminSite({ data: { id } }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const adminTagsQueryOptions = (page: number, search: string) =>
   queryOptions({
     queryKey: ['oddweb', 'admin', 'tags', { page, search }],
     queryFn: () => getAdminTags({ data: { page, search } }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const adminGuestbookQueryOptions = (page: number) =>
   queryOptions({
     queryKey: ['oddweb', 'admin', 'guestbook', { page }],
     queryFn: () => getAdminGuestbook({ data: { page } }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyDashboardQueryOptions = () =>
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'dashboard'],
     queryFn: () => getTaxonomyDashboard(),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyProvidersQueryOptions = (input: {
@@ -147,7 +155,7 @@ export const taxonomyProvidersQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'providers', input],
     queryFn: () => getTaxonomyProviders({ data: input }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyPoliciesQueryOptions = (input: {
@@ -157,7 +165,7 @@ export const taxonomyPoliciesQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'policies', input],
     queryFn: () => getTaxonomyPolicies({ data: input }),
-    staleTime: 10_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyJobsQueryOptions = (input: {
@@ -180,7 +188,7 @@ export const taxonomyJobsQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'jobs', input],
     queryFn: () => getTaxonomyJobs({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyAttemptsQueryOptions = (input: {
@@ -191,7 +199,7 @@ export const taxonomyAttemptsQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'attempts', input],
     queryFn: () => getTaxonomyAttempts({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyCandidatesQueryOptions = (input: {
@@ -204,7 +212,7 @@ export const taxonomyCandidatesQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'candidates', input],
     queryFn: () => getTaxonomyCandidates({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyAuditQueryOptions = (input: {
@@ -216,7 +224,7 @@ export const taxonomyAuditQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'audit', input],
     queryFn: () => getTaxonomyAuditEvents({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyBatchesQueryOptions = (input: {
@@ -235,7 +243,7 @@ export const taxonomyBatchesQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'batches', input],
     queryFn: () => getTaxonomyBatches({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })
 
 export const taxonomyLocksQueryOptions = (input: {
@@ -246,5 +254,5 @@ export const taxonomyLocksQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'admin', 'taxonomy', 'locks', input],
     queryFn: () => getTaxonomyLocks({ data: input }),
-    staleTime: 5_000,
+    ...adminQueryFreshness,
   })

@@ -1,4 +1,5 @@
 import { createMiddleware, createServerFn } from '@tanstack/react-start'
+import { setResponseHeader } from '@tanstack/react-start/server'
 import { z } from 'zod'
 
 const loginInput = z.object({
@@ -41,5 +42,7 @@ export const adminAuthMiddleware = createMiddleware({
 }).server(async ({ next }) => {
   const { requireAdmin } = await import('./auth.server')
   const admin = await requireAdmin()
+  setResponseHeader('Cache-Control', 'private, no-store, max-age=0')
+  setResponseHeader('Pragma', 'no-cache')
   return next({ context: { admin } })
 })

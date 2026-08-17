@@ -324,7 +324,7 @@ export const transitionTaxonomyMode = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     await service().setMode(data.mode, context.admin.username)
     await publishTaxonomyChange()
-    return { mode: data.mode }
+    return { mode: data.mode, dashboard: await readTaxonomyDashboard(env.DB) }
   })
 
 export const triggerTaxonomyBackfill = createServerFn({ method: 'POST' })
@@ -431,7 +431,11 @@ export const resetTaxonomyCircuit = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     await service().resetCircuit(context.admin.username)
     await publishTaxonomyChange()
-    return { mode: 'shadow' as const, circuitState: 'closed' as const }
+    return {
+      mode: 'shadow' as const,
+      circuitState: 'closed' as const,
+      dashboard: await readTaxonomyDashboard(env.DB),
+    }
   })
 
 export const rollbackTaxonomyEvent = createServerFn({ method: 'POST' })
