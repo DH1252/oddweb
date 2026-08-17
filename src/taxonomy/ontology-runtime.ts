@@ -35,7 +35,8 @@ Use only supplied numeric tag IDs. Do not create categories.
 The requested concept already meets the configured distinct-site evidence threshold.
 A tag with canonical=false is an unresolved placeholder: propose a concept with its existing name and slug to promote it when it is valid, or propose an alias/merge when another tag is semantically identical.
 Aliases must be lexical equivalents.
-Merges require semantic identity. Parent edges must express a strict broader-to-narrower relationship.`
+Merges require semantic identity. Parent edges must express a strict broader-to-narrower relationship.
+Keep each evidence sentence under twenty words and emit only proposals that are strongly supported.`
 
 interface OntologyResult {
   config: ProviderConfig
@@ -65,6 +66,7 @@ function provider(
     allowedHosts: allowedProviderHosts(config.providerKind),
     timeoutMs: Math.min(config.timeoutMs, 60_000),
     maxRetries: 0,
+    maxOutputTokens: 4_096,
   }
   const runtime = { fetch: options.fetch, now: options.now ?? Date.now }
   return config.providerKind === 'gemini'
@@ -101,7 +103,7 @@ async function invoke(input: {
   const estimatedInputTokens = estimateTokens(
     `${ontologySystemPrompt}\n${input.prompt}`,
   )
-  const estimatedOutputTokens = 2_048
+  const estimatedOutputTokens = 4_096
   const reserved = await input.repository.reserveAttempt({
     id: attemptId,
     jobId: input.job.id,
@@ -603,7 +605,7 @@ export async function processOntologyJob(input: {
       if (config === primary.at(-1)) {
         if (
           error instanceof TaxonomyProviderError &&
-          error.code === 'rate_limit'
+          (error.code === 'rate_limit' || error.code === 'invalid_response')
         ) {
           throw error
         }

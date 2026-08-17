@@ -3524,6 +3524,55 @@ test('pending ontology jobs follow the activated policy revision', async (contex
   assert.equal(second.status, 'settled')
 })
 
+test('ontology contract violations surface the real error without retrying', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 16_300_000 })
+  const providerId = await addProvider(service, {
+    name: 'contract-violation-provider',
+    credential: 'contract-violation-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1
+       WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('contract concept')
+  assert.ok(jobId)
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 16_301_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({ schemaVersion: 1, proposals: 'oops' }),
+        }),
+    },
+  )
+  assert.equal(result.status, 'degraded')
+  assert.deepEqual(
+    await db
+      .prepare(
+        `SELECT last_error_code, last_error_summary, attempt_count
+         FROM taxonomy_jobs WHERE id = ?`,
+      )
+      .bind(jobId)
+      .first(),
+    {
+      last_error_code: 'permanent_failure',
+      last_error_summary: 'Provider output violated the response contract',
+      attempt_count: 1,
+    },
+  )
+})
+
 test('site classification can be disabled without stopping concept reassessment', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)
