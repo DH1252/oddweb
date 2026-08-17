@@ -13,7 +13,7 @@ import {
   stableJson,
   taxonomyJobKey,
 } from './normalize'
-import { TaxonomyRepository } from './repository'
+import { shadowSampleRequirement, TaxonomyRepository } from './repository'
 import { allowedProviderHosts } from './provider-security'
 import {
   createGeminiProvider,
@@ -170,7 +170,11 @@ export class TaxonomyService {
         requiredVoters,
       })
       if (
-        metrics.samples < Math.max(1, policy.shadowMinimumSamples) ||
+        metrics.samples <
+          shadowSampleRequirement(
+            policy.shadowMinimumSamples,
+            metrics.eligible,
+          ) ||
         metrics.coverageBasisPoints <
           Math.max(1, policy.shadowMinimumCoverageBasisPoints) ||
         metrics.schemaSuccessBasisPoints <

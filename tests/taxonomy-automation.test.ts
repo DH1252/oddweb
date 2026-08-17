@@ -493,10 +493,10 @@ test('mode gates require configuration, readiness metrics, ordering, and a close
   )
   await db
     .prepare(
-      `UPDATE taxonomy_policy_configs SET shadow_minimum_samples = 1,
-       shadow_minimum_coverage_basis_points = 1,
-       shadow_schema_success_basis_points = 1,
-       shadow_provider_agreement_basis_points = 1 WHERE id = 1`,
+      `UPDATE taxonomy_policy_configs SET shadow_minimum_samples = 20,
+        shadow_minimum_coverage_basis_points = 9000,
+        shadow_schema_success_basis_points = 9800,
+        shadow_provider_agreement_basis_points = 8000 WHERE id = 1`,
     )
     .run()
   await insertSite(db, 1)
@@ -516,7 +516,16 @@ test('mode gates require configuration, readiness metrics, ordering, and a close
       `INSERT INTO taxonomy_job_attempts
        (id, job_id, attempt_number, provider_config_id, status, provider_model,
         request_hash, input_tokens, output_tokens, started_at, completed_at)
-        VALUES ('ready-attempt', 'ready-job', 1, ?, 'succeeded', 'model', ?, 1, 1, 3999, 3999)`,
+        VALUES ('ready-attempt', 'ready-job', 1, ?, 'invalid_response', 'model', ?, 1, 1, 3999, 3999)`,
+    )
+    .bind(providerId, hash)
+    .run()
+  await db
+    .prepare(
+      `INSERT INTO taxonomy_job_attempts
+       (id, job_id, attempt_number, provider_config_id, status, provider_model,
+        request_hash, input_tokens, output_tokens, started_at, completed_at)
+       VALUES ('ready-retry', 'ready-job', 2, ?, 'succeeded', 'model', ?, 1, 1, 4000, 4000)`,
     )
     .bind(providerId, hash)
     .run()

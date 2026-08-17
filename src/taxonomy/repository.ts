@@ -13,6 +13,13 @@ import type {
 type BindValue = ArrayBuffer | ArrayBufferView | null | number | string
 type Row = Record<string, unknown>
 
+export function shadowSampleRequirement(
+  configuredMinimum: number,
+  eligibleSites: number,
+): number {
+  return Math.max(1, Math.min(configuredMinimum, eligibleSites))
+}
+
 function integer(row: Row, key: string): number {
   const value = row[key]
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
@@ -2847,6 +2854,7 @@ export class TaxonomyRepository {
     requiredVoters?: number
   }): Promise<{
     samples: number
+    eligible: number
     coverageBasisPoints: number
     schemaSuccessBasisPoints: number
     agreementBasisPoints: number
@@ -2860,11 +2868,10 @@ export class TaxonomyRepository {
        (SELECT count(*) FROM sites WHERE status = 'active') AS eligible,
        (SELECT count(DISTINCT site_id) FROM taxonomy_jobs WHERE kind = 'classify_site'
          AND status = 'settled' AND policy_config_id = ? AND provider_config_id = ?) AS covered,
-       (SELECT count(*) FROM taxonomy_job_attempts attempt JOIN taxonomy_jobs job ON job.id = attempt.job_id
-        WHERE job.kind = 'classify_site' AND job.policy_config_id = ? AND job.provider_config_id = ?) AS attempts,
-       (SELECT count(*) FROM taxonomy_job_attempts attempt JOIN taxonomy_jobs job ON job.id = attempt.job_id
-        WHERE attempt.status = 'succeeded' AND job.kind = 'classify_site'
-          AND job.policy_config_id = ? AND job.provider_config_id = ?) AS succeeded,
+       (SELECT count(*) FROM taxonomy_jobs job WHERE job.kind = 'classify_site'
+         AND job.status = 'settled' AND job.policy_config_id = ? AND job.provider_config_id = ?
+         AND EXISTS (SELECT 1 FROM taxonomy_job_attempts attempt
+                     WHERE attempt.job_id = job.id AND attempt.status = 'succeeded')) AS schema_valid,
        (SELECT count(*) FROM taxonomy_jobs job WHERE job.kind = 'classify_site'
          AND job.status = 'settled' AND job.policy_config_id = ? AND job.provider_config_id = ?
          AND (SELECT count(DISTINCT attempt.provider_config_id)
@@ -2882,8 +2889,6 @@ export class TaxonomyRepository {
         input.providerConfigId,
         input.policyConfigId,
         input.providerConfigId,
-        input.policyConfigId,
-        input.providerConfigId,
         requiredVoters,
         input.policyConfigId,
         input.providerConfigId,
@@ -2892,6 +2897,7 @@ export class TaxonomyRepository {
     if (!row) {
       return {
         samples: 0,
+        eligible: 0,
         coverageBasisPoints: 0,
         schemaSuccessBasisPoints: 0,
         agreementBasisPoints: 0,
@@ -2900,17 +2906,17 @@ export class TaxonomyRepository {
     const samples = integer(row, 'samples')
     const eligible = integer(row, 'eligible')
     const covered = integer(row, 'covered')
-    const attempts = integer(row, 'attempts')
-    const succeeded = integer(row, 'succeeded')
+    const schemaValid = integer(row, 'schema_valid')
     const voterComplete = integer(row, 'voter_complete')
     const disagreements = integer(row, 'disagreements')
     return {
       samples,
+      eligible,
       coverageBasisPoints: eligible
         ? Math.min(10_000, Math.floor((covered * 10_000) / eligible))
         : 0,
-      schemaSuccessBasisPoints: attempts
-        ? Math.floor((succeeded * 10_000) / attempts)
+      schemaSuccessBasisPoints: samples
+        ? Math.floor((schemaValid * 10_000) / samples)
         : 0,
       agreementBasisPoints: samples
         ? Math.max(

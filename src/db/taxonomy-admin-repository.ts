@@ -1,4 +1,4 @@
-import { TaxonomyRepository } from '../taxonomy'
+import { shadowSampleRequirement, TaxonomyRepository } from '../taxonomy'
 import type { RuntimePolicy, TaxonomyState } from '../taxonomy/runtime-types'
 
 type BindValue = ArrayBuffer | ArrayBufferView | null | number | string
@@ -305,13 +305,17 @@ export async function readTaxonomyDashboard(
     ),
   ])
   if (!totals) throw new Error('Taxonomy dashboard totals are unavailable')
+  const minimumSamples =
+    policy === null
+      ? null
+      : shadowSampleRequirement(policy.shadowMinimumSamples, readiness.eligible)
   const checks = {
     inShadowMode: state.mode === 'shadow',
     circuitClosed: state.circuitState === 'closed',
     providerConfigured: state.activeProviderConfigId !== null,
     policyConfigured: state.activePolicyConfigId !== null,
     minimumSamples:
-      policy !== null && readiness.samples >= policy.shadowMinimumSamples,
+      minimumSamples !== null && readiness.samples >= minimumSamples,
     minimumCoverage:
       policy !== null &&
       readiness.coverageBasisPoints >= policy.shadowMinimumCoverageBasisPoints,
@@ -354,7 +358,7 @@ export async function readTaxonomyDashboard(
       readyForGradual: Object.values(checks).every(Boolean),
       metrics: readiness,
       thresholds: {
-        samples: policy?.shadowMinimumSamples ?? null,
+        samples: minimumSamples,
         coverageBasisPoints: policy?.shadowMinimumCoverageBasisPoints ?? null,
         schemaSuccessBasisPoints:
           policy?.shadowSchemaSuccessBasisPoints ?? null,
