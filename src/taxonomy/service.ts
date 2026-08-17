@@ -1061,6 +1061,47 @@ export class TaxonomyService {
     return inserted ? id : null
   }
 
+  async forceConceptReassessment(
+    conceptInput: string,
+    priority = 0,
+  ): Promise<string | null> {
+    const concept = normalizeTaxonomyTag(conceptInput)
+    if (!concept) throw new TypeError('Concept cannot be empty')
+    const state = await this.repository.loadState()
+    const policy = await this.repository.loadPolicy(state.activePolicyConfigId)
+    const active = await this.repository.db
+      .prepare(
+        `SELECT id FROM taxonomy_jobs
+         WHERE kind = 'reassess_concept' AND concept_key = ?
+           AND taxonomy_version = ?
+           AND coalesce(provider_config_id, 0) = ?
+           AND status IN ('pending', 'leased', 'retry_wait')
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .bind(concept, state.publishedVersion, state.activeProviderConfigId ?? 0)
+      .first<{ id: string }>()
+    if (active) return active.id
+    const inputHash = await sha256Hex(stableJson({ concept, forced: true }))
+    const jobKey = `concept:${encodeURIComponent(concept)}:input:${inputHash}:taxonomy:${state.publishedVersion}:provider:${state.activeProviderConfigId ?? 0}`
+    const id = `tax:${(await sha256Hex(jobKey)).slice(0, 40)}`
+    const inserted = await this.repository.enqueueJob(
+      {
+        id,
+        jobKey,
+        kind: 'reassess_concept',
+        conceptKey: concept,
+        inputHash,
+        taxonomyVersion: state.publishedVersion,
+        providerConfigId: state.activeProviderConfigId,
+        policyConfigId: policy.id,
+        priority,
+        maxAttempts: Math.max(1, policy.retryBudget + 1),
+      },
+      nowSeconds(this.options),
+    )
+    return inserted ? id : null
+  }
+
   async enqueueOntologyCandidate(
     candidateId: string,
     priority = 10,

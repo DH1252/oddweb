@@ -68,6 +68,8 @@ import {
   decideTaxonomyCandidate,
   dispatchTaxonomyOutboxNow,
   enableTaxonomyProvider,
+  forceTagRelationInference,
+  forceUnmappedTagWrangling,
   releaseTaxonomyLock,
   resetTaxonomyCircuit,
   retryTaxonomyJobs,
@@ -230,6 +232,13 @@ export default function AdminPage() {
   const mergeTagMutation = useMutation({
     mutationFn: (input: { sourceId: number; targetSlug: string }) =>
       mergeTag({ data: input }),
+  })
+  const forceInferenceMutation = useMutation({
+    mutationFn: (input: { tagId: number }) =>
+      forceTagRelationInference({ data: input }),
+  })
+  const forceUnmappedWranglingMutation = useMutation({
+    mutationFn: () => forceUnmappedTagWrangling({ data: {} }),
   })
   const guestbookMutation = useMutation({
     mutationFn: (input: { id: number; hidden: boolean }) =>
@@ -476,6 +485,37 @@ export default function AdminPage() {
       const message = await handleAdminError(error, 'Could not merge tag.')
       setEditorError(message)
       showStatus(message, 'error')
+    }
+  }
+
+  async function forceTagInference(tag: AdminTagRecord) {
+    try {
+      await forceInferenceMutation.mutateAsync({ tagId: tag.id })
+      await refreshData()
+      showStatus(`Relation inference queued for "${tag.name}".`, 'success')
+    } catch (error) {
+      showStatus(
+        await handleAdminError(error, 'Could not queue tag inference.'),
+        'error',
+      )
+    }
+  }
+
+  async function forceUnmappedWrangling() {
+    try {
+      const result = await forceUnmappedWranglingMutation.mutateAsync()
+      await refreshData()
+      showStatus(
+        `Queued relation inference for ${result.enqueued} unmapped tag${
+          result.enqueued === 1 ? '' : 's'
+        }${result.skipped ? ` (${result.skipped} already queued)` : ''}.`,
+        'success',
+      )
+    } catch (error) {
+      showStatus(
+        await handleAdminError(error, 'Could not queue unmapped wrangling.'),
+        'error',
+      )
     }
   }
 
@@ -895,21 +935,36 @@ export default function AdminPage() {
             label={`${overview.unmappedTags} UNMAPPED`}
             className="md:col-span-2"
           >
-            <label className="mb-2.5 block max-w-md">
-              <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
-                Find a tag
-              </span>
-              <input
-                type="search"
-                value={tagSearch}
-                onChange={(event) => {
-                  setTagSearch(event.target.value)
-                  setTagPage(0)
-                }}
-                className={fieldClass}
-                placeholder="Search name, slug, or alias"
-              />
-            </label>
+            <div className="mb-2.5 flex flex-wrap items-end gap-2">
+              <label className="block w-full max-w-md">
+                <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                  Find a tag
+                </span>
+                <input
+                  type="search"
+                  value={tagSearch}
+                  onChange={(event) => {
+                    setTagSearch(event.target.value)
+                    setTagPage(0)
+                  }}
+                  className={fieldClass}
+                  placeholder="Search name, slug, or alias"
+                />
+              </label>
+              <button
+                type="button"
+                className={`${buttonClass} min-h-9`}
+                onClick={() => void forceUnmappedWrangling()}
+                disabled={
+                  forceUnmappedWranglingMutation.isPending ||
+                  forceInferenceMutation.isPending
+                }
+              >
+                {forceUnmappedWranglingMutation.isPending
+                  ? 'Queuing...'
+                  : 'Force unmapped wrangling'}
+              </button>
+            </div>
             {tagResults.items.length ? (
               <>
                 <div className="overflow-x-auto border border-line">
@@ -943,6 +998,11 @@ export default function AdminPage() {
                           disabled={
                             saveTagMutation.isPending ||
                             mergeTagMutation.isPending
+                          }
+                          onForce={forceTagInference}
+                          forceDisabled={
+                            forceInferenceMutation.isPending ||
+                            forceUnmappedWranglingMutation.isPending
                           }
                         />
                       ))}
@@ -4162,11 +4222,15 @@ function ManagedRow({
 function TagRow({
   tag,
   onEdit,
+  onForce,
   disabled,
+  forceDisabled,
 }: {
   tag: AdminTagRecord
   onEdit: (tag: AdminTagRecord) => void
+  onForce: (tag: AdminTagRecord) => void
   disabled: boolean
+  forceDisabled: boolean
 }) {
   return (
     <tr className="border-b border-dotted border-line last:border-b-0">
@@ -4187,14 +4251,25 @@ function TagRow({
         {tag.parents.length ? ` / Parents: ${tag.parents.join(', ')}` : ''}
       </td>
       <td className="p-2">
-        <button
-          type="button"
-          className={`${buttonClass} min-h-9`}
-          onClick={() => onEdit(tag)}
-          disabled={disabled}
-        >
-          Correct
-        </button>
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            className={`${buttonClass} min-h-9`}
+            onClick={() => onEdit(tag)}
+            disabled={disabled}
+          >
+            Correct
+          </button>
+          <button
+            type="button"
+            className={`${buttonClass} min-h-9`}
+            onClick={() => onForce(tag)}
+            disabled={disabled || forceDisabled}
+            aria-label={`Force relation inference for ${tag.name}`}
+          >
+            Force inference
+          </button>
+        </div>
       </td>
     </tr>
   )

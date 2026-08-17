@@ -361,6 +361,43 @@ export const triggerTaxonomyBackfill = createServerFn({ method: 'POST' })
     return { ...result, dispatched }
   })
 
+export const forceTagRelationInference = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => z.strictObject({ tagId: positiveId }).parse(data))
+  .handler(async ({ data }) => {
+    const tag = await service().repository.tagRecord(data.tagId)
+    if (!tag || tag.status !== 'active') throw new Error('Tag not found.')
+    const jobId = await service().forceConceptReassessment(tag.slug)
+    if (!jobId) throw new Error('Tag relation inference could not be queued.')
+    await publishTaxonomyChange()
+    return { jobId }
+  })
+
+export const forceUnmappedTagWrangling = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => z.strictObject({}).parse(data))
+  .handler(async () => {
+    const rows = await service()
+      .repository.db.prepare(
+        `SELECT slug FROM tags
+         WHERE status = 'active' AND canonical = 0
+         ORDER BY id LIMIT 25`,
+      )
+      .all<{ slug: string }>()
+    const jobIds: string[] = []
+    let skipped = 0
+    for (const row of rows.results) {
+      const jobId = await service().forceConceptReassessment(row.slug)
+      if (jobId) {
+        if (!jobIds.includes(jobId)) jobIds.push(jobId)
+      } else {
+        skipped += 1
+      }
+    }
+    if (jobIds.length) await publishTaxonomyChange()
+    return { enqueued: jobIds.length, skipped, jobIds }
+  })
+
 export const getTaxonomyJobs = createServerFn({ method: 'GET' })
   .middleware([adminAuthMiddleware])
   .validator((data) => jobsInput.parse(data))

@@ -3348,6 +3348,52 @@ test('enqueued taxonomy jobs dispatch to the queue immediately', async (context)
   assert.ok(outbox.jobId === 'immediate-dispatch-job')
 })
 
+test('forced reassessment enqueues after a settled concept job at the same version', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1, 'humor')
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 16_000_000 })
+  const providerId = await addProvider(service, {
+    name: 'forced-wrangle-provider',
+    credential: 'forced-wrangle-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  const standard = await service.enqueueConcept('humor')
+  assert.ok(standard)
+  await db
+    .prepare(
+      "UPDATE taxonomy_jobs SET status = 'settled', completed_at = ? WHERE id = ?",
+    )
+    .bind(16_000_001, standard)
+    .run()
+  const forced = await service.forceConceptReassessment('humor')
+  assert.ok(forced)
+  assert.notEqual(forced, standard)
+  const rows = await db
+    .prepare(
+      `SELECT id, status FROM taxonomy_jobs
+       WHERE kind = 'reassess_concept' ORDER BY created_at`,
+    )
+    .all<{ id: string; status: string }>()
+  assert.equal(rows.results.length, 2)
+  assert.deepEqual(
+    rows.results.map((row: { status: string }) => row.status),
+    ['settled', 'pending'],
+  )
+  const again = await service.forceConceptReassessment('humor')
+  assert.equal(again, forced)
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_jobs WHERE kind = 'reassess_concept'",
+      )
+      .first('count(*)'),
+    2,
+  )
+})
+
 test('site classification can be disabled without stopping concept reassessment', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)

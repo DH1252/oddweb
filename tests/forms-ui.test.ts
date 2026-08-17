@@ -470,3 +470,28 @@ test('admin data bypasses HTTP caches without destabilizing Suspense queries', a
   assert.match(queries, /refetchOnReconnect: true/)
   assert.match(queries, /refetchOnWindowFocus: true/)
 })
+
+test('admin tag wrangling buttons force relation inference', async () => {
+  const [admin, control] = await Promise.all([
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(
+      new URL('../src/server/taxonomy-admin.ts', import.meta.url),
+      'utf8',
+    ),
+  ])
+  assert.match(admin, /Force inference/)
+  assert.match(admin, /Force unmapped wrangling/)
+  assert.match(admin, /forceTagRelationInference\(\{ data: input \}\)/)
+  assert.match(admin, /forceUnmappedTagWrangling\(\{ data: \{\} \}\)/)
+  assert.match(
+    control,
+    /export const forceTagRelationInference = createServerFn\(\{ method: 'POST' \}\)[\s\S]*forceConceptReassessment\(tag\.slug\)/,
+  )
+  assert.match(
+    control,
+    /export const forceUnmappedTagWrangling = createServerFn\(\{ method: 'POST' \}\)[\s\S]*canonical = 0/,
+  )
+})
