@@ -4,9 +4,16 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { startTransition, useDeferredValue, useState } from 'react'
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { TagInput } from '../components/tag-input'
+import { LocalTime } from '../components/local-time'
 import {
   FieldLabel,
   ItemThumbnail,
@@ -87,6 +94,7 @@ import type {
 import type {
   TaxonomyPolicyCreateInput,
   TaxonomyProviderCreateInput,
+  TaxonomyProviderUpdateInput,
 } from '../server/taxonomy-admin-validation'
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected'
@@ -140,11 +148,10 @@ type ProviderActionInput = {
   providerConfigId: number
 }
 type ProviderActionResult =
-  | { ok: true; latencyMs: number; providerRequestId: string | null }
-  | { enabled: boolean }
-  | { activated: boolean }
-  | { disabled: boolean }
-
+  | Awaited<ReturnType<typeof testTaxonomyProvider>>
+  | Awaited<ReturnType<typeof enableTaxonomyProvider>>
+  | Awaited<ReturnType<typeof activateTaxonomyProvider>>
+  | Awaited<ReturnType<typeof disableTaxonomyProvider>>
 const adminPageSize = 12
 const automationPageSize = 20
 
@@ -190,6 +197,8 @@ function AdminPage() {
   const [tagPage, setTagPage] = useState(0)
   const [guestbookPage, setGuestbookPage] = useState(0)
   const [editingEntry, setEditingEntry] = useState<AdminSite | null>(null)
+  const [openingEditorId, setOpeningEditorId] = useState<number | null>(null)
+  const editorRequestRef = useRef(0)
   const [editingTag, setEditingTag] = useState<AdminTagRecord | null>(null)
   const [mergeTarget, setMergeTarget] = useState('')
   const [editorError, setEditorError] = useState('')
@@ -271,11 +280,20 @@ function AdminPage() {
   }
 
   async function refreshData() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
-      queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
-      queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
-    ])
+    const queryKeys = [
+      ['oddweb', 'admin'],
+      ['oddweb', 'public'],
+      ['oddweb', 'tags'],
+    ] as const
+    await Promise.all(
+      queryKeys.map(async (queryKey) => {
+        await queryClient.cancelQueries({ queryKey })
+        await queryClient.invalidateQueries({
+          queryKey,
+          refetchType: 'active',
+        })
+      }),
+    )
   }
 
   async function logOut() {
@@ -302,6 +320,9 @@ function AdminPage() {
         id: submission.id,
         status: nextStatus,
       })
+      setSubmissionPage(0)
+      setSitePage(0)
+      setTagPage(0)
       await refreshData()
       showStatus(
         nextStatus === 'approved'
@@ -323,6 +344,7 @@ function AdminPage() {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
+    removeEmptyFile(formData, 'image')
     const name = String(formData.get('name') || '').trim()
     showStatus(`Adding "${name}"...`)
     try {
@@ -330,6 +352,8 @@ function AdminPage() {
       if (!isCreatedSite(result)) {
         throw new Error('The site was not created.')
       }
+      setSitePage(0)
+      setTagPage(0)
       await refreshData()
       form.reset()
       setEntryTagInputKey((key) => key + 1)
@@ -352,6 +376,7 @@ function AdminPage() {
       return
     try {
       await statusMutation.mutateAsync({ id: entry.id, status: nextStatus })
+      setSitePage(0)
       await refreshData()
       showStatus(
         `${entry.name} is now ${nextStatus === 'active' ? 'published' : 'archived'}.`,
@@ -366,17 +391,37 @@ function AdminPage() {
   }
 
   async function openEditor(id: number) {
+    const request = ++editorRequestRef.current
     try {
+      setOpeningEditorId(id)
       showStatus('Loading site editor...')
-      setEditingEntry(await queryClient.fetchQuery(adminSiteQueryOptions(id)))
+      const entry = await queryClient.fetchQuery(adminSiteQueryOptions(id))
+      if (request !== editorRequestRef.current) return
+      setEditingEntry(entry)
       setEditorError('')
       showStatus('Ready.')
     } catch (error) {
+      if (request !== editorRequestRef.current) return
       showStatus(
         await handleAdminError(error, 'Could not load the site editor.'),
         'error',
       )
+    } finally {
+      if (request === editorRequestRef.current) setOpeningEditorId(null)
     }
+  }
+
+  function closeSiteEditor() {
+    editorRequestRef.current += 1
+    setOpeningEditorId(null)
+    setEditingEntry(null)
+    setEditorError('')
+  }
+
+  function closeTagEditor() {
+    setEditingTag(null)
+    setMergeTarget('')
+    setEditorError('')
   }
 
   async function saveEntry(event: FormEvent<HTMLFormElement>) {
@@ -392,8 +437,10 @@ function AdminPage() {
     try {
       setEditorError('')
       await editMutation.mutateAsync(formData)
+      setSitePage(0)
+      setTagPage(0)
       await refreshData()
-      setEditingEntry(null)
+      closeSiteEditor()
       showStatus(`Updated "${name}".`, 'success')
     } catch (error) {
       const message = await handleAdminError(
@@ -417,8 +464,10 @@ function AdminPage() {
         aliases: commaList(form.get('aliases')),
         parents: commaList(form.get('parents')),
       })
+      setTagPage(0)
+      setSitePage(0)
       await refreshData()
-      setEditingTag(null)
+      closeTagEditor()
       showStatus('Tag saved.', 'success')
     } catch (error) {
       const message = await handleAdminError(error, 'Could not save tag.')
@@ -441,9 +490,10 @@ function AdminPage() {
         sourceId: editingTag.id,
         targetSlug: mergeTarget.trim(),
       })
+      setTagPage(0)
+      setSitePage(0)
       await refreshData()
-      setEditingTag(null)
-      setMergeTarget('')
+      closeTagEditor()
       showStatus('Tags merged.', 'success')
     } catch (error) {
       const message = await handleAdminError(error, 'Could not merge tag.')
@@ -460,7 +510,11 @@ function AdminPage() {
     )
       return
     try {
-      await guestbookMutation.mutateAsync({ id, hidden })
+      const result = await guestbookMutation.mutateAsync({ id, hidden })
+      if (result.id !== id || result.hidden !== hidden) {
+        throw new Error('Guestbook visibility was not updated.')
+      }
+      setGuestbookPage(0)
       await refreshData()
       showStatus(
         hidden ? 'Guestbook entry hidden.' : 'Guestbook entry restored.',
@@ -626,6 +680,7 @@ function AdminPage() {
                 value={reviewFilter}
                 onChange={(event) => {
                   startTransition(() => {
+                    setSubmissionPage(0)
                     setReviewFilter(event.target.value as ReviewStatus | 'all')
                   })
                 }}
@@ -649,10 +704,7 @@ function AdminPage() {
                       key={submission.id}
                       submission={submission}
                       onReview={review}
-                      pending={
-                        reviewMutation.isPending &&
-                        reviewMutation.variables.id === submission.id
-                      }
+                      pending={reviewMutation.isPending}
                     />
                   ))}
                 </div>
@@ -768,6 +820,7 @@ function AdminPage() {
                   value={siteFilter}
                   onChange={(event) => {
                     startTransition(() => {
+                      setSitePage(0)
                       setSiteFilter(event.target.value as EntryStatus | 'all')
                     })
                   }}
@@ -837,10 +890,8 @@ function AdminPage() {
                           entry={entry}
                           onToggle={toggleEntry}
                           onEdit={openEditor}
-                          statusPending={
-                            statusMutation.isPending &&
-                            statusMutation.variables.id === entry.id
-                          }
+                          statusPending={statusMutation.isPending}
+                          editPending={openingEditorId === entry.id}
                         />
                       ))}
                     </tbody>
@@ -908,6 +959,7 @@ function AdminPage() {
                           key={tag.id}
                           tag={tag}
                           onEdit={(record) => {
+                            setEditorError('')
                             setEditingTag(record)
                             setMergeTarget('')
                           }}
@@ -952,7 +1004,12 @@ function AdminPage() {
                     >
                       <span className="font-mono text-xs">
                         <strong className="block">{entry.name}</strong>
-                        <span className="text-muted">{entry.date}</span>
+                        <span className="text-muted">
+                          <LocalTime
+                            seconds={entry.createdAt}
+                            fallback={entry.date}
+                          />
+                        </span>
                       </span>
                       <span className="text-sm text-brown">
                         {entry.message}
@@ -960,10 +1017,7 @@ function AdminPage() {
                       <button
                         type="button"
                         className={`${buttonClass} min-h-9`}
-                        disabled={
-                          guestbookMutation.isPending &&
-                          guestbookMutation.variables.id === entry.id
-                        }
+                        disabled={guestbookMutation.isPending}
                         onClick={() =>
                           changeGuestbookVisibility(entry.id, !entry.hidden)
                         }
@@ -1001,7 +1055,7 @@ function AdminPage() {
           entry={editingEntry}
           pending={editMutation.isPending}
           error={editorError}
-          onClose={() => setEditingEntry(null)}
+          onClose={closeSiteEditor}
           onSubmit={saveEntry}
         />
       ) : null}
@@ -1012,7 +1066,7 @@ function AdminPage() {
           onMergeTarget={setMergeTarget}
           pending={saveTagMutation.isPending || mergeTagMutation.isPending}
           error={editorError}
-          onClose={() => setEditingTag(null)}
+          onClose={closeTagEditor}
           onSubmit={saveTagRecord}
           onMerge={mergeCurrentTag}
         />
@@ -1089,6 +1143,17 @@ function AutomationSection({
       kind: jobKind,
     }),
   )
+  useEffect(() => {
+    setSelectedJobs((current) => {
+      const retryable = new Set(
+        jobs.items
+          .filter((job) => isRetryableJobStatus(job.status))
+          .map((job) => String(job.id)),
+      )
+      const next = current.filter((id) => retryable.has(id))
+      return next.length === current.length ? current : next
+    })
+  }, [jobs.items])
   const { data: attempts } = useSuspenseQuery(
     taxonomyAttemptsQueryOptions({
       page: attemptPage,
@@ -1135,12 +1200,48 @@ function AutomationSection({
           queryKey,
           refetchType: 'active',
         })
-        await queryClient.refetchQueries({
-          queryKey,
-          type: 'active',
-        })
       }),
     )
+  }
+
+  async function installDashboard(nextDashboard: typeof dashboard) {
+    const queryKey = taxonomyDashboardQueryOptions().queryKey
+    await queryClient.cancelQueries({ queryKey, exact: true })
+    queryClient.setQueryData(queryKey, nextDashboard)
+  }
+
+  async function installControlPlaneSnapshot(snapshot: {
+    dashboard: typeof dashboard
+    providers: typeof providers
+    policies: typeof policies
+  }) {
+    const dashboardKey = taxonomyDashboardQueryOptions().queryKey
+    const providersKey = taxonomyProvidersQueryOptions({
+      page: 0,
+      pageSize: automationPageSize,
+    }).queryKey
+    const policiesKey = taxonomyPoliciesQueryOptions({
+      page: 0,
+      pageSize: automationPageSize,
+    }).queryKey
+    const policyDefaultsKey = taxonomyPoliciesQueryOptions({
+      page: 0,
+      pageSize: 1,
+    }).queryKey
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: dashboardKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: providersKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: policiesKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: policyDefaultsKey, exact: true }),
+    ])
+    queryClient.setQueryData(dashboardKey, snapshot.dashboard)
+    queryClient.setQueryData(providersKey, snapshot.providers)
+    queryClient.setQueryData(policiesKey, snapshot.policies)
+    queryClient.setQueryData(policyDefaultsKey, {
+      ...snapshot.policies,
+      items: snapshot.policies.items.slice(0, 1),
+      pageSize: 1,
+    })
   }
 
   const providerActionMutation = useMutation<
@@ -1148,7 +1249,7 @@ function AutomationSection({
     Error,
     ProviderActionInput
   >({
-    mutationFn: (input) =>
+    mutationFn: (input: ProviderActionInput) =>
       input.action === 'test'
         ? testTaxonomyProvider({
             data: { providerConfigId: input.providerConfigId },
@@ -1164,6 +1265,14 @@ function AutomationSection({
             : disableTaxonomyProvider({
                 data: { providerConfigId: input.providerConfigId },
               }),
+  })
+  const providerUpdateMutation = useMutation({
+    mutationFn: (input: TaxonomyProviderUpdateInput) =>
+      updateTaxonomyProvider({ data: input }),
+  })
+  const providerDeleteMutation = useMutation({
+    mutationFn: (providerConfigId: number) =>
+      deleteTaxonomyProvider({ data: { providerConfigId } }),
   })
   const policyCreateMutation = useMutation({
     mutationFn: (input: TaxonomyPolicyInput) =>
@@ -1214,6 +1323,15 @@ function AutomationSection({
       reason: string
     }) => decideTaxonomyCandidate({ data: input }),
   })
+  const controlPlanePending =
+    providerCreatePending ||
+    providerActionMutation.isPending ||
+    providerUpdateMutation.isPending ||
+    providerDeleteMutation.isPending ||
+    policyCreateMutation.isPending ||
+    policyActivateMutation.isPending ||
+    modeMutation.isPending ||
+    circuitMutation.isPending
 
   async function submitProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1260,7 +1378,10 @@ function AutomationSection({
       const result = await request
       form.reset()
       setProviderKind('openai_compatible')
-      await invalidateTaxonomy('providers', 'dashboard')
+      setProviderPage(0)
+      setAuditPage(0)
+      await installControlPlaneSnapshot(result)
+      await invalidateTaxonomy('audit')
       if (result.enableError) {
         showStatus(
           `Provider configuration created disabled. Test failed: ${result.enableError}`,
@@ -1301,7 +1422,12 @@ function AutomationSection({
         throw new Error('Provider was not enabled')
       if ('disabled' in result && !result.disabled)
         throw new Error('Provider was not disabled')
-      await invalidateTaxonomy('providers', 'dashboard')
+      if (action !== 'test' && 'dashboard' in result) {
+        setProviderPage(0)
+        setAuditPage(0)
+        await installControlPlaneSnapshot(result)
+        await invalidateTaxonomy('audit')
+      }
       showStatus(
         action === 'test'
           ? `Provider test passed in ${'latencyMs' in result ? result.latencyMs : 0} ms.`
@@ -1350,10 +1476,15 @@ function AutomationSection({
               dialect: parseProviderDialect(data.get('dialect')),
             }
           : { ...shared, providerKind: kind, dialect: null }
-      await updateTaxonomyProvider({ data: input })
+      const result = await providerUpdateMutation.mutateAsync(input)
+      if (!result.updated)
+        throw new Error('Provider configuration was not updated')
       if (apiKeyInput) apiKeyInput.value = ''
       setEditingProviderId(null)
-      await invalidateTaxonomy('providers', 'dashboard')
+      setProviderPage(0)
+      setAuditPage(0)
+      await installControlPlaneSnapshot(result)
+      await invalidateTaxonomy('audit')
       showStatus(
         'Provider configuration updated. Structural changes disable the provider until it passes a new test.',
         'success',
@@ -1374,12 +1505,13 @@ function AutomationSection({
   async function deleteProvider(providerConfigId: number) {
     if (!window.confirm('Delete this provider configuration?')) return
     try {
-      const result = await deleteTaxonomyProvider({
-        data: { providerConfigId },
-      })
+      const result = await providerDeleteMutation.mutateAsync(providerConfigId)
       if (!result.deleted) throw new Error('Provider was not deleted')
       setEditingProviderId(null)
-      await invalidateTaxonomy('providers', 'dashboard')
+      setProviderPage(0)
+      setAuditPage(0)
+      await installControlPlaneSnapshot(result)
+      await invalidateTaxonomy('audit')
       showStatus('Provider configuration deleted.', 'success')
     } catch (error) {
       showStatus(
@@ -1406,7 +1538,10 @@ function AutomationSection({
         throw new Error('Policy revision was not created')
       }
       setPolicyDraft(null)
-      await invalidateTaxonomy('policies', 'dashboard')
+      setPolicyPage(0)
+      setAuditPage(0)
+      await installControlPlaneSnapshot(result)
+      await invalidateTaxonomy('audit')
       showStatus(
         draft
           ? `Policy revision created from revision ${draft.sourceRevision}.`
@@ -1447,7 +1582,12 @@ function AutomationSection({
         reason,
       })
       if (!result.decided) throw new Error('Candidate was already decided')
-      await invalidateTaxonomy('candidates', 'jobs', 'dashboard')
+      setCandidatePage(0)
+      if (decision === 'accepted') {
+        setJobPage(0)
+        setSelectedJobs([])
+      }
+      await invalidateTaxonomy('candidates', 'jobs', 'dashboard', 'audit')
       showStatus(
         decision === 'accepted'
           ? `Candidate accepted and queued as job ${result.jobId}.`
@@ -1468,7 +1608,9 @@ function AutomationSection({
       if (!result.activated)
         throw new Error('Policy revision was not activated')
       setPolicyPage(0)
-      await invalidateTaxonomy('policies', 'dashboard')
+      setAuditPage(0)
+      await installControlPlaneSnapshot(result)
+      await invalidateTaxonomy('audit')
       showStatus(
         'Policy revision activated. Backfill current-policy samples before promotion; elevated modes returned to shadow.',
         'success',
@@ -1492,10 +1634,9 @@ function AutomationSection({
   async function changeMode(mode: TaxonomyMode) {
     try {
       const result = await modeMutation.mutateAsync(mode)
-      queryClient.setQueryData(
-        taxonomyDashboardQueryOptions().queryKey,
-        result.dashboard,
-      )
+      setAuditPage(0)
+      await installDashboard(result.dashboard)
+      await invalidateTaxonomy('audit')
       showStatus(`Automation mode changed to ${modeLabel(mode)}.`, 'success')
     } catch (error) {
       showStatus(
@@ -1512,10 +1653,9 @@ function AutomationSection({
       return
     try {
       const result = await circuitMutation.mutateAsync()
-      queryClient.setQueryData(
-        taxonomyDashboardQueryOptions().queryKey,
-        result.dashboard,
-      )
+      setAuditPage(0)
+      await installDashboard(result.dashboard)
+      await invalidateTaxonomy('audit')
       showStatus('Circuit reset. Automation is in shadow mode.', 'success')
     } catch (error) {
       showStatus(
@@ -1537,6 +1677,8 @@ function AutomationSection({
         limit,
       })
       setBackfillCursor(result.nextCursor)
+      setJobPage(0)
+      setSelectedJobs([])
       await invalidateTaxonomy('dashboard', 'jobs')
       showStatus(
         `Backfill scanned ${result.scanned} sites, enqueued ${result.enqueued}, and dispatched ${result.dispatched}. ${result.nextCursor === null ? 'Scanning is complete; jobs remain pending until the queue consumer processes them.' : 'Continue scanning to cover remaining sites.'}`,
@@ -1561,6 +1703,7 @@ function AutomationSection({
     try {
       const result = await retryMutation.mutateAsync(selectedJobs)
       setSelectedJobs([])
+      setJobPage(0)
       await invalidateTaxonomy('jobs', 'dashboard')
       showStatus(
         `${result.retried} jobs returned to the queue${result.dispatched ? `, ${result.dispatched} dispatched` : ''}.`,
@@ -1601,6 +1744,9 @@ function AutomationSection({
       return
     try {
       await rollbackMutation.mutateAsync(input)
+      setAuditPage(0)
+      setBatchPage(0)
+      setJobPage(0)
       await invalidateTaxonomy('audit', 'batches', 'jobs', 'dashboard')
       showStatus(`${label} rollback completed.`, 'success')
     } catch (error) {
@@ -1645,7 +1791,9 @@ function AutomationSection({
     try {
       await lockCreateMutation.mutateAsync(input)
       form.reset()
-      await invalidateTaxonomy('locks', 'dashboard')
+      setLockPage(0)
+      setAuditPage(0)
+      await invalidateTaxonomy('locks', 'dashboard', 'audit')
       showStatus('Automation lock created.', 'success')
     } catch (error) {
       showStatus(
@@ -1662,8 +1810,12 @@ function AutomationSection({
     ).trim()
     if (!window.confirm(`Release automation lock ${id}?`)) return
     try {
-      await lockReleaseMutation.mutateAsync({ id, reason })
-      await invalidateTaxonomy('locks', 'dashboard')
+      const result = await lockReleaseMutation.mutateAsync({ id, reason })
+      if (!result.released)
+        throw new Error('Automation lock was already released')
+      setLockPage(0)
+      setAuditPage(0)
+      await invalidateTaxonomy('locks', 'dashboard', 'audit')
       showStatus('Automation lock released.', 'success')
     } catch (error) {
       showStatus(
@@ -1808,7 +1960,7 @@ function AutomationSection({
                   className={`${dashboard.state.mode === mode ? selectedButtonClass : buttonClass} min-h-9`}
                   aria-pressed={dashboard.state.mode === mode}
                   disabled={
-                    modeMutation.isPending ||
+                    controlPlanePending ||
                     dashboard.state.mode === mode ||
                     (mode !== 'disabled' &&
                       (dashboard.state.activeProviderConfigId === null ||
@@ -1836,7 +1988,7 @@ function AutomationSection({
               <button
                 type="button"
                 className={`${dangerButtonClass} min-h-9`}
-                disabled={circuitMutation.isPending}
+                disabled={controlPlanePending}
                 onClick={resetCircuit}
               >
                 {circuitMutation.isPending ? 'Resetting...' : 'Reset circuit'}
@@ -1924,10 +2076,7 @@ function AutomationSection({
                 className="m-0 grid list-none gap-2 p-0 outline-none sm:grid-cols-2"
               >
                 {providers.items.map((provider) => {
-                  const pending =
-                    providerActionMutation.isPending &&
-                    providerActionMutation.variables.providerConfigId ===
-                      Number(provider.id)
+                  const pending = controlPlanePending
                   return (
                     <li
                       key={String(provider.id)}
@@ -1973,7 +2122,9 @@ function AutomationSection({
                               runProviderAction('test', Number(provider.id))
                             }
                           >
-                            {pending &&
+                            {providerActionMutation.isPending &&
+                            providerActionMutation.variables
+                              .providerConfigId === Number(provider.id) &&
                             providerActionMutation.variables.action === 'test'
                               ? 'Testing...'
                               : 'Test'}
@@ -2002,7 +2153,9 @@ function AutomationSection({
                                 runProviderAction('enable', provider.id)
                               }
                             >
-                              {pending &&
+                              {providerActionMutation.isPending &&
+                              providerActionMutation.variables
+                                .providerConfigId === Number(provider.id) &&
                               providerActionMutation.variables.action ===
                                 'enable'
                                 ? 'Testing...'
@@ -2068,106 +2221,113 @@ function AutomationSection({
                           }
                           className="mt-2 grid gap-2 border-t border-line pt-2"
                         >
-                          <label className="grid gap-1 font-mono text-xs">
-                            Name
-                            <input
-                              name="name"
-                              defaultValue={String(provider.name)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            Endpoint
-                            <input
-                              name="endpoint"
-                              type="url"
-                              defaultValue={String(provider.endpoint)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            Model
-                            <input
-                              name="model"
-                              defaultValue={String(provider.model)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          {provider.providerKind !== 'gemini' ? (
+                          <fieldset
+                            disabled={controlPlanePending}
+                            className="m-0 grid min-w-0 gap-2 border-0 p-0"
+                          >
                             <label className="grid gap-1 font-mono text-xs">
-                              Dialect
+                              Name
+                              <input
+                                name="name"
+                                defaultValue={String(provider.name)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <label className="grid gap-1 font-mono text-xs">
+                              Endpoint
+                              <input
+                                name="endpoint"
+                                type="url"
+                                defaultValue={String(provider.endpoint)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <label className="grid gap-1 font-mono text-xs">
+                              Model
+                              <input
+                                name="model"
+                                defaultValue={String(provider.model)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            {provider.providerKind !== 'gemini' ? (
+                              <label className="grid gap-1 font-mono text-xs">
+                                Dialect
+                                <select
+                                  name="dialect"
+                                  defaultValue={String(
+                                    provider.dialect ?? 'responses',
+                                  )}
+                                  className="border border-line bg-paper px-2 py-1"
+                                >
+                                  <option value="responses">responses</option>
+                                  <option value="chat_completions">
+                                    chat_completions
+                                  </option>
+                                </select>
+                              </label>
+                            ) : null}
+                            <label className="grid gap-1 font-mono text-xs">
+                              Routing group
+                              <input
+                                name="routingGroup"
+                                defaultValue={String(provider.routingGroup)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <label className="grid gap-1 font-mono text-xs">
+                              Routing role
                               <select
-                                name="dialect"
-                                defaultValue={String(
-                                  provider.dialect ?? 'responses',
-                                )}
+                                name="routingRole"
+                                defaultValue={String(provider.routingRole)}
                                 className="border border-line bg-paper px-2 py-1"
                               >
-                                <option value="responses">responses</option>
-                                <option value="chat_completions">
-                                  chat_completions
-                                </option>
+                                <option value="primary">primary</option>
+                                <option value="failover">failover</option>
+                                <option value="consensus">consensus</option>
                               </select>
                             </label>
-                          ) : null}
-                          <label className="grid gap-1 font-mono text-xs">
-                            Routing group
-                            <input
-                              name="routingGroup"
-                              defaultValue={String(provider.routingGroup)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            Routing role
-                            <select
-                              name="routingRole"
-                              defaultValue={String(provider.routingRole)}
-                              className="border border-line bg-paper px-2 py-1"
-                            >
-                              <option value="primary">primary</option>
-                              <option value="failover">failover</option>
-                              <option value="consensus">consensus</option>
-                            </select>
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            Routing priority
-                            <input
-                              name="routingPriority"
-                              type="number"
-                              min={0}
-                              defaultValue={Number(provider.routingPriority)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            Timeout (ms)
-                            <input
-                              name="timeoutMs"
-                              type="number"
-                              min={1000}
-                              max={120000}
-                              defaultValue={Number(provider.timeoutMs)}
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <label className="grid gap-1 font-mono text-xs">
-                            New API key (optional)
-                            <input
-                              name="apiKey"
-                              type="password"
-                              autoComplete="off"
-                              placeholder="Leave empty to keep the stored key"
-                              className="border border-line bg-paper px-2 py-1"
-                            />
-                          </label>
-                          <p className="m-0 font-mono text-xs text-muted">
-                            Changing the endpoint, model, dialect, or key
-                            disables the provider until it passes a new test.
-                          </p>
-                          <button type="submit" className={buttonClass}>
-                            Save provider
-                          </button>
+                            <label className="grid gap-1 font-mono text-xs">
+                              Routing priority
+                              <input
+                                name="routingPriority"
+                                type="number"
+                                min={0}
+                                defaultValue={Number(provider.routingPriority)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <label className="grid gap-1 font-mono text-xs">
+                              Timeout (ms)
+                              <input
+                                name="timeoutMs"
+                                type="number"
+                                min={1000}
+                                max={120000}
+                                defaultValue={Number(provider.timeoutMs)}
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <label className="grid gap-1 font-mono text-xs">
+                              New API key (optional)
+                              <input
+                                name="apiKey"
+                                type="password"
+                                autoComplete="off"
+                                placeholder="Leave empty to keep the stored key"
+                                className="border border-line bg-paper px-2 py-1"
+                              />
+                            </label>
+                            <p className="m-0 font-mono text-xs text-muted">
+                              Changing the endpoint, model, dialect, or key
+                              disables the provider until it passes a new test.
+                            </p>
+                            <button type="submit" className={buttonClass}>
+                              {providerUpdateMutation.isPending
+                                ? 'Saving...'
+                                : 'Save provider'}
+                            </button>
+                          </fieldset>
                         </form>
                       ) : null}
                     </li>
@@ -2194,7 +2354,7 @@ function AutomationSection({
         <AutomationBox title="Create provider">
           <form onSubmit={submitProvider} autoComplete="off">
             <fieldset
-              disabled={providerCreatePending}
+              disabled={controlPlanePending}
               className="m-0 min-w-0 border-0 p-0"
             >
               <div className="grid gap-x-2 sm:grid-cols-2">
@@ -2331,8 +2491,12 @@ function AutomationSection({
                         </strong>
                         <span className="ml-2 text-xs text-muted">
                           #{String(policy.id)} /{' '}
-                          {formatTimestamp(policy.createdAt)} /{' '}
-                          {String(policy.createdBy)}
+                          <LocalTime
+                            seconds={Number(policy.createdAt)}
+                            fallback={formatTimestamp(policy.createdAt)}
+                            style="dateTime"
+                          />{' '}
+                          / {String(policy.createdBy)}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -2344,7 +2508,7 @@ function AutomationSection({
                           <button
                             type="button"
                             className={buttonClass}
-                            disabled={policyActivateMutation.isPending}
+                            disabled={controlPlanePending}
                             onClick={() => activatePolicy(Number(policy.id))}
                           >
                             {policyActivateMutation.isPending &&
@@ -2357,6 +2521,7 @@ function AutomationSection({
                         <button
                           type="button"
                           className={buttonClass}
+                          disabled={controlPlanePending}
                           onClick={() => editPolicy(policy)}
                         >
                           Edit
@@ -2425,7 +2590,7 @@ function AutomationSection({
             <button
               type="submit"
               className={primaryButtonClass}
-              disabled={policyCreateMutation.isPending}
+              disabled={controlPlanePending}
             >
               {policyCreateMutation.isPending
                 ? 'Creating...'
@@ -2437,6 +2602,7 @@ function AutomationSection({
               <button
                 type="button"
                 className={`ml-1 ${buttonClass}`}
+                disabled={controlPlanePending}
                 onClick={() => setPolicyDraft(null)}
               >
                 Discard edits
@@ -2465,6 +2631,7 @@ function AutomationSection({
                 value={candidateStatus ?? ''}
                 onChange={(event) => {
                   startTransition(() => {
+                    setCandidatePage(0)
                     setCandidateStatus(parseCandidateStatus(event.target.value))
                   })
                 }}
@@ -2486,6 +2653,7 @@ function AutomationSection({
                 value={candidateKind ?? ''}
                 onChange={(event) => {
                   startTransition(() => {
+                    setCandidatePage(0)
                     setCandidateKind(parseCandidateKind(event.target.value))
                   })
                 }}
@@ -2507,10 +2675,7 @@ function AutomationSection({
                 className="m-0 grid list-none gap-2 p-0 outline-none lg:grid-cols-2"
               >
                 {candidates.items.map((candidate) => {
-                  const pending =
-                    candidateDecisionMutation.isPending &&
-                    candidateDecisionMutation.variables.candidateId ===
-                      candidate.id
+                  const pending = candidateDecisionMutation.isPending
                   return (
                     <li
                       key={candidate.id}
@@ -2694,6 +2859,7 @@ function AutomationSection({
                 value={jobStatus || ''}
                 onChange={(event) => {
                   startTransition(() => {
+                    setJobPage(0)
                     setJobStatus(
                       (event.target.value || null) as TaxonomyJobStatus | null,
                     )
@@ -2718,6 +2884,7 @@ function AutomationSection({
                 value={jobKind || ''}
                 onChange={(event) => {
                   startTransition(() => {
+                    setJobPage(0)
                     setJobKind(
                       (event.target.value || null) as TaxonomyJobKind | null,
                     )
@@ -2767,140 +2934,142 @@ function AutomationSection({
           </p>
           {jobs.items.length ? (
             <>
-              <ul className="m-0 grid list-none gap-2 p-0 md:hidden">
-                {jobs.items.map((job) => {
-                  const id = String(job.id)
-                  const retryable = isRetryableJobStatus(job.status)
-                  return (
-                    <li key={id} className="border border-line bg-paper p-2">
-                      <div className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select job ${id} for retry`}
-                          disabled={!retryable}
-                          checked={selectedJobs.includes(id)}
-                          onChange={(event) =>
-                            setSelectedJobs((current) =>
-                              event.target.checked
-                                ? [...new Set([...current, id])]
-                                : current.filter((value) => value !== id),
-                            )
-                          }
-                        />
-                        <div className="min-w-0">
-                          <strong className="block">
-                            {humanize(String(job.kind))} /{' '}
-                            {humanize(String(job.status))}
-                          </strong>
-                          <span className="block font-mono text-xs text-muted [overflow-wrap:anywhere]">
-                            {id}
-                          </span>
-                          <p className="my-1 font-mono text-xs">
-                            {job.siteId
-                              ? `Site #${String(job.siteId)}`
-                              : String(job.conceptKey || '-')}{' '}
-                            / taxonomy v{String(job.taxonomyVersion)}
-                            <br />
-                            Attempts {String(job.attemptCount)} /{' '}
-                            {String(job.maxAttempts)} (
-                            {String(job.recordedAttempts)} recorded)
-                          </p>
-                          {job.lastErrorCode ? (
-                            <p className="mb-0 text-xs text-danger [overflow-wrap:anywhere]">
-                              {String(job.lastErrorCode)}:{' '}
-                              {String(job.lastErrorSummary || '')}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-              <div className="hidden overflow-x-auto border border-line md:block">
-                <table
-                  id="taxonomy-job-results"
-                  tabIndex={-1}
-                  className="w-full min-w-[900px] border-collapse outline-none"
-                >
-                  <caption className="sr-only">
-                    Taxonomy automation jobs
-                  </caption>
-                  <thead>
-                    <tr className="bg-brown text-left font-mono text-xs text-paper uppercase">
-                      <th className="p-2">
-                        <span className="sr-only">Select retryable job</span>
-                      </th>
-                      <th className="p-2">Job</th>
-                      <th className="p-2">Target</th>
-                      <th className="p-2">Status</th>
-                      <th className="p-2">Attempts</th>
-                      <th className="p-2">Error</th>
-                      <th className="p-2">Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jobs.items.map((job) => {
-                      const id = String(job.id)
-                      const retryable = isRetryableJobStatus(job.status)
-                      return (
-                        <tr
-                          key={id}
-                          className="border-b border-dotted border-line last:border-0"
-                        >
-                          <td className="p-2 align-top">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select job ${id} for retry`}
-                              disabled={!retryable}
-                              checked={selectedJobs.includes(id)}
-                              onChange={(event) =>
-                                setSelectedJobs((current) =>
-                                  event.target.checked
-                                    ? [...new Set([...current, id])]
-                                    : current.filter((value) => value !== id),
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="p-2 align-top">
-                            <strong className="block font-mono text-xs">
-                              {humanize(String(job.kind))}
+              <div id="taxonomy-job-results" tabIndex={-1}>
+                <ul className="m-0 grid list-none gap-2 p-0 md:hidden">
+                  {jobs.items.map((job) => {
+                    const id = String(job.id)
+                    const retryable = isRetryableJobStatus(job.status)
+                    return (
+                      <li key={id} className="border border-line bg-paper p-2">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select job ${id} for retry`}
+                            disabled={!retryable}
+                            checked={selectedJobs.includes(id)}
+                            onChange={(event) =>
+                              setSelectedJobs((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, id])]
+                                  : current.filter((value) => value !== id),
+                              )
+                            }
+                          />
+                          <div className="min-w-0">
+                            <strong className="block">
+                              {humanize(String(job.kind))} /{' '}
+                              {humanize(String(job.status))}
                             </strong>
-                            <span className="font-mono text-[11px] text-muted">
+                            <span className="block font-mono text-xs text-muted [overflow-wrap:anywhere]">
                               {id}
                             </span>
-                          </td>
-                          <td className="p-2 align-top font-mono text-xs">
-                            {job.siteId
-                              ? `Site #${String(job.siteId)}`
-                              : job.conceptKey
-                                ? String(job.conceptKey)
+                            <p className="my-1 font-mono text-xs">
+                              {job.siteId
+                                ? `Site #${String(job.siteId)}`
+                                : String(job.conceptKey || '-')}{' '}
+                              / taxonomy v{String(job.taxonomyVersion)}
+                              <br />
+                              Attempts {String(job.attemptCount)} /{' '}
+                              {String(job.maxAttempts)} (
+                              {String(job.recordedAttempts)} recorded)
+                            </p>
+                            {job.lastErrorCode ? (
+                              <p className="mb-0 text-xs text-danger [overflow-wrap:anywhere]">
+                                {String(job.lastErrorCode)}:{' '}
+                                {String(job.lastErrorSummary || '')}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <div className="hidden overflow-x-auto border border-line md:block">
+                  <table className="w-full min-w-[900px] border-collapse">
+                    <caption className="sr-only">
+                      Taxonomy automation jobs
+                    </caption>
+                    <thead>
+                      <tr className="bg-brown text-left font-mono text-xs text-paper uppercase">
+                        <th className="p-2">
+                          <span className="sr-only">Select retryable job</span>
+                        </th>
+                        <th className="p-2">Job</th>
+                        <th className="p-2">Target</th>
+                        <th className="p-2">Status</th>
+                        <th className="p-2">Attempts</th>
+                        <th className="p-2">Error</th>
+                        <th className="p-2">Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobs.items.map((job) => {
+                        const id = String(job.id)
+                        const retryable = isRetryableJobStatus(job.status)
+                        return (
+                          <tr
+                            key={id}
+                            className="border-b border-dotted border-line last:border-0"
+                          >
+                            <td className="p-2 align-top">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select job ${id} for retry`}
+                                disabled={!retryable}
+                                checked={selectedJobs.includes(id)}
+                                onChange={(event) =>
+                                  setSelectedJobs((current) =>
+                                    event.target.checked
+                                      ? [...new Set([...current, id])]
+                                      : current.filter((value) => value !== id),
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2 align-top">
+                              <strong className="block font-mono text-xs">
+                                {humanize(String(job.kind))}
+                              </strong>
+                              <span className="font-mono text-[11px] text-muted">
+                                {id}
+                              </span>
+                            </td>
+                            <td className="p-2 align-top font-mono text-xs">
+                              {job.siteId
+                                ? `Site #${String(job.siteId)}`
+                                : job.conceptKey
+                                  ? String(job.conceptKey)
+                                  : '-'}
+                              <br />
+                              Taxonomy v{String(job.taxonomyVersion)}
+                            </td>
+                            <td className="p-2 align-top">
+                              {humanize(String(job.status))}
+                            </td>
+                            <td className="p-2 align-top font-mono text-xs">
+                              {String(job.attemptCount)} /{' '}
+                              {String(job.maxAttempts)} (
+                              {String(job.recordedAttempts)} recorded)
+                            </td>
+                            <td className="max-w-64 p-2 align-top text-xs [overflow-wrap:anywhere]">
+                              {job.lastErrorCode
+                                ? `${String(job.lastErrorCode)}: ${String(job.lastErrorSummary || '')}`
                                 : '-'}
-                            <br />
-                            Taxonomy v{String(job.taxonomyVersion)}
-                          </td>
-                          <td className="p-2 align-top">
-                            {humanize(String(job.status))}
-                          </td>
-                          <td className="p-2 align-top font-mono text-xs">
-                            {String(job.attemptCount)} /{' '}
-                            {String(job.maxAttempts)} (
-                            {String(job.recordedAttempts)} recorded)
-                          </td>
-                          <td className="max-w-64 p-2 align-top text-xs [overflow-wrap:anywhere]">
-                            {job.lastErrorCode
-                              ? `${String(job.lastErrorCode)}: ${String(job.lastErrorSummary || '')}`
-                              : '-'}
-                          </td>
-                          <td className="p-2 align-top font-mono text-xs">
-                            {formatTimestamp(job.updatedAt)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                            <td className="p-2 align-top font-mono text-xs">
+                              <LocalTime
+                                seconds={Number(job.updatedAt)}
+                                fallback={formatTimestamp(job.updatedAt)}
+                                style="dateTime"
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <AdminPagination
                 page={jobs.page}
@@ -3006,10 +3175,21 @@ function AutomationSection({
                             Timing
                           </dt>
                           <dd className="m-0">
-                            {formatTimestamp(attempt.startedAt)} to{' '}
-                            {attempt.completedAt
-                              ? formatTimestamp(attempt.completedAt)
-                              : 'in progress'}
+                            <LocalTime
+                              seconds={Number(attempt.startedAt)}
+                              fallback={formatTimestamp(attempt.startedAt)}
+                              style="dateTime"
+                            />{' '}
+                            to{' '}
+                            {attempt.completedAt ? (
+                              <LocalTime
+                                seconds={Number(attempt.completedAt)}
+                                fallback={formatTimestamp(attempt.completedAt)}
+                                style="dateTime"
+                              />
+                            ) : (
+                              'in progress'
+                            )}
                           </dd>
                         </div>
                         {attempt.errorCode || attempt.errorSummary ? (
@@ -3108,7 +3288,11 @@ function AutomationSection({
                           <span className="font-mono text-xs text-muted">
                             {eventId} / {String(event.entityType)}{' '}
                             {String(event.entityId)} /{' '}
-                            {formatTimestamp(event.createdAt)}
+                            <LocalTime
+                              seconds={Number(event.createdAt)}
+                              fallback={formatTimestamp(event.createdAt)}
+                              style="dateTime"
+                            />
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1">
@@ -3182,6 +3366,7 @@ function AutomationSection({
               value={batchStatus || ''}
               onChange={(event) => {
                 startTransition(() => {
+                  setBatchPage(0)
                   setBatchStatus(
                     (event.target.value || null) as TaxonomyBatchStatus | null,
                   )
@@ -3218,7 +3403,11 @@ function AutomationSection({
                           </strong>
                           <span className="font-mono text-xs text-muted">
                             {id} / {String(batch.eventCount)} events /{' '}
-                            {formatTimestamp(batch.createdAt)}
+                            <LocalTime
+                              seconds={Number(batch.createdAt)}
+                              fallback={formatTimestamp(batch.createdAt)}
+                              style="dateTime"
+                            />
                           </span>
                         </div>
                         <button
@@ -3273,6 +3462,7 @@ function AutomationSection({
               value={lockState}
               onChange={(event) => {
                 startTransition(() => {
+                  setLockPage(0)
                   setLockState(event.target.value as typeof lockState)
                 })
               }}
@@ -3304,9 +3494,18 @@ function AutomationSection({
                           </span>
                         </div>
                         <span className="font-mono text-xs">
-                          {lock.releasedAt
-                            ? `Released ${formatTimestamp(lock.releasedAt)}`
-                            : 'Active'}
+                          {lock.releasedAt ? (
+                            <>
+                              Released{' '}
+                              <LocalTime
+                                seconds={Number(lock.releasedAt)}
+                                fallback={formatTimestamp(lock.releasedAt)}
+                                style="dateTime"
+                              />
+                            </>
+                          ) : (
+                            'Active'
+                          )}
                         </span>
                       </div>
                       <p className="my-1 text-sm">{String(lock.reason)}</p>
@@ -3552,6 +3751,13 @@ function canTransitionMode(
 
 function numberFromForm(data: FormData, name: string) {
   return Number(data.get(name))
+}
+
+function removeEmptyFile(data: FormData, name: string) {
+  const value = data.get(name)
+  if (value === '' || (value instanceof File && value.size === 0)) {
+    data.delete(name)
+  }
 }
 
 function isCreatedSite(value: unknown): value is { created: true; id: number } {
@@ -3808,7 +4014,11 @@ function SubmissionCard({
           </div>
           <p className="my-1.5 text-brown">{submission.description}</p>
           <p className="mb-2 font-mono text-xs text-muted">
-            {submission.date} / {submission.tags.join(', ')}
+            <LocalTime
+              seconds={submission.submittedAt}
+              fallback={submission.date}
+            />{' '}
+            / {submission.tags.join(', ')}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {submission.status !== 'approved' ? (
@@ -3853,11 +4063,13 @@ function ManagedRow({
   onToggle,
   onEdit,
   statusPending,
+  editPending,
 }: {
   entry: AdminSite
   onToggle: (entry: AdminSite) => void
   onEdit: (id: number) => void
   statusPending: boolean
+  editPending: boolean
 }) {
   return (
     <tr className="border-b border-dotted border-line last:border-b-0 hover:bg-canvas">
@@ -3903,8 +4115,10 @@ function ManagedRow({
             type="button"
             className={`${buttonClass} min-h-9`}
             onClick={() => onEdit(entry.id)}
+            disabled={editPending || statusPending}
+            aria-label={`Edit ${entry.name}`}
           >
-            Edit
+            {editPending ? 'Loading...' : 'Edit'}
           </button>
           {entry.source !== 'Directory' ? (
             <button
@@ -3912,6 +4126,7 @@ function ManagedRow({
               className={`${buttonClass} min-h-9`}
               onClick={() => onToggle(entry)}
               disabled={statusPending}
+              aria-label={`${entry.status === 'active' ? 'Archive' : 'Restore'} ${entry.name}`}
             >
               {statusPending
                 ? 'Updating...'
@@ -4019,7 +4234,9 @@ function SiteEditor({
               />
             </div>
             <div>
-              <FieldLabel>Current thumbnail</FieldLabel>
+              <p className="mb-1 font-mono text-xs font-bold tracking-wide uppercase">
+                Current thumbnail
+              </p>
               <ItemThumbnail
                 thumbnailKey={entry.thumbnailKey}
                 alt={entry.thumbnailAlt || `Preview of ${entry.name}`}
@@ -4124,19 +4341,31 @@ function SiteEditor({
                 initialLabels={entry.tagLabels}
               />
             </div>
-            <label className="mb-2.5 block">
-              <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
-                Status
-              </span>
-              <select
-                name="status"
-                defaultValue={entry.status}
-                className={fieldClass}
-              >
-                <option value="active">Published</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
+            {entry.source === 'Directory' ? (
+              <div className="mb-2.5 block">
+                <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                  Status
+                </span>
+                <input type="hidden" name="status" value={entry.status} />
+                <p className="m-0 min-h-11 border border-line bg-canvas px-3 py-2">
+                  Published (bundled record)
+                </p>
+              </div>
+            ) : (
+              <label className="mb-2.5 block">
+                <span className="mb-1 block font-mono text-xs font-bold tracking-wide uppercase">
+                  Status
+                </span>
+                <select
+                  name="status"
+                  defaultValue={entry.status}
+                  className={fieldClass}
+                >
+                  <option value="active">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+            )}
           </div>
           <EditorActions pending={pending} onClose={onClose} />
         </fieldset>

@@ -15,6 +15,7 @@ import {
 } from 'react'
 
 import { TagInput } from '../components/tag-input'
+import { LocalTime } from '../components/local-time'
 import {
   FieldLabel,
   ItemThumbnail,
@@ -295,6 +296,7 @@ function DirectoryPage() {
     event.preventDefault()
     const form = event.currentTarget
     const formData = new FormData(form)
+    removeEmptyFile(formData, 'image')
     const name = String(formData.get('name') || 'Your site')
 
     setNotice('')
@@ -599,7 +601,10 @@ function DirectoryPage() {
                     {filing.name}
                   </a>
                   <span className="ml-2 font-mono text-xs text-muted">
-                    {filing.date}
+                    <LocalTime
+                      seconds={filing.submittedAt}
+                      fallback={filing.date}
+                    />
                   </span>
                   <p className="mt-1 mb-0 text-sm text-brown">
                     {filing.description}
@@ -660,7 +665,12 @@ function DirectoryPage() {
                     className="grid grid-cols-[1fr_auto] gap-x-2 border-t border-dotted border-muted py-1.5 first:border-t-0"
                   >
                     <strong>{entry.name}</strong>
-                    <span className="text-muted">{entry.date}</span>
+                    <span className="text-muted">
+                      <LocalTime
+                        seconds={entry.createdAt}
+                        fallback={entry.date}
+                      />
+                    </span>
                     <span className="col-span-2 text-brown">
                       {entry.message}
                     </span>
@@ -839,7 +849,10 @@ function SiteRow({
             {site.visits} {site.visits === 1 ? 'view' : 'views'}
           </span>
           <span aria-hidden="true">/</span>
-          <time dateTime={site.added}>Added {site.addedLabel}</time>
+          <span>
+            Added{' '}
+            <LocalTime seconds={site.addedAt} fallback={site.addedLabel} />
+          </span>
         </div>
       </div>
     </article>
@@ -1043,4 +1056,11 @@ function isSubmittedSite(value: unknown): value is { submitted: true } {
     'submitted' in value &&
     value.submitted === true
   )
+}
+
+function removeEmptyFile(data: FormData, name: string) {
+  const value = data.get(name)
+  if (value === '' || (value instanceof File && value.size === 0)) {
+    data.delete(name)
+  }
 }

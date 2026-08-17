@@ -18,6 +18,7 @@ export type SiteEntry = {
   visits: number
   added: string
   addedLabel: string
+  addedAt?: number
   accent: string
   thumbnailKey?: string
   thumbnailAlt?: string
@@ -29,6 +30,7 @@ export type RecentFiling = {
   description: string
   tags: string[]
   date: string
+  submittedAt?: number
   thumbnailKey?: string
   thumbnailAlt?: string
 }

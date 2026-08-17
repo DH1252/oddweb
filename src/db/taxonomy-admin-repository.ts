@@ -179,6 +179,10 @@ function pageResult<T>(
   return { items, page: input.page, pageSize: input.pageSize, total }
 }
 
+function safePage(total: number, page: number, pageSize: number) {
+  return Math.min(page, Math.max(0, Math.ceil(total / pageSize) - 1))
+}
+
 function maskFingerprint(value: unknown) {
   const fingerprint = String(value ?? '')
   return `****${fingerprint.slice(-8)}`
@@ -387,6 +391,7 @@ export async function listTaxonomyProviders(
     [],
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT id, name, revision, provider_kind AS providerKind, endpoint, model,
             dialect, routing_group AS routingGroup, routing_role AS routingRole,
@@ -394,9 +399,11 @@ export async function listTaxonomyProviders(
             key_version AS keyVersion, credential_fingerprint AS credentialFingerprint,
             enabled, supersedes_id AS supersedesId, created_by AS createdBy,
             created_at AS createdAt
-     FROM taxonomy_provider_configs ORDER BY name, revision DESC, id DESC
+     FROM taxonomy_provider_configs
+     ORDER BY id = (SELECT active_provider_config_id FROM taxonomy_state WHERE id = 1) DESC,
+              name, revision DESC, id DESC
      LIMIT ?1 OFFSET ?2`,
-    [input.pageSize, input.page * input.pageSize],
+    [input.pageSize, page * input.pageSize],
     db,
   )
   return pageResult(
@@ -415,12 +422,12 @@ export async function listTaxonomyProviders(
       keyVersion: numberValue(row, 'keyVersion'),
       credentialFingerprint: maskFingerprint(row.credentialFingerprint),
       enabled: Boolean(row.enabled),
-      active: row.id === state.activeProviderConfigId,
+      active: numberValue(row, 'id') === state.activeProviderConfigId,
       supersedesId: nullableNumber(row, 'supersedesId'),
       createdBy: stringValue(row, 'createdBy'),
       createdAt: numberValue(row, 'createdAt'),
     })),
-    input,
+    { ...input, page },
     total,
   )
 }
@@ -435,6 +442,7 @@ export async function listTaxonomyPolicies(
     [],
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT id, revision, assignment_limit AS assignmentLimit,
             novel_evidence_site_threshold AS novelEvidenceSiteThreshold,
@@ -462,7 +470,7 @@ export async function listTaxonomyPolicies(
      ORDER BY id = (SELECT active_policy_config_id FROM taxonomy_state WHERE id = 1) DESC,
               revision DESC
      LIMIT ?1 OFFSET ?2`,
-    [input.pageSize, input.page * input.pageSize],
+    [input.pageSize, page * input.pageSize],
     db,
   )
   return pageResult(
@@ -518,12 +526,12 @@ export async function listTaxonomyPolicies(
       ),
       promptHash: stringValue(row, 'promptHash'),
       schemaHash: stringValue(row, 'schemaHash'),
-      active: row.id === state.activePolicyConfigId,
+      active: numberValue(row, 'id') === state.activePolicyConfigId,
       supersedesId: nullableNumber(row, 'supersedesId'),
       createdBy: stringValue(row, 'createdBy'),
       createdAt: numberValue(row, 'createdAt'),
     })),
-    input,
+    { ...input, page },
     total,
   )
 }
@@ -553,6 +561,7 @@ export async function listTaxonomyJobs(
     values,
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const items = await rows(
     `SELECT j.id, j.kind, j.site_id AS siteId, j.concept_key AS conceptKey,
             j.taxonomy_version AS taxonomyVersion, j.provider_config_id AS providerConfigId,
@@ -566,10 +575,10 @@ export async function listTaxonomyJobs(
      FROM taxonomy_jobs j ${where}
      ORDER BY j.created_at DESC, j.id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
-    [...values, input.pageSize, input.page * input.pageSize],
+    [...values, input.pageSize, page * input.pageSize],
     db,
   )
-  return pageResult(items, input, total)
+  return pageResult(items, { ...input, page }, total)
 }
 
 export async function listTaxonomyCandidates(
@@ -597,6 +606,7 @@ export async function listTaxonomyCandidates(
     values,
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT c.id, c.job_id AS jobId, c.attempt_id AS attemptId,
             c.candidate_key AS candidateKey, c.kind, c.tag_id AS tagId,
@@ -623,7 +633,7 @@ export async function listTaxonomyCandidates(
      FROM taxonomy_candidates c ${where}
      ORDER BY c.created_at DESC, c.id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
-    [...values, input.pageSize, input.page * input.pageSize],
+    [...values, input.pageSize, page * input.pageSize],
     db,
   )
   return pageResult(
@@ -649,7 +659,7 @@ export async function listTaxonomyCandidates(
       evidence: candidateEvidence(parseJson(row.evidence)),
       evidenceTotal: numberValue(row, 'evidenceTotal'),
     })),
-    input,
+    { ...input, page },
     total,
   )
 }
@@ -669,6 +679,7 @@ export async function listTaxonomyAttempts(
     values,
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT a.id, a.job_id AS jobId, a.attempt_number AS attemptNumber,
             a.provider_config_id AS providerConfigId, a.status,
@@ -681,7 +692,7 @@ export async function listTaxonomyAttempts(
      FROM taxonomy_job_attempts a ${where}
      ORDER BY a.started_at DESC, a.id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
-    [...values, input.pageSize, input.page * input.pageSize],
+    [...values, input.pageSize, page * input.pageSize],
     db,
   )
   return pageResult(
@@ -703,7 +714,7 @@ export async function listTaxonomyAttempts(
       startedAt: numberValue(row, 'startedAt'),
       completedAt: nullableNumber(row, 'completedAt'),
     })),
-    input,
+    { ...input, page },
     total,
   )
 }
@@ -733,6 +744,7 @@ export async function listTaxonomyAuditEvents(
     values,
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const items = await rows(
     `SELECT e.id, e.batch_id AS batchId, e.job_id AS jobId,
             e.decision_id AS decisionId, e.event_type AS eventType,
@@ -747,7 +759,7 @@ export async function listTaxonomyAuditEvents(
      FROM taxonomy_audit_events e ${where}
      ORDER BY e.created_at DESC, e.id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
-    [...values, input.pageSize, input.page * input.pageSize],
+    [...values, input.pageSize, page * input.pageSize],
     db,
   )
   return pageResult(
@@ -774,7 +786,7 @@ export async function listTaxonomyAuditEvents(
       compensatesEventId: nullableString(row, 'compensatesEventId'),
       createdAt: numberValue(row, 'createdAt'),
     })),
-    input,
+    { ...input, page },
     total,
   )
 }
@@ -794,6 +806,7 @@ export async function listTaxonomyBatches(
     values,
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const items = await rows(
     `SELECT id, kind, status, actor_type AS actorType, actor_id AS actorId,
             expected_taxonomy_version AS expectedTaxonomyVersion,
@@ -805,10 +818,10 @@ export async function listTaxonomyBatches(
      FROM taxonomy_change_batches ${where}
      ORDER BY created_at DESC, id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
-    [...values, input.pageSize, input.page * input.pageSize],
+    [...values, input.pageSize, page * input.pageSize],
     db,
   )
-  return pageResult(items, input, total)
+  return pageResult(items, { ...input, page }, total)
 }
 
 export async function listTaxonomyLocks(
@@ -830,6 +843,7 @@ export async function listTaxonomyLocks(
     [],
     db,
   )
+  const page = safePage(total, input.page, input.pageSize)
   const items = await rows(
     `SELECT id, scope, resource_key AS resourceKey, site_id AS siteId,
             tag_id AS tagId, related_tag_id AS relatedTagId, alias, reason,
@@ -838,8 +852,8 @@ export async function listTaxonomyLocks(
             release_reason AS releaseReason
      FROM taxonomy_locks ${where}
      ORDER BY created_at DESC, id DESC LIMIT ?1 OFFSET ?2`,
-    [input.pageSize, input.page * input.pageSize],
+    [input.pageSize, page * input.pageSize],
     db,
   )
-  return pageResult(items, input, total)
+  return pageResult(items, { ...input, page }, total)
 }

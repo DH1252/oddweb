@@ -100,4 +100,17 @@ test('provider and policy admin records paginate and never expose credentials', 
     providers.items[0]?.credentialFingerprint ?? '',
     /^\*{4}[a-f0-9]{8}$/,
   )
+
+  const clampedProviders = await listTaxonomyProviders(
+    { page: 99, pageSize: 2 },
+    db,
+  )
+  const clampedPolicies = await listTaxonomyPolicies(
+    { page: 99, pageSize: 2 },
+    db,
+  )
+  assert.equal(clampedProviders.page, 1)
+  assert.equal(clampedProviders.items.length, 1)
+  assert.equal(clampedPolicies.page, 1)
+  assert.equal(clampedPolicies.items.length, 2)
 })

@@ -1022,7 +1022,7 @@ export class TaxonomyRepository {
                 max(1, policy.retry_budget + 1), ?, ?, ?
          FROM taxonomy_state state
          JOIN taxonomy_policy_configs policy ON policy.id = state.active_policy_config_id
-           WHERE state.id = 1 AND ? = 1 AND changes() > 0
+           WHERE state.id = 1 AND ? = 1
              AND (SELECT count(DISTINCT site_id)
                  FROM taxonomy_concept_evidence
                  WHERE normalized_concept = ? AND accepted = 1) >=

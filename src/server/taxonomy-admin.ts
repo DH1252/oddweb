@@ -151,6 +151,15 @@ function service() {
   return createTaxonomyService(env)
 }
 
+async function controlPlaneSnapshot() {
+  const [dashboard, providers, policies] = await Promise.all([
+    readTaxonomyDashboard(env.DB),
+    listTaxonomyProviders({ page: 0, pageSize: 20 }, env.DB),
+    listTaxonomyPolicies({ page: 0, pageSize: 20 }, env.DB),
+  ])
+  return { dashboard, providers, policies }
+}
+
 async function publishTaxonomyChange(directoryChanged = false) {
   await publishRealtimeEvent({ type: 'taxonomy.changed' })
   if (directoryChanged) {
@@ -203,7 +212,7 @@ export const createTaxonomyProvider = createServerFn({ method: 'POST' })
           }
         })()
     await publishTaxonomyChange()
-    return result
+    return { ...result, ...(await controlPlaneSnapshot()) }
   })
 
 export const updateTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -226,7 +235,7 @@ export const updateTaxonomyProvider = createServerFn({ method: 'POST' })
       actorId: context.admin.username,
     })
     if (updated) await publishTaxonomyChange()
-    return { updated }
+    return { updated, ...(await controlPlaneSnapshot()) }
   })
 
 export const deleteTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -238,7 +247,7 @@ export const deleteTaxonomyProvider = createServerFn({ method: 'POST' })
       context.admin.username,
     )
     if (deleted) await publishTaxonomyChange()
-    return { deleted }
+    return { deleted, ...(await controlPlaneSnapshot()) }
   })
 
 export const testTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -260,7 +269,7 @@ export const disableTaxonomyProvider = createServerFn({ method: 'POST' })
       context.admin.username,
     )
     if (disabled) await publishTaxonomyChange()
-    return { disabled }
+    return { disabled, ...(await controlPlaneSnapshot()) }
   })
 
 export const enableTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -272,7 +281,7 @@ export const enableTaxonomyProvider = createServerFn({ method: 'POST' })
       context.admin.username,
     )
     if (enabled) await publishTaxonomyChange()
-    return { enabled }
+    return { enabled, ...(await controlPlaneSnapshot()) }
   })
 
 export const activateTaxonomyProvider = createServerFn({ method: 'POST' })
@@ -284,7 +293,7 @@ export const activateTaxonomyProvider = createServerFn({ method: 'POST' })
       context.admin.username,
     )
     if (activated) await publishTaxonomyChange()
-    return { activated }
+    return { activated, ...(await controlPlaneSnapshot()) }
   })
 
 export const getTaxonomyPolicies = createServerFn({ method: 'GET' })
@@ -303,7 +312,7 @@ export const createTaxonomyPolicy = createServerFn({ method: 'POST' })
       supersedesPolicyConfigId,
     )
     await publishTaxonomyChange()
-    return { id }
+    return { id, ...(await controlPlaneSnapshot()) }
   })
 
 export const activateTaxonomyPolicy = createServerFn({ method: 'POST' })
@@ -315,7 +324,7 @@ export const activateTaxonomyPolicy = createServerFn({ method: 'POST' })
       context.admin.username,
     )
     if (activated) await publishTaxonomyChange()
-    return { activated }
+    return { activated, ...(await controlPlaneSnapshot()) }
   })
 
 export const transitionTaxonomyMode = createServerFn({ method: 'POST' })

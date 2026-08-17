@@ -43,7 +43,13 @@ export type PublicPopularPage = {
 }
 
 export type PublicSupportData = {
-  guestbook: Array<{ id: number; name: string; message: string; date: string }>
+  guestbook: Array<{
+    id: number
+    name: string
+    message: string
+    date: string
+    createdAt: number
+  }>
   recentFilings: RecentFiling[]
 }
 
@@ -191,6 +197,7 @@ export async function readPublicSupportData(): Promise<PublicSupportData> {
       name: entry.name,
       message: entry.message,
       date: formatShortDate(entry.createdAt),
+      createdAt: entry.createdAt,
     })),
     recentFilings: filings.results.map((filing) => ({
       name: filing.name,
@@ -198,6 +205,7 @@ export async function readPublicSupportData(): Promise<PublicSupportData> {
       description: filing.description,
       tags: parseJson<string[]>(filing.tags, []),
       date: formatShortDate(filing.submittedAt),
+      submittedAt: filing.submittedAt,
       thumbnailKey: filing.thumbnailKey || undefined,
       thumbnailAlt: filing.thumbnailAlt || undefined,
     })),
@@ -482,6 +490,7 @@ async function hydrateSiteRows(rows: SiteSqlRow[]): Promise<SiteEntry[]> {
     visits: row.visits,
     added: formatIsoDate(row.addedAt),
     addedLabel: formatShortDate(row.addedAt),
+    addedAt: row.addedAt,
     accent: row.accent,
     thumbnailKey: row.thumbnailKey || undefined,
     thumbnailAlt: row.thumbnailAlt || undefined,

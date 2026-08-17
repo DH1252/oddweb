@@ -2,12 +2,19 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-test('admin timestamps use UTC to keep server and client markup identical', async () => {
-  const source = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
-    'utf8',
-  )
-  assert.match(source, /function formatTimestamp[\s\S]*?timeZone: 'UTC'/)
+test('timestamps use device-local time after hydration with a UTC fallback', async () => {
+  const [admin, localTime] = await Promise.all([
+    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/local-time.tsx', import.meta.url),
+      'utf8',
+    ),
+  ])
+  assert.match(admin, /function formatTimestamp[\s\S]*?timeZone: 'UTC'/)
+  assert.match(admin, /<LocalTime[\s\S]*style="dateTime"/)
+  assert.match(localTime, /useEffect/)
+  assert.match(localTime, /new Intl\.DateTimeFormat\(undefined/)
+  assert.doesNotMatch(localTime, /timeZone:/)
 })
 
 test('CSP permits the Cloudflare Web Analytics beacon', async () => {
@@ -251,7 +258,7 @@ test('suspense-backed result controls update inside transitions', async () => {
     ['Batch status', 'setBatchPage'],
     ['Lock state', 'setLockPage'],
   ]) {
-    assert.doesNotMatch(
+    assert.match(
       admin,
       new RegExp(`${label}[\\s\\S]{0,800}?${pageSetter}\\(0\\)`),
     )
@@ -288,10 +295,9 @@ test('public and admin site creation accept optional preview images', async () =
     serverData,
     /const thumbnail = data\.image \? await storeThumbnail\(data\.image\) : undefined/,
   )
-  assert.match(
-    serverData,
-    /imageValue instanceof File && imageValue\.size > 0 \? imageValue : undefined/,
-  )
+  assert.match(serverData, /value === null \|\| value === ''/)
+  assert.match(directory, /removeEmptyFile\(formData, 'image'\)/)
+  assert.match(admin, /removeEmptyFile\(formData, 'image'\)/)
   assert.match(directory, /if \(!isSubmittedSite\(result\)\)/)
   assert.match(admin, /if \(!isCreatedSite\(result\)\)/)
 })
@@ -315,7 +321,7 @@ test('policy activation resets history pagination and backfill reports delivery 
   )
   assert.match(
     admin,
-    /async function activatePolicy[\s\S]*setPolicyPage\(0\)[\s\S]*invalidateTaxonomy\('policies', 'dashboard'\)/,
+    /async function activatePolicy[\s\S]*setPolicyPage\(0\)[\s\S]*installControlPlaneSnapshot\(result\)/,
   )
   assert.match(admin, /enqueued \$\{result\.enqueued\}, and dispatched/)
   assert.match(
@@ -331,12 +337,67 @@ test('mode changes install the authoritative dashboard before UI reconciliation'
   )
   assert.match(
     admin,
-    /async function changeMode[\s\S]*modeMutation\.mutateAsync\(mode\)[\s\S]*queryClient\.setQueryData[\s\S]*result\.dashboard/,
+    /async function changeMode[\s\S]*modeMutation\.mutateAsync\(mode\)[\s\S]*installDashboard\(result\.dashboard\)/,
   )
+  assert.match(admin, /cancelQueries\(\{ queryKey \}\)[\s\S]*invalidateQueries/)
+})
+
+test('admin buttons cancel stale reads and install authoritative control-plane snapshots', async () => {
+  const [admin, server] = await Promise.all([
+    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/server/taxonomy-admin.ts', import.meta.url),
+      'utf8',
+    ),
+  ])
+  assert.match(server, /async function controlPlaneSnapshot/)
+  assert.match(server, /listTaxonomyProviders\(\{ page: 0, pageSize: 20 \}/)
+  assert.match(server, /listTaxonomyPolicies\(\{ page: 0, pageSize: 20 \}/)
   assert.match(
     admin,
-    /cancelQueries\(\{ queryKey \}\)[\s\S]*invalidateQueries[\s\S]*refetchQueries/,
+    /async function installControlPlaneSnapshot[\s\S]*cancelQueries[\s\S]*setQueryData/,
   )
+  assert.doesNotMatch(
+    admin.match(/async function invalidateTaxonomy[\s\S]*?\n {2}\}/)?.[0] || '',
+    /refetchQueries/,
+  )
+  assert.match(admin, /const controlPlanePending =/)
+  assert.match(admin, /disabled=\{controlPlanePending\}/)
+  assert.match(admin, /policyDefaultsKey[\s\S]*items\.slice\(0, 1\)/)
+})
+
+test('admin filters reset pagination and editor requests ignore stale responses', async () => {
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(admin, /setSubmissionPage\(0\)[\s\S]*setReviewFilter\(/)
+  assert.match(admin, /setSitePage\(0\)[\s\S]*setSiteFilter\(/)
+  assert.match(admin, /setCandidatePage\(0\)[\s\S]*setCandidateStatus\(/)
+  assert.match(admin, /setJobPage\(0\)[\s\S]*setJobStatus\(/)
+  assert.match(admin, /setBatchPage\(0\)[\s\S]*setBatchStatus\(/)
+  assert.match(admin, /setLockPage\(0\)[\s\S]*setLockState\(/)
+  assert.match(
+    admin,
+    /const request = \+\+editorRequestRef\.current[\s\S]*request !== editorRequestRef\.current/,
+  )
+})
+
+test('admin mutations reject false success and protect bundled site status', async () => {
+  const [admin, serverData, repository] = await Promise.all([
+    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/db/repository.ts', import.meta.url), 'utf8'),
+  ])
+  assert.match(admin, /if \(!result\.updated\)[\s\S]{0,100}throw new Error/)
+  assert.match(admin, /if \(!result\.released\)[\s\S]{0,100}throw new Error/)
+  assert.match(serverData, /z\.enum\(\['active', 'archived'\]\)/)
+  assert.match(repository, /Guestbook entry no longer exists/)
+  assert.match(
+    repository,
+    /Bundled directory records cannot change publication status/,
+  )
+  assert.match(admin, /Published \(bundled record\)/)
 })
 
 test('admin data bypasses HTTP caches without destabilizing Suspense queries', async () => {

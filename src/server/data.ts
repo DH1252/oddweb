@@ -103,8 +103,7 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
   .validator((data) => {
     const site = validateSiteForm(data)
     if (!(data instanceof FormData)) throw new Error('Expected a site form.')
-    const status: 'active' | 'archived' =
-      data.get('status') === 'archived' ? 'archived' : 'active'
+    const status = z.enum(['active', 'archived']).parse(data.get('status'))
     return { ...site, status }
   })
   .handler(async ({ data }) => {
@@ -166,8 +165,9 @@ export const setGuestbookEntryVisibility = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => guestbookVisibilityInput.parse(data))
   .handler(async ({ data }) => {
-    await setGuestbookVisibility(data.id, data.hidden)
+    const result = await setGuestbookVisibility(data.id, data.hidden)
     await publishRealtimeEvent({ type: 'guestbook.changed' })
+    return result
   })
 
 export const reconcileThumbnailStorage = createServerFn({ method: 'POST' })
@@ -258,12 +258,7 @@ export const mergeTag = createServerFn({ method: 'POST' })
 
 function validateSiteForm(data: unknown) {
   if (!(data instanceof FormData)) throw new Error('Expected a site form.')
-  const imageValue = data.get('image')
-  if (imageValue !== null && !(imageValue instanceof File)) {
-    throw new Error('Thumbnail image must be a file.')
-  }
-  const image =
-    imageValue instanceof File && imageValue.size > 0 ? imageValue : undefined
+  const image = optionalFormFile(data, 'image')
 
   return {
     name: formText(data, 'name', 60),
@@ -272,6 +267,14 @@ function validateSiteForm(data: unknown) {
     tags: formTags(data),
     image,
   }
+}
+
+function optionalFormFile(data: FormData, name: string) {
+  const value = data.get(name)
+  if (value === null || value === '') return undefined
+  if (!(value instanceof File))
+    throw new Error('Thumbnail image must be a file.')
+  return value.size > 0 ? value : undefined
 }
 
 function formList(
@@ -347,9 +350,7 @@ function validateSiteUpdateForm(data: unknown) {
   const id = Number(data.get('id'))
   if (!Number.isInteger(id) || id < 1)
     throw new Error('A valid site ID is required.')
-  const imageValue = data.get('image')
-  const image =
-    imageValue instanceof File && imageValue.size > 0 ? imageValue : undefined
+  const image = optionalFormFile(data, 'image')
 
   const statusValue = data.get('status')
   if (statusValue !== 'active' && statusValue !== 'archived') {

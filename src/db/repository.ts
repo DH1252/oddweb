@@ -29,6 +29,7 @@ export type GuestbookEntry = {
   name: string
   message: string
   date: string
+  createdAt?: number
   hidden?: boolean
 }
 
@@ -314,10 +315,13 @@ export async function addGuestbookEntry(input: {
 }
 
 export async function setGuestbookVisibility(id: number, hidden: boolean) {
-  await getDb()
+  const updated = await getDb()
     .update(guestbookTable)
     .set({ hiddenAt: hidden ? new Date() : null })
     .where(eq(guestbookTable.id, id))
+    .returning({ id: guestbookTable.id })
+  if (!updated.length) throw new Error('Guestbook entry no longer exists.')
+  return { id, hidden }
 }
 
 export async function incrementSiteVisits(slug: string) {
@@ -512,6 +516,11 @@ export async function updateSite(input: {
       .limit(1)
   ).at(0)
   if (!existing) throw new Error('Site not found.')
+  if (existing.source === 'Directory' && input.status !== existing.status) {
+    throw new Error(
+      'Bundled directory records cannot change publication status.',
+    )
+  }
 
   return updateSiteFromSnapshot(env.DB, input, existing)
 }

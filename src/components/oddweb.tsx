@@ -235,7 +235,9 @@ export function ModalDialog({
 
     return () => {
       if (dialog.open) dialog.close()
-      restoreFocusRef.current?.focus()
+      const restoreTarget = restoreFocusRef.current
+      if (restoreTarget?.isConnected) restoreTarget.focus()
+      else document.getElementById('main-content')?.focus()
     }
   }, [])
 
