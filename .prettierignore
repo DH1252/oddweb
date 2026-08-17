@@ -13,6 +13,7 @@ worker-configuration.d.ts
 staging.env.example
 
 # External design references and tool state
+.kilo/
 .commandcode/
 .playwright-mcp/
 open-design/
