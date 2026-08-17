@@ -760,6 +760,9 @@ export function buildMaintenanceConfig(
           ),
         }
       : {}),
+    ...(config.durable_objects
+      ? { durable_objects: structuredClone(config.durable_objects) }
+      : {}),
     ...(migrations.length ? { migrations } : {}),
   }
 }

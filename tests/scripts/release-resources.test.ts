@@ -481,6 +481,7 @@ test('generated safety configs clear crons and preserve only applied lifecycle m
   const config = productionConfig(['v1', 'v2'])
   const maintenance = buildMaintenanceConfig(config, 'v1')
   assert.deepEqual(maintenance.triggers.crons, [])
+  assert.deepEqual(maintenance.durable_objects, config.durable_objects)
   assert.deepEqual(
     maintenance.migrations.map((migration: { tag: string }) => migration.tag),
     ['v1'],
@@ -496,6 +497,13 @@ test('generated safety configs clear crons and preserve only applied lifecycle m
     '2026-08-16T00:00:00.000Z',
   )
   assert.equal(identifiedMaintenance.vars.MAINTENANCE_MODE, '1')
+  assert.match(
+    readFileSync(
+      new URL('../../scripts/maintenance-worker.mjs', import.meta.url),
+      'utf8',
+    ),
+    /export \{ RealtimeHub \} from '\.\/server\/index\.js'/,
+  )
   const generated = generatedConfig(config)
   const paths = artifactPaths('/repo/.wrangler/release.jsonc')
   const production = buildVerifiedArtifactConfig(generated, {

@@ -1,3 +1,7 @@
+// This file is copied beside the built server bundle in the release artifact.
+// Keep the existing Durable Object class exported while fetch is fenced.
+export { RealtimeHub } from './server/index.js'
+
 export default {
   fetch(request) {
     const url = new URL(request.url)
