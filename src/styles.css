@@ -95,6 +95,10 @@ button {
   --color-soft-line: #9f6747;
 }
 
+[data-od-id='admin-page'].odd-shell {
+  width: min(calc(100% - 32px), 1400px);
+}
+
 :where([data-od-id='admin-page'], [data-od-id='admin-login'])
   fieldset:disabled {
   opacity: 1;
@@ -189,6 +193,10 @@ button {
 @media (max-width: 720px) {
   .odd-shell {
     width: min(calc(100% - 16px), 900px);
+  }
+
+  [data-od-id='admin-page'].odd-shell {
+    width: calc(100% - 16px);
   }
 }
 

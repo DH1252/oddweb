@@ -3226,7 +3226,7 @@ function AutomationSection({
         </AutomationBox>
       </div>
 
-      <div className="mt-2 grid items-start gap-2 xl:grid-cols-2">
+      <div className="mt-2 grid items-start gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AutomationBox title="Audit events" label={`${audit.total} RECORDS`}>
           <div className="mb-2 grid gap-2 sm:grid-cols-2">
             <label>
@@ -3281,11 +3281,11 @@ function AutomationSection({
                       className="border border-line bg-paper p-2"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <strong className="block">
                             {humanize(String(event.eventType))}
                           </strong>
-                          <span className="font-mono text-xs text-muted">
+                          <span className="block font-mono text-xs text-muted [overflow-wrap:anywhere]">
                             {eventId} / {String(event.entityType)}{' '}
                             {String(event.entityId)} /{' '}
                             <LocalTime
@@ -3326,7 +3326,7 @@ function AutomationSection({
                           ) : null}
                         </div>
                       </div>
-                      <p className="mt-1 mb-0 font-mono text-xs text-muted">
+                      <p className="mt-1 mb-0 font-mono text-xs text-muted [overflow-wrap:anywhere]">
                         Batch {String(event.batchId || '-')} / actor{' '}
                         {String(event.actorType)}:{String(event.actorId || '-')}{' '}
                         / versions {String(event.taxonomyVersionBefore ?? '-')}{' '}
@@ -3396,12 +3396,12 @@ function AutomationSection({
                   return (
                     <li key={id} className="border border-line bg-paper p-2">
                       <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <strong className="block">
                             {humanize(String(batch.kind))} /{' '}
                             {humanize(String(batch.status))}
                           </strong>
-                          <span className="font-mono text-xs text-muted">
+                          <span className="block font-mono text-xs text-muted [overflow-wrap:anywhere]">
                             {id} / {String(batch.eventCount)} events /{' '}
                             <LocalTime
                               seconds={Number(batch.createdAt)}
@@ -3674,7 +3674,7 @@ function AutomationBox({
   children: ReactNode
 }) {
   return (
-    <section className="border border-line bg-canvas p-2.5">
+    <section className="min-w-0 border border-line bg-canvas p-2.5">
       <header className="mb-2 flex items-center justify-between gap-2 border-b border-dotted border-brown pb-1.5">
         <h3 className="m-0 font-mono text-sm font-bold uppercase">{title}</h3>
         {label ? (

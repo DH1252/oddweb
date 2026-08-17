@@ -178,6 +178,21 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.doesNotMatch(admin, /!bg-brown !text-paper/)
 })
 
+test('admin audit cards use the available width and wrap opaque identifiers', async () => {
+  const [styles, admin] = await Promise.all([
+    readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+  ])
+
+  assert.match(styles, /\[data-od-id='admin-page'\]\.odd-shell[\s\S]*1400px/)
+  assert.match(admin, /xl:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/)
+  assert.match(admin, /\[overflow-wrap:anywhere\]/)
+  assert.match(
+    admin,
+    /<section className="min-w-0 border border-line bg-canvas p-2\.5">/,
+  )
+})
+
 test('automation jobs expose every server-retryable status', async () => {
   const admin = await readFile(
     new URL('../src/routes/admin.tsx', import.meta.url),
