@@ -493,11 +493,6 @@ export function runRelease(options = {}) {
       }
       applicationDeployed = true
       updateJournal(io, recoveryPath, journal, 'application_promoted', now)
-      io.run('node', ['scripts/smoke-test.mjs', '--application-only'], {
-        ...env,
-        RELEASE_SHA: sha,
-      })
-      updateJournal(io, recoveryPath, journal, 'application_verified', now)
       if (maintenanceRequired) {
         clearMaintenanceBarrier(io, productionConfigPath)
         updateJournal(
@@ -509,6 +504,11 @@ export function runRelease(options = {}) {
           { maintenanceBarrier: false },
         )
       }
+      io.run('node', ['scripts/smoke-test.mjs', '--application-only'], {
+        ...env,
+        RELEASE_SHA: sha,
+      })
+      updateJournal(io, recoveryPath, journal, 'application_verified', now)
     } catch (error) {
       let containmentErrors
       if (maintenanceRequired) {

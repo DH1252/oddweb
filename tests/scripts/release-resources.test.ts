@@ -788,8 +788,8 @@ test('a fix-forward release recognizes an active maintenance Worker', () => {
   )
   assertOrder(harness.events, [
     "VALUES ('release:maintenance', '1')",
-    'smoke-test.mjs --application-only',
     "DELETE FROM app_state WHERE key = 'release:maintenance'",
+    'smoke-test.mjs --application-only',
   ])
   assert.equal(harness.has('queues resume-delivery'), false)
 })
@@ -812,8 +812,8 @@ test('pending D1 migration enters maintenance before export and restores async w
     'wrangler d1 execute oddweb --config /repo/.wrangler/production.jsonc --remote --json --command SELECT',
     'wrangler d1 export oddweb',
     'npm run db:migrate:remote',
-    'smoke-test.mjs --application-only',
     "DELETE FROM app_state WHERE key = 'release:maintenance'",
+    'smoke-test.mjs --application-only',
     'wrangler triggers deploy --config /repo/wrangler.jsonc',
     'check-taxonomy-resources.mjs --remote-handlers --config /repo/wrangler.jsonc',
     'queues resume-delivery oddweb-taxonomy',
