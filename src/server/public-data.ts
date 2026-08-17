@@ -62,13 +62,29 @@ const tagSuggestionInput = z.object({
 
 export const getPublicDirectoryPage = createServerFn({ method: 'GET' })
   .validator((data) => directoryInput.parse(data))
-  .handler(({ data }) =>
-    cachePublicRead('directory', data, () => readPublicDirectoryPage(data)),
-  )
+  .handler(async ({ data }) => {
+    const [page, surprise] = await Promise.all([
+      cachePublicRead('directory', data, () => readPublicDirectoryPage(data)),
+      cachePublicRead(
+        'surprise',
+        surpriseCachePayload(data),
+        () => readPublicSurprise(data),
+        surpriseCacheSeconds,
+      ),
+    ])
+    return { ...page, surpriseSlug: surprise?.slug ?? null }
+  })
 
 export const getPublicSurprise = createServerFn({ method: 'POST' })
   .validator((data) => surpriseInput.parse(data))
-  .handler(({ data }) => readPublicSurprise(data))
+  .handler(({ data }) =>
+    cachePublicRead(
+      'surprise',
+      surpriseCachePayload(data),
+      () => readPublicSurprise(data),
+      surpriseCacheSeconds,
+    ),
+  )
 
 export const getPublicPopularPage = createServerFn({ method: 'GET' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))
@@ -100,12 +116,28 @@ function cachePublicRead<T>(
   name: string,
   payload: unknown,
   read: () => Promise<T>,
+  ttlSeconds?: number,
 ) {
   return cachedPublicRead({
     cache: (caches as unknown as { default: Cache }).default,
     request: getRequest(),
     name,
     payload,
+    ttlSeconds,
     read,
   })
+}
+
+const surpriseCacheSeconds = 300
+
+function surpriseCachePayload(input: {
+  query: string
+  include: string[]
+  exclude: string[]
+}) {
+  return {
+    query: input.query,
+    include: input.include,
+    exclude: input.exclude,
+  }
 }

@@ -112,7 +112,10 @@ test('realtime directory refresh invalidates query data without reloading routes
     'utf8',
   )
 
-  assert.match(source, /await Promise\.all\([\s\S]*queryClient\.invalidateQueries/)
+  assert.match(
+    source,
+    /await Promise\.all\([\s\S]*queryClient\.invalidateQueries/,
+  )
   assert.match(source, /const refreshSiteView = async[\s\S]*await Promise\.all/)
   assert.doesNotMatch(source, /useRouter|router\.invalidate/)
   assert.match(source, /await refreshSiteView\(event\.slug\)/)

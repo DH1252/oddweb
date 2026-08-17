@@ -74,17 +74,19 @@ export const Route = createFileRoute('/')({
   validateSearch: normalizePublicFilterSearch,
   loaderDeps: ({ search }) => publicFilterLoaderDeps(search),
   loader: async ({ context, deps }) => {
-    await context.queryClient.fetchQuery(publicSupportQueryOptions())
-    const directory = await context.queryClient.fetchQuery(
-      directoryQueryOptions({
-        query: '',
-        include: deps.include,
-        exclude: deps.exclude,
-        sort: 'popular',
-        page: 0,
-      }),
-    )
-    await context.queryClient.fetchQuery(popularQueryOptions(0))
+    const [directory] = await Promise.all([
+      context.queryClient.fetchQuery(
+        directoryQueryOptions({
+          query: '',
+          include: deps.include,
+          exclude: deps.exclude,
+          sort: 'popular',
+          page: 0,
+        }),
+      ),
+      context.queryClient.fetchQuery(publicSupportQueryOptions()),
+      context.queryClient.fetchQuery(popularQueryOptions(0)),
+    ])
     return directory
   },
   head: ({ loaderData, match }) => ({

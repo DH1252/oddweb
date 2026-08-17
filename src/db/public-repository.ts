@@ -119,7 +119,7 @@ export async function readPublicDirectoryPage(
   const filter = buildPublicSiteFilter(input)
   const order = directoryOrder[input.sort]
   const offset = input.page * publicDirectoryPageSize
-  const [countResult, siteResult, surpriseResult] = await Promise.all([
+  const [countResult, siteResult] = await Promise.all([
     env.DB.prepare(
       `${tagClosureCte} SELECT count(*) AS total FROM sites s WHERE ${filter.sql}`,
     )
@@ -131,14 +131,12 @@ export async function readPublicDirectoryPage(
     )
       .bind(...filter.bindings, publicDirectoryPageSize, offset)
       .all<SiteSqlRow>(),
-    readPublicSurprise(input),
   ])
   return {
     sites: await hydrateSiteRows(siteResult.results),
     total: countResult?.total || 0,
     page: input.page,
     pageSize: publicDirectoryPageSize,
-    surpriseSlug: surpriseResult?.slug,
   }
 }
 

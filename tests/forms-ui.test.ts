@@ -4,7 +4,10 @@ import test from 'node:test'
 
 test('timestamps use device-local time after hydration with a UTC fallback', async () => {
   const [admin, localTime] = await Promise.all([
-    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(
       new URL('../src/components/local-time.tsx', import.meta.url),
       'utf8',
@@ -170,7 +173,7 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   assert.match(login, /data-od-id="admin-login"/)
 
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
   assert.match(admin, /selectedButtonClass/)
@@ -181,7 +184,10 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
 test('admin audit cards use the available width and wrap opaque identifiers', async () => {
   const [styles, admin] = await Promise.all([
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
-    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
   ])
 
   assert.match(styles, /\[data-od-id='admin-page'\]\.odd-shell[\s\S]*1400px/)
@@ -195,7 +201,7 @@ test('admin audit cards use the available width and wrap opaque identifiers', as
 
 test('automation jobs expose every server-retryable status', async () => {
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
 
@@ -238,6 +244,10 @@ test('suspense-backed result controls update inside transitions', async () => {
     'utf8',
   )
   const admin = await readFile(
+    new URL('../src/components/admin-page.tsx', import.meta.url),
+    'utf8',
+  )
+  const adminRoute = await readFile(
     new URL('../src/routes/admin.tsx', import.meta.url),
     'utf8',
   )
@@ -285,7 +295,10 @@ test('suspense-backed result controls update inside transitions', async () => {
     directory,
     /value=\{sort\}[\s\S]*startTransition\(\(\) => \{[\s\S]*setSort\(event\.target\.value as SortMode\)[\s\S]*setPage\(0\)/,
   )
-  assert.match(admin, /createFileRoute\('\/admin'\)\(\{\s*shouldReload: false/)
+  assert.match(
+    adminRoute,
+    /createFileRoute\('\/admin'\)\(\{\s*shouldReload: false/,
+  )
   assert.match(directory, /createFileRoute\('\/'\)\(\{\s*shouldReload: false/)
   assert.match(tags, /createFileRoute\('\/tags'\)\(\{\s*shouldReload: false/)
   assert.match(
@@ -319,7 +332,10 @@ test('surprise navigation requests a fresh filtered site', async () => {
 test('public and admin site creation accept optional preview images', async () => {
   const [directory, admin, serverData] = await Promise.all([
     readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
   ])
 
@@ -340,7 +356,7 @@ test('public and admin site creation accept optional preview images', async () =
 
 test('policy revisions can be edited into audited successor revisions', async () => {
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
 
@@ -352,7 +368,7 @@ test('policy revisions can be edited into audited successor revisions', async ()
 
 test('policy activation resets history pagination and backfill reports delivery separately', async () => {
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
   assert.match(
@@ -368,7 +384,7 @@ test('policy activation resets history pagination and backfill reports delivery 
 
 test('mode changes install the authoritative dashboard before UI reconciliation', async () => {
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
   assert.match(
@@ -380,7 +396,10 @@ test('mode changes install the authoritative dashboard before UI reconciliation'
 
 test('admin buttons cancel stale reads and install authoritative control-plane snapshots', async () => {
   const [admin, server] = await Promise.all([
-    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(
       new URL('../src/server/taxonomy-admin.ts', import.meta.url),
       'utf8',
@@ -404,7 +423,7 @@ test('admin buttons cancel stale reads and install authoritative control-plane s
 
 test('admin filters reset pagination and editor requests ignore stale responses', async () => {
   const admin = await readFile(
-    new URL('../src/routes/admin.tsx', import.meta.url),
+    new URL('../src/components/admin-page.tsx', import.meta.url),
     'utf8',
   )
   assert.match(admin, /setSubmissionPage\(0\)[\s\S]*setReviewFilter\(/)
@@ -421,7 +440,10 @@ test('admin filters reset pagination and editor requests ignore stale responses'
 
 test('admin mutations reject false success and protect bundled site status', async () => {
   const [admin, serverData, repository] = await Promise.all([
-    readFile(new URL('../src/routes/admin.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/admin-page.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/db/repository.ts', import.meta.url), 'utf8'),
   ])

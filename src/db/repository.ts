@@ -50,14 +50,21 @@ export type AdminTagRecord = CanonicalTag & {
   canonical: boolean
 }
 
+const seededKeys = new Set<string>()
+
 export async function ensureSeedData() {
   const seedKey = 'catalog-seed-v2'
+  if (seededKeys.has(seedKey)) return
+
   const seeded = await env.DB.prepare(
     'SELECT key FROM app_state WHERE key = ?1',
   )
     .bind(seedKey)
     .first()
-  if (seeded) return
+  if (seeded) {
+    seededKeys.add(seedKey)
+    return
+  }
 
   const tagsJson = JSON.stringify(canonicalTags)
   const sitesJson = JSON.stringify(
@@ -157,6 +164,7 @@ export async function ensureSeedData() {
   )
     .bind(seedKey, new Date().toISOString())
     .run()
+  seededKeys.add(seedKey)
 }
 
 export async function createSubmission(input: {

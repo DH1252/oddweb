@@ -45,9 +45,15 @@ export function RealtimeSync() {
         queryClient.invalidateQueries({
           queryKey: ['oddweb', 'admin', 'overview'],
         }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'tags'] }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'sites'] }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin', 'site'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin', 'tags'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin', 'sites'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin', 'site'],
+        }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
       ])
     }

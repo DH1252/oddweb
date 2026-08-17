@@ -78,7 +78,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         match.status === 'notFound',
     )
     return {
-      'Cache-Control': privateOrError ? 'no-store' : 'no-cache',
+      'Cache-Control': privateOrError
+        ? 'no-store'
+        : 'public, max-age=0, s-maxage=60, stale-while-revalidate=120',
       'Content-Security-Policy': contentSecurityPolicy,
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Resource-Policy': 'same-origin',
