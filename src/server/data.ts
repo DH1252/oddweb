@@ -87,7 +87,11 @@ export const submitSite = createServerFn({ method: 'POST' })
           key: result.previousThumbnailKey,
         })
       }
-      return { thumbnailKey: thumbnail?.key ?? null, reused: result.reused }
+      return {
+        submitted: true as const,
+        thumbnailKey: thumbnail?.key ?? null,
+        reused: result.reused,
+      }
     } catch (error) {
       if (thumbnail) await removeThumbnail(thumbnail.key)
       throw error
@@ -117,7 +121,11 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
         source: 'Manual',
       })
       await publishRealtimeEvent({ type: 'directory.changed' })
-      return { id, thumbnailKey: thumbnail?.key ?? null }
+      return {
+        created: true as const,
+        id,
+        thumbnailKey: thumbnail?.key ?? null,
+      }
     } catch (error) {
       if (thumbnail) await removeThumbnail(thumbnail.key)
       throw error

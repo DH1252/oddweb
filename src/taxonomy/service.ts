@@ -775,6 +775,7 @@ export class TaxonomyService {
   async createPolicyRevision(
     input: Omit<RuntimePolicy, 'id' | 'revision'>,
     actorId: string,
+    supersedesPolicyConfigId?: number,
   ): Promise<number> {
     const values = [
       input.assignmentLimit,
@@ -802,8 +803,11 @@ export class TaxonomyService {
       input.shadowProviderAgreementBasisPoints,
       input.promptHash,
       input.schemaHash,
+      supersedesPolicyConfigId ?? null,
       actorId,
       nowSeconds(this.options),
+      supersedesPolicyConfigId ?? null,
+      supersedesPolicyConfigId ?? null,
     ] as const
     const result = await this.repository.db
       .prepare(
@@ -821,8 +825,9 @@ export class TaxonomyService {
           prompt_hash, schema_hash, supersedes_id, created_by, created_at)
          SELECT coalesce(max(revision), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                (SELECT active_policy_config_id FROM taxonomy_state WHERE id = 1), ?, ?
-         FROM taxonomy_policy_configs`,
+                 coalesce(?26, (SELECT active_policy_config_id FROM taxonomy_state WHERE id = 1)), ?, ?
+          FROM taxonomy_policy_configs
+          WHERE ?29 IS NULL OR EXISTS (SELECT 1 FROM taxonomy_policy_configs WHERE id = ?30)`,
       )
       .bind(...values)
       .run()

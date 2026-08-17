@@ -10,6 +10,7 @@ export const taxonomyProviderHostAllowlist = [
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
 const basisPoints = z.number().int().min(0).max(10_000)
 const micros = z.number().int().min(0).max(1_000_000)
+const policyConfigId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 const providerBase = {
   name: z.string().trim().min(1).max(100),
   endpoint: z.string().trim().url().max(500),
@@ -91,33 +92,37 @@ export const taxonomyProviderUpdateSchema = z
     }
   })
 
-export const taxonomyPolicyCreateSchema = z
-  .strictObject({
-    assignmentLimit: z.number().int().min(1).max(100),
-    novelEvidenceSiteThreshold: z.number().int().min(1).max(100_000),
-    assignmentConfidenceMicros: micros,
-    ontologyConfidenceMicros: micros,
-    minimumMarginMicros: micros,
-    hierarchyMaxDepth: z.number().int().min(1).max(32),
-    hierarchyMaxFanout: z.number().int().min(1).max(1_000),
-    ontologyProviderAgreement: z.number().int().min(1).max(16),
-    retryBudget: z.number().int().min(0).max(100),
-    retryBaseSeconds: z.number().int().min(1).max(86_400),
-    retryMaxSeconds: z.number().int().min(1).max(604_800),
-    rolloutBasisPoints: basisPoints,
-    dailyRequestBudget: z.number().int().min(0).max(10_000_000),
-    dailyTokenBudget: z.number().int().min(0).max(10_000_000_000),
-    schemaFailureTripBasisPoints: basisPoints,
-    disagreementTripBasisPoints: basisPoints,
-    rollbackTripBasisPoints: basisPoints,
-    mutationVolumeTripCount: z.number().int().min(0).max(10_000_000),
-    rawResponseRetentionSeconds: z.number().int().min(0).max(2_592_000),
-    shadowMinimumSamples: z.number().int().min(0).max(10_000_000),
-    shadowMinimumCoverageBasisPoints: basisPoints,
-    shadowSchemaSuccessBasisPoints: basisPoints,
-    shadowProviderAgreementBasisPoints: basisPoints,
-    promptHash: hash,
-    schemaHash: hash,
+export const taxonomyPolicyCreateSchema = z.strictObject({
+  assignmentLimit: z.number().int().min(1).max(100),
+  novelEvidenceSiteThreshold: z.number().int().min(1).max(100_000),
+  assignmentConfidenceMicros: micros,
+  ontologyConfidenceMicros: micros,
+  minimumMarginMicros: micros,
+  hierarchyMaxDepth: z.number().int().min(1).max(32),
+  hierarchyMaxFanout: z.number().int().min(1).max(1_000),
+  ontologyProviderAgreement: z.number().int().min(1).max(16),
+  retryBudget: z.number().int().min(0).max(100),
+  retryBaseSeconds: z.number().int().min(1).max(86_400),
+  retryMaxSeconds: z.number().int().min(1).max(604_800),
+  rolloutBasisPoints: basisPoints,
+  dailyRequestBudget: z.number().int().min(0).max(10_000_000),
+  dailyTokenBudget: z.number().int().min(0).max(10_000_000_000),
+  schemaFailureTripBasisPoints: basisPoints,
+  disagreementTripBasisPoints: basisPoints,
+  rollbackTripBasisPoints: basisPoints,
+  mutationVolumeTripCount: z.number().int().min(0).max(10_000_000),
+  rawResponseRetentionSeconds: z.number().int().min(0).max(2_592_000),
+  shadowMinimumSamples: z.number().int().min(0).max(10_000_000),
+  shadowMinimumCoverageBasisPoints: basisPoints,
+  shadowSchemaSuccessBasisPoints: basisPoints,
+  shadowProviderAgreementBasisPoints: basisPoints,
+  promptHash: hash,
+  schemaHash: hash,
+})
+
+export const taxonomyPolicyRevisionSchema = taxonomyPolicyCreateSchema
+  .extend({
+    supersedesPolicyConfigId: policyConfigId.optional(),
   })
   .refine((input) => input.retryMaxSeconds >= input.retryBaseSeconds, {
     path: ['retryMaxSeconds'],
@@ -132,4 +137,7 @@ export type TaxonomyProviderUpdateInput = z.infer<
 >
 export type TaxonomyPolicyCreateInput = z.infer<
   typeof taxonomyPolicyCreateSchema
+>
+export type TaxonomyPolicyRevisionInput = z.infer<
+  typeof taxonomyPolicyRevisionSchema
 >

@@ -273,4 +273,21 @@ test('public and admin site creation accept optional preview images', async () =
     serverData,
     /imageValue instanceof File && imageValue\.size > 0 \? imageValue : undefined/,
   )
+  assert.match(directory, /if \(!result\.submitted\) throw new Error/)
+  assert.match(
+    admin,
+    /if \(!result\.created \|\| !Number\.isInteger\(result\.id\)/,
+  )
+})
+
+test('policy revisions can be edited into audited successor revisions', async () => {
+  const admin = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(admin, /onClick=\{\(\) => editPolicy\(policy\)\}/)
+  assert.match(admin, /supersedesPolicyConfigId: draft\.sourceId/)
+  assert.match(admin, /Save as new revision/)
+  assert.match(admin, /preserves the selected[\s\S]*revision unchanged/)
 })

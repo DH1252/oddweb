@@ -16,7 +16,7 @@ import {
 import { createTaxonomyService, dispatchTaxonomyOutbox } from '../taxonomy'
 import { adminAuthMiddleware } from './auth'
 import {
-  taxonomyPolicyCreateSchema,
+  taxonomyPolicyRevisionSchema,
   taxonomyProviderCreateSchema,
   taxonomyProviderHostAllowlist,
   taxonomyProviderUpdateSchema,
@@ -24,6 +24,7 @@ import {
 
 export {
   taxonomyPolicyCreateSchema,
+  taxonomyPolicyRevisionSchema,
   taxonomyProviderCreateSchema,
   taxonomyProviderHostAllowlist,
   taxonomyProviderUpdateSchema,
@@ -269,10 +270,17 @@ export const getTaxonomyPolicies = createServerFn({ method: 'GET' })
 
 export const createTaxonomyPolicy = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
-  .validator((data) => taxonomyPolicyCreateSchema.parse(data))
-  .handler(async ({ data, context }) => ({
-    id: await service().createPolicyRevision(data, context.admin.username),
-  }))
+  .validator((data) => taxonomyPolicyRevisionSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supersedesPolicyConfigId, ...policy } = data
+    return {
+      id: await service().createPolicyRevision(
+        policy,
+        context.admin.username,
+        supersedesPolicyConfigId,
+      ),
+    }
+  })
 
 export const activateTaxonomyPolicy = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])

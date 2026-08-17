@@ -82,6 +82,7 @@ import type {
 import type {
   TaxonomyCandidateKind,
   TaxonomyCandidateStatus,
+  TaxonomyPolicyAdminRecord,
 } from '../db/taxonomy-admin-repository'
 import type {
   TaxonomyPolicyCreateInput,
@@ -325,7 +326,10 @@ function AdminPage() {
     const name = String(formData.get('name') || '').trim()
     showStatus(`Adding "${name}"...`)
     try {
-      await createMutation.mutateAsync(formData)
+      const result = await createMutation.mutateAsync(formData)
+      if (!result.created || !Number.isInteger(result.id) || result.id < 1) {
+        throw new Error('The site was not created.')
+      }
       await refreshData()
       form.reset()
       setEntryTagInputKey((key) => key + 1)
@@ -1027,6 +1031,7 @@ function AutomationSection({
   const queryClient = useQueryClient()
   const [providerPage, setProviderPage] = useState(0)
   const [policyPage, setPolicyPage] = useState(0)
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null)
   const [providerCreatePending, setProviderCreatePending] = useState(false)
   const [jobPage, setJobPage] = useState(0)
   const [jobStatus, setJobStatus] = useState<TaxonomyJobStatus | null>(null)
@@ -1383,11 +1388,24 @@ function AutomationSection({
   async function submitPolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
+    const draft = policyDraft
     try {
       const input = policyInputFromForm(data)
-      await policyCreateMutation.mutateAsync(input)
+      const result = await policyCreateMutation.mutateAsync({
+        ...input,
+        ...(draft ? { supersedesPolicyConfigId: draft.sourceId } : {}),
+      })
+      if (!Number.isInteger(result.id) || result.id < 1) {
+        throw new Error('Policy revision was not created')
+      }
+      setPolicyDraft(null)
       await invalidateTaxonomy('policies', 'dashboard')
-      showStatus('Safe-controls policy revision created.', 'success')
+      showStatus(
+        draft
+          ? `Policy revision created from revision ${draft.sourceRevision}.`
+          : 'Safe-controls policy revision created.',
+        'success',
+      )
     } catch (error) {
       showStatus(
         await handleAdminError(error, 'Could not create policy revision.'),
@@ -1453,6 +1471,14 @@ function AutomationSection({
         'error',
       )
     }
+  }
+
+  function editPolicy(policy: TaxonomyPolicyAdminRecord) {
+    setPolicyDraft({
+      sourceId: policy.id,
+      sourceRevision: policy.revision,
+      values: policyInputFromPolicy(policy),
+    })
   }
 
   async function changeMode(mode: TaxonomyMode) {
@@ -1634,7 +1660,7 @@ function AutomationSection({
   }
 
   const initialPolicy: TaxonomyPolicyInput =
-    policyDefaults.items.at(0) ?? defaultTaxonomyPolicy
+    policyDraft?.values ?? policyDefaults.items.at(0) ?? defaultTaxonomyPolicy
   const modeOptions: TaxonomyMode[] = [
     'disabled',
     'shadow',
@@ -2295,23 +2321,33 @@ function AutomationSection({
                           {String(policy.createdBy)}
                         </span>
                       </div>
-                      {policy.active ? (
-                        <strong className="border border-success px-1.5 py-0.5 font-mono text-xs text-success uppercase">
-                          Active
-                        </strong>
-                      ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {policy.active ? (
+                          <strong className="border border-success px-1.5 py-0.5 font-mono text-xs text-success uppercase">
+                            Active
+                          </strong>
+                        ) : (
+                          <button
+                            type="button"
+                            className={buttonClass}
+                            disabled={policyActivateMutation.isPending}
+                            onClick={() => activatePolicy(Number(policy.id))}
+                          >
+                            {policyActivateMutation.isPending &&
+                            policyActivateMutation.variables ===
+                              Number(policy.id)
+                              ? 'Activating...'
+                              : 'Activate'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={buttonClass}
-                          disabled={policyActivateMutation.isPending}
-                          onClick={() => activatePolicy(Number(policy.id))}
+                          onClick={() => editPolicy(policy)}
                         >
-                          {policyActivateMutation.isPending &&
-                          policyActivateMutation.variables === Number(policy.id)
-                            ? 'Activating...'
-                            : 'Activate'}
+                          Edit
                         </button>
-                      )}
+                      </div>
                     </div>
                     <p className="mt-1 mb-0 font-mono text-xs text-muted">
                       Assignments {String(policy.assignmentLimit)} / rollout{' '}
@@ -2341,9 +2377,18 @@ function AutomationSection({
           )}
         </AutomationBox>
 
-        <AutomationBox title="Create safe-controls revision">
+        <AutomationBox
+          title={
+            policyDraft
+              ? `Edit policy revision ${policyDraft.sourceRevision}`
+              : 'Create safe-controls revision'
+          }
+        >
           <form
-            key={String('id' in initialPolicy ? initialPolicy.id : 'default')}
+            key={String(
+              policyDraft?.sourceId ??
+                ('id' in initialPolicy ? initialPolicy.id : 'default'),
+            )}
             onSubmit={submitPolicy}
           >
             <div className="grid gap-x-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -2370,12 +2415,22 @@ function AutomationSection({
             >
               {policyCreateMutation.isPending
                 ? 'Creating...'
-                : 'Create policy revision'}
+                : policyDraft
+                  ? 'Save as new revision'
+                  : 'Create policy revision'}
             </button>
+            {policyDraft ? (
+              <button
+                type="button"
+                className={`ml-1 ${buttonClass}`}
+                onClick={() => setPolicyDraft(null)}
+              >
+                Discard edits
+              </button>
+            ) : null}
             <p className="mt-2 mb-0 text-xs text-muted">
-              Values are initialized from the active revision, or conservative
-              defaults when no revision exists. Creation does not activate the
-              revision.
+              Editing creates a new audited revision and preserves the selected
+              revision unchanged. Creation does not activate the revision.
             </p>
           </form>
         </AutomationBox>
@@ -4422,6 +4477,27 @@ const defaultTaxonomyPolicy = {
 }
 
 type TaxonomyPolicyInput = TaxonomyPolicyCreateInput
+
+type PolicyDraft = {
+  sourceId: number
+  sourceRevision: number
+  values: TaxonomyPolicyInput
+}
+
+function policyInputFromPolicy(
+  policy: TaxonomyPolicyAdminRecord,
+): TaxonomyPolicyInput {
+  const {
+    id: _id,
+    revision: _revision,
+    active: _active,
+    supersedesId: _supersedesId,
+    createdBy: _createdBy,
+    createdAt: _createdAt,
+    ...input
+  } = policy
+  return input
+}
 
 const policyFields: Array<{
   name: keyof TaxonomyPolicyInput

@@ -1415,7 +1415,7 @@ test('maintenance recreates queue delivery for every bounded runnable job', asyn
   )
 })
 
-test('policy revisions create distinct classification jobs for unchanged sites', async (context) => {
+test('policy revisions can supersede an edited non-active revision', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)
   const service = new TaxonomyService(serviceEnv(db), { now: () => 11_500_000 })
@@ -1424,7 +1424,25 @@ test('policy revisions create distinct classification jobs for unchanged sites',
   const policy = await service.repository.loadPolicy(1)
   const { id: _id, revision: _revision, ...policyInput } = policy
   const policyId = await service.createPolicyRevision(policyInput, 'admin')
-  await service.activatePolicy(policyId)
+  const editedPolicyId = await service.createPolicyRevision(
+    { ...policyInput, assignmentLimit: policyInput.assignmentLimit + 1 },
+    'admin',
+    policyId,
+  )
+  assert.deepEqual(
+    await db
+      .prepare(
+        `SELECT supersedes_id AS supersedesId, assignment_limit AS assignmentLimit
+         FROM taxonomy_policy_configs WHERE id = ?`,
+      )
+      .bind(editedPolicyId)
+      .first(),
+    {
+      supersedesId: policyId,
+      assignmentLimit: policyInput.assignmentLimit + 1,
+    },
+  )
+  await service.activatePolicy(editedPolicyId)
   const second = await service.enqueueSite(1)
   assert.ok(second)
   assert.notEqual(second, first)

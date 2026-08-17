@@ -577,7 +577,7 @@ export function runRelease(options = {}) {
 
     try {
       assertArtifactUnchanged(io, artifactHashPaths, artifactDigest)
-      deployProductionTriggers(io, triggerConfigPath)
+      deployProductionTriggers(io, root)
       reconcileQueueConsumerRemovals({
         io,
         desiredConfig: config,
@@ -1325,7 +1325,11 @@ function clearCronSchedules(io, maintenanceConfigPath) {
   ])
 }
 
-function deployProductionTriggers(io, configPath) {
+function deployProductionTriggers(io, root) {
+  deployTriggerConfig(io, resolve(root, 'wrangler.jsonc'))
+}
+
+function deployTriggerConfig(io, configPath) {
   io.run('npx', ['wrangler', 'triggers', 'deploy', '--config', configPath])
 }
 
@@ -1538,7 +1542,7 @@ function restoreTriggerAndQueueState({
   const errors = []
   try {
     assertArtifactUnchanged(io, artifactHashPaths, artifactDigest)
-    deployProductionTriggers(io, configPath)
+    deployTriggerConfig(io, configPath)
     reconcileQueueConsumerRemovals({
       io,
       desiredConfig,

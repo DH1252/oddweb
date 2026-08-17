@@ -487,6 +487,21 @@ test('code-only release pauses asynchronous delivery before promotion and skips 
   assert.equal(recovery.finalQueueDeliveryState, 'running')
 })
 
+test('final production trigger reconciliation uses the canonical Wrangler config', () => {
+  const source = readFileSync(
+    new URL('../../scripts/release.mjs', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /function deployProductionTriggers\(io, root\)[\s\S]*resolve\(root, 'wrangler\.jsonc'\)/,
+  )
+  assert.match(
+    source,
+    /deployProductionTriggers\(io, root\)[\s\S]*reconcileQueueConsumerRemovals/,
+  )
+})
+
 test('an initially paused queue is never paused or resumed by release', () => {
   const harness = releaseHarness({ initialQueueDeliveryState: 'paused' })
   harness.execute()

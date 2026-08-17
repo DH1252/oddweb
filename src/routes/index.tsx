@@ -301,7 +301,8 @@ function DirectoryPage() {
     setNoticeError(false)
 
     try {
-      await submissionMutation.mutateAsync(formData)
+      const result = await submissionMutation.mutateAsync(formData)
+      if (!result.submitted) throw new Error('The submission was not accepted.')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
