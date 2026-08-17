@@ -16,6 +16,10 @@ const baseUrl =
     local ? 'LOCAL_URL' : staging ? 'STAGING_URL' : 'PRODUCTION_URL'
   ] ?? (local ? 'http://localhost:3000' : staging ? '' : productionOrigin)
 const expectedRelease = process.env.RELEASE_SHA
+// Cron changes may take 15 minutes to propagate, then up to five more minutes
+// before this schedule fires. Keep the release lease while waiting fail-closed.
+const taxonomyProbeAttempts = 130
+const taxonomyProbeIntervalMs = 10_000
 const queueInitiallyPaused =
   process.env.RELEASE_TAXONOMY_QUEUE_INITIAL_STATE === 'paused'
 const configPath = resolve(
@@ -288,7 +292,7 @@ FROM taxonomy_jobs WHERE id = '${jobId}';`
     }
 
     let result
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < taxonomyProbeAttempts; attempt += 1) {
       const rows = queryD1(
         database,
         `SELECT j.status, j.attempt_count, j.last_error_code,
@@ -306,7 +310,9 @@ FROM taxonomy_jobs WHERE id = '${jobId}';`
       ) {
         break
       }
-      await new Promise((resolve) => setTimeout(resolve, 10_000))
+      await new Promise((resolve) =>
+        setTimeout(resolve, taxonomyProbeIntervalMs),
+      )
     }
     if (
       !result ||

@@ -167,6 +167,7 @@ export interface MaintenanceResult {
   staleOutbox: number
   rawResponsesPurged: number
   reconciledOutbox: number
+  eligibleConceptsEnqueued: number
   outboxDispatched: number
 }
 

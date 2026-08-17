@@ -31,7 +31,9 @@ import type {
 
 const ontologySystemPrompt = `You propose conservative taxonomy changes from supplied evidence and active tags.
 Use only supplied numeric tag IDs. Do not create categories.
-Concepts require repeated distinct-site evidence. Aliases must be lexical equivalents.
+The requested concept already meets the configured distinct-site evidence threshold.
+A tag with canonical=false is an unresolved placeholder: propose a concept with its existing name and slug to promote it when it is valid, or propose an alias/merge when another tag is semantically identical.
+Aliases must be lexical equivalents.
 Merges require semantic identity. Parent edges must express a strict broader-to-narrower relationship.`
 
 interface OntologyResult {
@@ -505,6 +507,7 @@ export async function processOntologyJob(input: {
   const voters = consensus.slice(0, Math.max(0, requiredVoters - 1))
   const prompt = stableJson({
     concept: input.job.conceptKey,
+    evidenceSiteThreshold: input.policy.novelEvidenceSiteThreshold,
     evidence: context.evidence,
     tags: context.tags.map(({ id, slug, name, canonical, revision }) => ({
       id: String(id),
@@ -610,13 +613,13 @@ export async function processOntologyJob(input: {
     mutations += 1
   }
   if (!proposals.length) {
-    throw new TaxonomyProviderError(
-      'Ontology providers did not reach consensus',
-      {
-        code: 'invalid_response',
-        retryable: true,
-      },
-    )
+    await input.repository.settleJob(input.job, 'settled', input.now)
+    return {
+      jobId: input.job.id,
+      status: 'settled',
+      attempts: input.job.attemptCount,
+      mutations: 0,
+    }
   }
   await input.repository.settleJob(input.job, 'settled', input.now)
   return {

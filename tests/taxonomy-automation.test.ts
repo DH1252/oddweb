@@ -1822,6 +1822,54 @@ test('lowered evidence threshold lets backfill enqueue existing concepts', async
   )
 })
 
+test('maintenance self-heals eligible existing concepts without duplicate jobs', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  const repository = new TaxonomyRepository(db)
+  await repository.recordEvidence({
+    id: 'maintenance-existing-evidence',
+    concept: 'maintenance concept',
+    siteId: 1,
+    inputHash: hash,
+    sourceKey: 'submitted-hint',
+    source: 'submitted_hint',
+    evidenceHash: hash,
+    evidenceSnippet: 'maintenance concept',
+    confidenceMicros: 1_000_000,
+    accepted: true,
+    now: 9_100,
+  })
+  await db
+    .prepare(
+      'UPDATE taxonomy_policy_configs SET novel_evidence_site_threshold = 1 WHERE id = 1',
+    )
+    .run()
+
+  const first = await repository.maintenance(9_101)
+  const second = await repository.maintenance(9_102)
+  assert.equal(first.eligibleConceptsEnqueued, 1)
+  assert.equal(second.eligibleConceptsEnqueued, 0)
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_jobs WHERE kind = 'reassess_concept' AND concept_key = 'maintenance concept'",
+      )
+      .first('count(*)'),
+    1,
+  )
+  assert.equal(
+    await db
+      .prepare(
+        `SELECT count(*) FROM taxonomy_outbox outbox
+         JOIN taxonomy_jobs job ON job.id = outbox.job_id
+         WHERE job.kind = 'reassess_concept'
+           AND job.concept_key = 'maintenance concept'`,
+      )
+      .first('count(*)'),
+    1,
+  )
+})
+
 test('candidate snapshots include only relevant locks despite global lock saturation', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertSite(db, 1)
@@ -3520,6 +3568,51 @@ test('ontology consensus uses the deterministic required voter subset', async (c
       .first('tag_id'),
     1,
   )
+})
+
+test('ontology prompt resolves eligible placeholders and accepts a no-op response', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await db
+    .prepare(
+      `INSERT INTO tags (id, slug, name, canonical, status, revision)
+       VALUES (1, 'eligible-concept', 'eligible concept', 0, 'active', 1)`,
+    )
+    .run()
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 20_250_000 })
+  const providerId = await addProvider(service, {
+    name: 'no-op-primary',
+    credential: 'no-op-primary-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      'UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1 WHERE id = 1',
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueConcept('eligible concept')
+  assert.ok(jobId)
+  let requestBody = ''
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 20_251_000,
+      fetch: async (_input, init) => {
+        requestBody = String(init?.body)
+        return Response.json({
+          output_text: JSON.stringify({ schemaVersion: 1, proposals: [] }),
+        })
+      },
+    },
+  )
+  assert.equal(result.status, 'settled')
+  assert.equal(result.mutations, 0)
+  assert.match(requestBody, /unresolved placeholder/)
+  assert.match(requestBody, /evidenceSiteThreshold/)
 })
 
 test('classification consensus voters run concurrently under one fenced lease', async (context) => {

@@ -633,6 +633,19 @@ test('final production trigger reconciliation uses the canonical Wrangler config
   )
 })
 
+test('trigger smoke allows for documented cron propagation and schedule delay', () => {
+  const source = readFileSync(
+    new URL('../../scripts/smoke-test.mjs', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /const taxonomyProbeAttempts = 130/)
+  assert.match(source, /const taxonomyProbeIntervalMs = 10_000/)
+  assert.match(
+    source,
+    /attempt < taxonomyProbeAttempts[\s\S]*taxonomyProbeIntervalMs/,
+  )
+})
+
 test('an initially paused queue is never paused or resumed by release', () => {
   const harness = releaseHarness({ initialQueueDeliveryState: 'paused' })
   harness.execute()

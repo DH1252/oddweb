@@ -2616,7 +2616,10 @@ export class TaxonomyRepository {
     staleOutbox: number
     rawResponsesPurged: number
     reconciledOutbox: number
+    eligibleConceptsEnqueued: number
   }> {
+    const eligibleConceptsEnqueued =
+      await this.enqueueEligibleConceptReassessments(now)
     const results = await this.db.batch([
       statement(
         this.db,
@@ -2666,7 +2669,65 @@ export class TaxonomyRepository {
       reconciledOutbox:
         (results[2]?.meta.changes ?? 0) + (results[3]?.meta.changes ?? 0),
       rawResponsesPurged: results[4]?.meta.changes ?? 0,
+      eligibleConceptsEnqueued,
     }
+  }
+
+  async enqueueEligibleConceptReassessments(
+    now: number,
+    limit = 100,
+  ): Promise<number> {
+    const state = await this.loadState()
+    const policy = await this.loadPolicy(state.activePolicyConfigId)
+    const concepts = await all(
+      this.db,
+      `SELECT evidence.normalized_concept AS concept
+       FROM taxonomy_concept_evidence evidence
+       WHERE evidence.accepted = 1
+       GROUP BY evidence.normalized_concept
+       HAVING count(DISTINCT evidence.site_id) >= ?
+          AND NOT EXISTS (
+            SELECT 1 FROM taxonomy_jobs job
+            WHERE job.kind = 'reassess_concept'
+              AND job.concept_key = evidence.normalized_concept
+              AND job.taxonomy_version = ?
+              AND coalesce(job.provider_config_id, 0) = ?
+          )
+       ORDER BY min(evidence.observed_at), evidence.normalized_concept
+       LIMIT ?`,
+      [
+        policy.novelEvidenceSiteThreshold,
+        state.publishedVersion,
+        state.activeProviderConfigId ?? 0,
+        Math.max(1, Math.min(limit, 100)),
+      ],
+    )
+    let enqueued = 0
+    for (const row of concepts) {
+      const concept = text(row, 'concept')
+      const inputHash = await sha256Hex(stableJson({ concept }))
+      const jobKey = `concept:${encodeURIComponent(concept)}:input:${inputHash}:taxonomy:${state.publishedVersion}:provider:${state.activeProviderConfigId ?? 0}`
+      const id = `tax:${(await sha256Hex(jobKey)).slice(0, 40)}`
+      if (
+        await this.enqueueJob(
+          {
+            id,
+            jobKey,
+            kind: 'reassess_concept',
+            conceptKey: concept,
+            inputHash,
+            taxonomyVersion: state.publishedVersion,
+            providerConfigId: state.activeProviderConfigId,
+            policyConfigId: policy.id,
+            maxAttempts: Math.max(1, policy.retryBudget + 1),
+          },
+          now,
+        )
+      ) {
+        enqueued += 1
+      }
+    }
+    return enqueued
   }
 
   async setMode(
