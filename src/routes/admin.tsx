@@ -326,8 +326,8 @@ function AdminPage() {
     const name = String(formData.get('name') || '').trim()
     showStatus(`Adding "${name}"...`)
     try {
-      const result = await createMutation.mutateAsync(formData)
-      if (!result.created || !Number.isInteger(result.id) || result.id < 1) {
+      const result: unknown = await createMutation.mutateAsync(formData)
+      if (!isCreatedSite(result)) {
         throw new Error('The site was not created.')
       }
       await refreshData()
@@ -3540,6 +3540,19 @@ function numberFromForm(data: FormData, name: string) {
   return Number(data.get(name))
 }
 
+function isCreatedSite(value: unknown): value is { created: true; id: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'created' in value &&
+    value.created === true &&
+    'id' in value &&
+    typeof value.id === 'number' &&
+    Number.isInteger(value.id) &&
+    value.id > 0
+  )
+}
+
 function policyInputFromForm(data: FormData): TaxonomyPolicyInput {
   return {
     assignmentLimit: numberFromForm(data, 'assignmentLimit'),
@@ -3716,6 +3729,7 @@ function formatTimestamp(value: unknown) {
   return new Intl.DateTimeFormat('en', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'UTC',
   }).format(new Date(numeric * 1_000))
 }
 

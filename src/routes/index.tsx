@@ -301,8 +301,10 @@ function DirectoryPage() {
     setNoticeError(false)
 
     try {
-      const result = await submissionMutation.mutateAsync(formData)
-      if (!result.submitted) throw new Error('The submission was not accepted.')
+      const result: unknown = await submissionMutation.mutateAsync(formData)
+      if (!isSubmittedSite(result)) {
+        throw new Error('The submission was not accepted.')
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
@@ -1031,5 +1033,14 @@ function SubmitField({
         data-dialog-initial-focus={autoFocus || undefined}
       />
     </div>
+  )
+}
+
+function isSubmittedSite(value: unknown): value is { submitted: true } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'submitted' in value &&
+    value.submitted === true
   )
 }

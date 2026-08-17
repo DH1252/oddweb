@@ -2,6 +2,25 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+test('admin timestamps use UTC to keep server and client markup identical', async () => {
+  const source = await readFile(
+    new URL('../src/routes/admin.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /function formatTimestamp[\s\S]*?timeZone: 'UTC'/)
+})
+
+test('CSP permits the Cloudflare Web Analytics beacon', async () => {
+  const source = await readFile(
+    new URL('../src/routes/__root.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /script-src[^"\n]*https:\/\/static\.cloudflareinsights\.com/,
+  )
+})
+
 test('modal dismissal requires a complete backdrop pointer gesture', async () => {
   const source = await readFile(
     new URL('../src/components/oddweb.tsx', import.meta.url),
@@ -273,11 +292,8 @@ test('public and admin site creation accept optional preview images', async () =
     serverData,
     /imageValue instanceof File && imageValue\.size > 0 \? imageValue : undefined/,
   )
-  assert.match(directory, /if \(!result\.submitted\) throw new Error/)
-  assert.match(
-    admin,
-    /if \(!result\.created \|\| !Number\.isInteger\(result\.id\)/,
-  )
+  assert.match(directory, /if \(!isSubmittedSite\(result\)\)/)
+  assert.match(admin, /if \(!isCreatedSite\(result\)\)/)
 })
 
 test('policy revisions can be edited into audited successor revisions', async () => {

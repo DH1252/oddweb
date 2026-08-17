@@ -59,7 +59,7 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
   "img-src 'self' blob: data:",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline'",
   'upgrade-insecure-requests',
 ].join('; ')
