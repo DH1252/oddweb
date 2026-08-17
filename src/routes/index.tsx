@@ -953,7 +953,7 @@ function CardTagPages({
         >
           <button
             type="button"
-            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
+            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper hover:bg-warm disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
             disabled={safePage === 0}
             onClick={() => setPage(safePage - 1)}
             aria-label="Previous tag page"
@@ -965,7 +965,7 @@ function CardTagPages({
           </span>
           <button
             type="button"
-            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
+            className="grid min-h-8 min-w-8 place-items-center border border-brown bg-paper hover:bg-warm disabled:cursor-not-allowed disabled:bg-canvas disabled:text-brown"
             disabled={safePage >= pageCount - 1}
             onClick={() => setPage(safePage + 1)}
             aria-label="Next tag page"

@@ -47,8 +47,13 @@ export async function authenticateAdmin(data: {
   const config = getAuthConfig(true)
   await cleanupAuthRecords()
   const limitKey = await loginLimitKey(config)
-  const ipLimit = await consumeLoginLimit(limitKey, 5, loginWindowSeconds)
+  const globalLimitKey = await globalLoginLimitKey(config)
+  const [ipLimit, globalLimit] = await Promise.all([
+    consumeLoginLimit(limitKey, 8, loginWindowSeconds),
+    consumeLoginLimit(globalLimitKey, 40, loginWindowSeconds),
+  ])
   if (!ipLimit.allowed) denyForRateLimit(ipLimit.retryAfter)
+  if (!globalLimit.allowed) denyForRateLimit(globalLimit.retryAfter)
 
   const [usernameMatches, passwordMatches] = await Promise.all([
     secureEqual(data.username, config.username),
@@ -59,7 +64,7 @@ export async function authenticateAdmin(data: {
     throw new Error('Invalid username or password.')
   }
 
-  await clearLoginLimits([limitKey])
+  await clearLoginLimits([limitKey, globalLimitKey])
   const cookieSession = await useSession<AdminSession>(
     sessionConfig(config.sessionSecret),
   )
@@ -181,6 +186,10 @@ async function loginLimitKey(config: AuthConfig) {
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'local'
   return keyedHash(config.sessionSecret, `admin-login:ip:${ip}`)
+}
+
+async function globalLoginLimitKey(config: AuthConfig) {
+  return keyedHash(config.sessionSecret, 'admin-login:global')
 }
 
 async function credentialVersion(config: AuthConfig) {

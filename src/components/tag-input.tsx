@@ -189,7 +189,7 @@ export function TagInput({
                   ) : null}
                   <button
                     type="button"
-                    className="ml-1 grid min-h-9 min-w-9 place-items-center border-0 bg-transparent text-current hover:bg-ink/10"
+                    className="ml-1 grid min-h-9 min-w-9 place-items-center border-0 bg-transparent text-current hover:bg-brown hover:text-paper"
                     onClick={() => removeTag(token)}
                     aria-label={`Remove ${labelFor(token)}`}
                   >

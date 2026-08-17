@@ -1,4 +1,4 @@
-export async function consumeSubmissionRateLimit(
+export async function consumeSlidingWindowRateLimit(
   db: D1Database,
   key: string,
   limit: number,
@@ -39,10 +39,28 @@ export async function consumeSubmissionRateLimit(
     .bind(key, cutoff)
     .first<{ attemptedAt: number | null }>()
   if (oldestAttempt?.attemptedAt == null) {
-    throw new Error('Could not evaluate submission rate limit.')
+    throw new Error('Could not evaluate rate limit.')
   }
   return {
     allowed: false,
     retryAfter: Math.max(1, oldestAttempt.attemptedAt + windowSeconds - now),
   }
+}
+
+export async function releaseSlidingWindowRateLimit(
+  db: D1Database,
+  key: string,
+) {
+  await db
+    .prepare(
+      `DELETE FROM public_submission_attempts
+       WHERE id IN (
+         SELECT id FROM public_submission_attempts
+         WHERE key = ?1
+         ORDER BY attempted_at DESC, id DESC
+         LIMIT 1
+       )`,
+    )
+    .bind(key)
+    .run()
 }

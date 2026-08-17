@@ -24,7 +24,10 @@ import {
 
 import type { RecentFiling, SiteEntry } from '../data/sites'
 import type { CanonicalTag } from '../data/tags'
-import { consumeSubmissionRateLimit as consumeSlidingSubmissionRateLimit } from './submission-rate-limit'
+import {
+  consumeSlidingWindowRateLimit,
+  releaseSlidingWindowRateLimit,
+} from './submission-rate-limit'
 
 export type GuestbookEntry = {
   id: number
@@ -667,48 +670,16 @@ export async function consumeLoginLimit(
   }
 }
 
-export async function consumePublicRateLimit(
+export async function consumeSlidingRateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
 ) {
-  const now = Math.floor(Date.now() / 1000)
-  const cutoff = now - windowSeconds
-  const [limitResult] = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO public_rate_limits (key, count, window_started)
-     VALUES (?1, 1, ?2)
-     ON CONFLICT(key) DO UPDATE SET
-       count = CASE
-         WHEN window_started <= ?3 THEN 1
-         ELSE count + 1
-       END,
-       window_started = CASE
-         WHEN window_started <= ?3 THEN ?2
-         ELSE window_started
-       END
-     RETURNING count, window_started AS windowStarted`,
-    ).bind(key, now, cutoff),
-    env.DB.prepare(
-      `DELETE FROM public_rate_limits
-       WHERE window_started < ?1 AND key <> ?2`,
-    ).bind(now - 24 * 60 * 60, key),
-  ])
-  const row = limitResult.results[0] as
-    { count: number; windowStarted: number } | undefined
-  if (!row) throw new Error('Could not evaluate public rate limit.')
-  return {
-    allowed: row.count <= limit,
-    retryAfter: Math.max(1, row.windowStarted + windowSeconds - now),
-  }
+  return consumeSlidingWindowRateLimit(env.DB, key, limit, windowSeconds)
 }
 
-export async function consumeSubmissionRateLimit(
-  key: string,
-  limit: number,
-  windowSeconds: number,
-) {
-  return consumeSlidingSubmissionRateLimit(env.DB, key, limit, windowSeconds)
+export async function releaseSlidingRateLimit(key: string) {
+  return releaseSlidingWindowRateLimit(env.DB, key)
 }
 
 export async function clearLoginLimits(keys: string[]) {

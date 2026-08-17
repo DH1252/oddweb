@@ -9,10 +9,10 @@ import { z } from 'zod'
 
 import {
   addGuestbookEntry,
-  consumePublicRateLimit,
-  consumeSubmissionRateLimit,
+  consumeSlidingRateLimit,
   createSite,
   createSubmission,
+  releaseSlidingRateLimit,
   setGuestbookVisibility,
   moderateSubmission,
   setSiteStatus,
@@ -32,6 +32,15 @@ import { publishRealtimeEvent } from './realtime'
 
 const daySeconds = 24 * 60 * 60
 const submissionWindowSeconds = 3 * 60 * 60
+
+const publicRateLimits = {
+  submission: {
+    perIp: 24,
+    global: 300,
+    windowSeconds: submissionWindowSeconds,
+  },
+  guestbook: { perIp: 8, global: 500, windowSeconds: daySeconds },
+} as const
 
 const guestbookInput = z.object({
   name: z.string().trim().min(1).max(24),
@@ -69,7 +78,7 @@ const tagMergeInput = z.object({
 export const submitSite = createServerFn({ method: 'POST' })
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
-    await enforcePublicRateLimit('submission', 15, submissionWindowSeconds)
+    const releaseRateLimit = await enforcePublicRateLimit('submission')
     const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
     try {
       const result = await createSubmission({
@@ -97,6 +106,7 @@ export const submitSite = createServerFn({ method: 'POST' })
       }
     } catch (error) {
       if (thumbnail) await removeThumbnail(thumbnail.key)
+      await releaseRateLimit()
       throw error
     }
   })
@@ -137,7 +147,7 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
 export const signGuestbook = createServerFn({ method: 'POST' })
   .validator((data) => guestbookInput.parse(data))
   .handler(async ({ data }) => {
-    await enforcePublicRateLimit('guestbook', 5, daySeconds)
+    await enforcePublicRateLimit('guestbook')
     await addGuestbookEntry(data)
     await publishRealtimeEvent({ type: 'guestbook.changed' })
   })
@@ -413,12 +423,7 @@ function formTags(data: FormData) {
   return tags
 }
 
-async function enforcePublicRateLimit(
-  action: string,
-  limit: number,
-  windowSeconds: number,
-  silentlyIgnore = false,
-) {
+async function enforcePublicRateLimit(action: keyof typeof publicRateLimits) {
   const secret = env.ADMIN_SESSION_SECRET
   if (!secret) {
     setResponseStatus(503)
@@ -426,23 +431,49 @@ async function enforcePublicRateLimit(
       'Public mutations are unavailable until rate limiting is configured.',
     )
   }
+  const limits = publicRateLimits[action]
   const request = getRequest()
   const ip =
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'local'
   const key = await hmacKey(secret, `public:${action}:ip:${ip}`)
-  const result =
-    action === 'submission'
-      ? await consumeSubmissionRateLimit(key, limit, windowSeconds)
-      : await consumePublicRateLimit(key, limit, windowSeconds)
-  if (!result.allowed) {
-    if (silentlyIgnore) return false
+  const globalKey = `public:${action}:global`
+  const perIp = await consumeSlidingRateLimit(
+    key,
+    limits.perIp,
+    limits.windowSeconds,
+  )
+  if (!perIp.allowed) {
     setResponseStatus(429)
-    setResponseHeader('Retry-After', String(result.retryAfter))
+    setResponseHeader('Retry-After', String(perIp.retryAfter))
     throw new Error('Too many requests. Try again later.')
   }
-  return true
+  const global = await consumeSlidingRateLimit(
+    globalKey,
+    limits.global,
+    limits.windowSeconds,
+  )
+  if (!global.allowed) {
+    await releaseSlidingRateLimit(key)
+    setResponseStatus(429)
+    setResponseHeader('Retry-After', String(global.retryAfter))
+    throw new Error('Too many requests. Try again later.')
+  }
+  return async () => {
+    try {
+      await Promise.all([
+        releaseSlidingRateLimit(key),
+        releaseSlidingRateLimit(globalKey),
+      ])
+    } catch (error) {
+      console.error({
+        event: 'rate_limit_refund_failed',
+        action,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 }
 
 async function hmacKey(secret: string, value: string) {

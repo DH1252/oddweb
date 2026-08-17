@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { parseRealtimeEvent } from '../src/realtime/events'
+import { isAdminPath } from '../src/components/realtime-sync'
 
 test('realtime events accept bounded public changes', () => {
   assert.deepEqual(parseRealtimeEvent({ type: 'guestbook.changed' }), {
@@ -56,6 +57,22 @@ test('realtime events reject malformed or unbounded messages', () => {
     null,
   )
   assert.equal(parseRealtimeEvent({ type: 'unknown' }), null)
+})
+
+test('admin pages keep the realtime socket connected while hidden', async () => {
+  assert.equal(isAdminPath('/admin'), true)
+  assert.equal(isAdminPath('/admin/sites'), true)
+  assert.equal(isAdminPath('/admin/login'), true)
+  assert.equal(isAdminPath('/'), false)
+  assert.equal(isAdminPath('/tags'), false)
+  assert.equal(isAdminPath('/administer'), false)
+
+  const source = await readFile(
+    new URL('../src/components/realtime-sync.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /isAdminPath\(window\.location\.pathname\)/)
+  assert.match(source, /visibilityState === 'hidden'[\s\S]*socket\?\.close/)
 })
 
 test('public submissions publish a realtime event', async () => {

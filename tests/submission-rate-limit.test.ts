@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { consumeSubmissionRateLimit } from '../src/db/submission-rate-limit'
+import {
+  consumeSlidingWindowRateLimit,
+  releaseSlidingWindowRateLimit,
+} from '../src/db/submission-rate-limit'
 import { migratedTaxonomyDb } from './taxonomy-test-db'
 
 test('submission limits slide over the preceding three hours', async (context) => {
@@ -13,7 +16,7 @@ test('submission limits slide over the preceding three hours', async (context) =
 
   for (let index = 0; index < limit; index += 1) {
     assert.deepEqual(
-      await consumeSubmissionRateLimit(
+      await consumeSlidingWindowRateLimit(
         db,
         key,
         limit,
@@ -25,7 +28,7 @@ test('submission limits slide over the preceding three hours', async (context) =
   }
 
   assert.deepEqual(
-    await consumeSubmissionRateLimit(
+    await consumeSlidingWindowRateLimit(
       db,
       key,
       limit,
@@ -36,7 +39,7 @@ test('submission limits slide over the preceding three hours', async (context) =
   )
 
   assert.deepEqual(
-    await consumeSubmissionRateLimit(
+    await consumeSlidingWindowRateLimit(
       db,
       key,
       limit,
@@ -53,18 +56,32 @@ test('submission limits isolate client keys and remove expired attempts', async 
   const windowSeconds = 3 * 60 * 60
 
   assert.equal(
-    (await consumeSubmissionRateLimit(db, 'first', limit, windowSeconds, 100))
-      .allowed,
-    true,
-  )
-  assert.equal(
-    (await consumeSubmissionRateLimit(db, 'second', limit, windowSeconds, 100))
-      .allowed,
+    (
+      await consumeSlidingWindowRateLimit(
+        db,
+        'first',
+        limit,
+        windowSeconds,
+        100,
+      )
+    ).allowed,
     true,
   )
   assert.equal(
     (
-      await consumeSubmissionRateLimit(
+      await consumeSlidingWindowRateLimit(
+        db,
+        'second',
+        limit,
+        windowSeconds,
+        100,
+      )
+    ).allowed,
+    true,
+  )
+  assert.equal(
+    (
+      await consumeSlidingWindowRateLimit(
         db,
         'first',
         limit,
@@ -82,4 +99,32 @@ test('submission limits isolate client keys and remove expired attempts', async 
     .bind(100 + windowSeconds)
     .first<{ count: number }>()
   assert.equal(staleAttempts?.count, 0)
+})
+
+test('releasing a rate limit refunds one consumed attempt', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  const key = 'refund-key'
+  const limit = 1
+  const windowSeconds = 3 * 60 * 60
+
+  assert.deepEqual(
+    await consumeSlidingWindowRateLimit(db, key, limit, windowSeconds, 100),
+    { allowed: true, retryAfter: 0 },
+  )
+  assert.deepEqual(
+    await consumeSlidingWindowRateLimit(db, key, limit, windowSeconds, 101),
+    { allowed: false, retryAfter: windowSeconds - 1 },
+  )
+  await releaseSlidingWindowRateLimit(db, key)
+  assert.deepEqual(
+    await consumeSlidingWindowRateLimit(db, key, limit, windowSeconds, 102),
+    { allowed: true, retryAfter: 0 },
+  )
+  const remaining = await db
+    .prepare(
+      'SELECT count(*) AS count FROM public_submission_attempts WHERE key = ?',
+    )
+    .bind(key)
+    .first<{ count: number }>()
+  assert.equal(remaining?.count, 1)
 })

@@ -3,6 +3,10 @@ import { useEffect } from 'react'
 
 import { parseRealtimeEvent } from '../realtime/events'
 
+export function isAdminPath(pathname: string) {
+  return pathname === '/admin' || pathname.startsWith('/admin/')
+}
+
 export function RealtimeSync() {
   const queryClient = useQueryClient()
 
@@ -120,6 +124,7 @@ export function RealtimeSync() {
 
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
+        if (isAdminPath(window.location.pathname)) return
         if (reconnectTimer) clearTimeout(reconnectTimer)
         socket?.close(1000, 'Page hidden')
       } else {
