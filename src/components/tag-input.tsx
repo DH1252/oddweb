@@ -59,6 +59,7 @@ export function TagInput({
   const { data } = suggestionQuery
   const selectedMetadata = data?.selected || []
   const suggestions = deferredQuery ? data?.suggestions || [] : []
+  const optionCount = suggestions.length + (deferredQuery ? 1 : 0)
   const recoveredLookup =
     lookupError?.query === deferredQuery && suggestionQuery.isSuccess
   const visibleLookupError =
@@ -113,6 +114,11 @@ export function TagInput({
   async function commitEnteredTag() {
     const input = normalizeTag(query)
     if (!input || atLimit || resolvingTag) return
+
+    if (suggestions.length && activeIndex === suggestions.length) {
+      addTag(input)
+      return
+    }
 
     const visibleSuggestion =
       deferredQuery === input ? suggestions[activeIndex] : undefined
@@ -207,7 +213,7 @@ export function TagInput({
               open && suggestions.length ? `${id}-suggestions` : undefined
             }
             aria-activedescendant={
-              open && suggestions[activeIndex]
+              open && activeIndex < optionCount
                 ? `${id}-option-${activeIndex}`
                 : undefined
             }
@@ -226,13 +232,12 @@ export function TagInput({
               if (event.key === 'ArrowDown' && suggestions.length) {
                 event.preventDefault()
                 setOpen(true)
-                setActiveIndex((index) => (index + 1) % suggestions.length)
+                setActiveIndex((index) => (index + 1) % optionCount)
               } else if (event.key === 'ArrowUp' && suggestions.length) {
                 event.preventDefault()
                 setOpen(true)
                 setActiveIndex(
-                  (index) =>
-                    (index - 1 + suggestions.length) % suggestions.length,
+                  (index) => (index - 1 + optionCount) % optionCount,
                 )
               } else if (event.key === 'Enter' || event.key === ',') {
                 event.preventDefault()
@@ -296,6 +301,25 @@ export function TagInput({
                   </li>
                 )
               })}
+              <li
+                id={`${id}-option-${suggestions.length}`}
+                key={`${id}-input-option`}
+                role="option"
+                aria-selected={activeIndex === suggestions.length}
+              >
+                <div
+                  className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${activeIndex === suggestions.length ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => addTag()}
+                >
+                  <span>
+                    <strong className="block font-mono text-xs">
+                      {deferredQuery}
+                    </strong>
+                    <small className="text-muted">New tag</small>
+                  </span>
+                </div>
+              </li>
             </ul>
           ) : null}
         </div>
