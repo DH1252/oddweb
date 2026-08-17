@@ -71,6 +71,7 @@ export type TaxonomyCandidateAdminRecord = {
     confidenceMicros: number
     source: string
   }>
+  evidenceTotal: number
 }
 
 export type TaxonomyAttemptAdminRecord = {
@@ -592,13 +593,19 @@ export async function listTaxonomyCandidates(
             c.margin_micros AS marginMicros, c.rank, c.status,
             c.decision_reason AS decisionReason, c.created_at AS createdAt,
             c.decided_at AS decidedAt,
-            coalesce((SELECT json_group_array(json_object(
+             coalesce((SELECT json_group_array(json_object(
               'siteId', e.site_id,
               'snippet', e.evidence_snippet,
               'confidenceMicros', e.confidence_micros,
               'source', e.source
-            )) FROM taxonomy_concept_evidence e
-            WHERE e.normalized_concept = c.normalized_concept), '[]') AS evidence
+             )) FROM (
+               SELECT site_id, evidence_snippet, confidence_micros, source
+               FROM taxonomy_concept_evidence
+               WHERE normalized_concept = c.normalized_concept
+               ORDER BY observed_at DESC, id DESC LIMIT 8
+             ) e), '[]') AS evidence,
+             (SELECT count(*) FROM taxonomy_concept_evidence e
+              WHERE e.normalized_concept = c.normalized_concept) AS evidenceTotal
      FROM taxonomy_candidates c ${where}
      ORDER BY c.created_at DESC, c.id DESC
      LIMIT ?${values.length + 1} OFFSET ?${values.length + 2}`,
@@ -626,6 +633,7 @@ export async function listTaxonomyCandidates(
       createdAt: numberValue(row, 'createdAt'),
       decidedAt: nullableNumber(row, 'decidedAt'),
       evidence: candidateEvidence(parseJson(row.evidence)),
+      evidenceTotal: numberValue(row, 'evidenceTotal'),
     })),
     input,
     total,

@@ -214,6 +214,18 @@ test('suspense-backed result controls update inside transitions', async () => {
     admin,
     /function changePage[\s\S]*startTransition\(\(\) => onChange\(nextPage\)\)/,
   )
+  assert.equal(
+    [
+      ...admin.matchAll(
+        /onChange=\{\(event\) => \{[\s\S]{0,600}?startTransition\(\(\) => \{/g,
+      ),
+    ].length,
+    8,
+  )
+  assert.match(
+    directory,
+    /value=\{sort\}[\s\S]*startTransition\(\(\) => \{[\s\S]*setSort\(event\.target\.value as SortMode\)[\s\S]*setPage\(0\)/,
+  )
   assert.match(admin, /createFileRoute\('\/admin'\)\(\{\s*shouldReload: false/)
   assert.match(directory, /createFileRoute\('\/'\)\(\{\s*shouldReload: false/)
   assert.match(tags, /createFileRoute\('\/tags'\)\(\{\s*shouldReload: false/)

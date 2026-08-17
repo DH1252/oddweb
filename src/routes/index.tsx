@@ -463,8 +463,10 @@ function DirectoryPage() {
                 <select
                   value={sort}
                   onChange={(event) => {
-                    setSort(event.target.value as SortMode)
-                    setPage(0)
+                    startTransition(() => {
+                      setSort(event.target.value as SortMode)
+                      setPage(0)
+                    })
                   }}
                   className="min-h-11 border border-brown bg-paper px-2 text-sm shadow-[1px_1px_0_#d9aa7a]"
                   data-od-id="catalog-sort"

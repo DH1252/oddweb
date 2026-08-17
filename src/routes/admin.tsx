@@ -621,8 +621,10 @@ function AdminPage() {
               <select
                 value={reviewFilter}
                 onChange={(event) => {
-                  setReviewFilter(event.target.value as ReviewStatus | 'all')
-                  setSubmissionPage(0)
+                  startTransition(() => {
+                    setReviewFilter(event.target.value as ReviewStatus | 'all')
+                    setSubmissionPage(0)
+                  })
                 }}
                 className={fieldClass}
               >
@@ -763,8 +765,10 @@ function AdminPage() {
                 <select
                   value={siteFilter}
                   onChange={(event) => {
-                    setSiteFilter(event.target.value as EntryStatus | 'all')
-                    setSitePage(0)
+                    startTransition(() => {
+                      setSiteFilter(event.target.value as EntryStatus | 'all')
+                      setSitePage(0)
+                    })
                   }}
                   className={fieldClass}
                 >
@@ -2394,8 +2398,10 @@ function AutomationSection({
                 className={fieldClass}
                 value={candidateStatus ?? ''}
                 onChange={(event) => {
-                  setCandidateStatus(parseCandidateStatus(event.target.value))
-                  setCandidatePage(0)
+                  startTransition(() => {
+                    setCandidateStatus(parseCandidateStatus(event.target.value))
+                    setCandidatePage(0)
+                  })
                 }}
               >
                 <option value="">All statuses</option>
@@ -2414,8 +2420,10 @@ function AutomationSection({
                 className={fieldClass}
                 value={candidateKind ?? ''}
                 onChange={(event) => {
-                  setCandidateKind(parseCandidateKind(event.target.value))
-                  setCandidatePage(0)
+                  startTransition(() => {
+                    setCandidateKind(parseCandidateKind(event.target.value))
+                    setCandidatePage(0)
+                  })
                 }}
               >
                 <option value="">All kinds</option>
@@ -2509,18 +2517,27 @@ function AutomationSection({
                           {JSON.stringify(candidate.payload, null, 2)}
                         </pre>
                         {candidate.evidence.length ? (
-                          <ul className="m-0 list-none p-0">
-                            {candidate.evidence.map((evidence, index) => (
-                              <li
-                                key={`${evidence.siteId}:${index}`}
-                                className="border-t border-dotted border-line py-1 text-xs"
-                              >
-                                Site #{evidence.siteId}: {evidence.snippet} (
-                                {microsPercent(evidence.confidenceMicros)},{' '}
-                                {humanize(evidence.source)})
-                              </li>
-                            ))}
-                          </ul>
+                          <>
+                            <ul className="m-0 list-none p-0">
+                              {candidate.evidence.map((evidence, index) => (
+                                <li
+                                  key={`${evidence.siteId}:${index}`}
+                                  className="border-t border-dotted border-line py-1 text-xs"
+                                >
+                                  Site #{evidence.siteId}: {evidence.snippet} (
+                                  {microsPercent(evidence.confidenceMicros)},{' '}
+                                  {humanize(evidence.source)})
+                                </li>
+                              ))}
+                            </ul>
+                            {candidate.evidenceTotal >
+                            candidate.evidence.length ? (
+                              <p className="mb-0 text-xs text-muted">
+                                Showing the latest {candidate.evidence.length}{' '}
+                                of {candidate.evidenceTotal} evidence records.
+                              </p>
+                            ) : null}
+                          </>
                         ) : (
                           <p className="mb-0 text-xs text-muted">
                             No linked concept evidence.
@@ -2612,11 +2629,13 @@ function AutomationSection({
                 className={fieldClass}
                 value={jobStatus || ''}
                 onChange={(event) => {
-                  setJobStatus(
-                    (event.target.value || null) as TaxonomyJobStatus | null,
-                  )
-                  setJobPage(0)
-                  setSelectedJobs([])
+                  startTransition(() => {
+                    setJobStatus(
+                      (event.target.value || null) as TaxonomyJobStatus | null,
+                    )
+                    setJobPage(0)
+                    setSelectedJobs([])
+                  })
                 }}
               >
                 <option value="">All statuses</option>
@@ -2635,11 +2654,13 @@ function AutomationSection({
                 className={fieldClass}
                 value={jobKind || ''}
                 onChange={(event) => {
-                  setJobKind(
-                    (event.target.value || null) as TaxonomyJobKind | null,
-                  )
-                  setJobPage(0)
-                  setSelectedJobs([])
+                  startTransition(() => {
+                    setJobKind(
+                      (event.target.value || null) as TaxonomyJobKind | null,
+                    )
+                    setJobPage(0)
+                    setSelectedJobs([])
+                  })
                 }}
               >
                 <option value="">All kinds</option>
@@ -3098,10 +3119,12 @@ function AutomationSection({
               className={fieldClass}
               value={batchStatus || ''}
               onChange={(event) => {
-                setBatchStatus(
-                  (event.target.value || null) as TaxonomyBatchStatus | null,
-                )
-                setBatchPage(0)
+                startTransition(() => {
+                  setBatchStatus(
+                    (event.target.value || null) as TaxonomyBatchStatus | null,
+                  )
+                  setBatchPage(0)
+                })
               }}
             >
               <option value="">All statuses</option>
@@ -3188,8 +3211,10 @@ function AutomationSection({
               className={fieldClass}
               value={lockState}
               onChange={(event) => {
-                setLockState(event.target.value as typeof lockState)
-                setLockPage(0)
+                startTransition(() => {
+                  setLockState(event.target.value as typeof lockState)
+                  setLockPage(0)
+                })
               }}
             >
               <option value="active">Active</option>
