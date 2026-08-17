@@ -460,8 +460,8 @@ test('code-only release pauses asynchronous delivery before promotion and skips 
     'queues pause-delivery oddweb-taxonomy',
     'wrangler triggers deploy --config /repo/.wrangler/maintenance.jsonc',
     'smoke-test.mjs --application-only',
-    'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
-    'check-taxonomy-resources.mjs --remote-handlers',
+    'wrangler triggers deploy --config /repo/wrangler.jsonc',
+    'check-taxonomy-resources.mjs --remote-handlers --config /repo/wrangler.jsonc',
     'queues resume-delivery oddweb-taxonomy',
     'smoke-test.mjs --triggers-only',
   ])
@@ -631,8 +631,8 @@ test('pending D1 migration enters maintenance before export and restores async w
     'npm run db:migrate:remote',
     'smoke-test.mjs --application-only',
     "DELETE FROM app_state WHERE key = 'release:maintenance'",
-    'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
-    'check-taxonomy-resources.mjs --remote-handlers',
+    'wrangler triggers deploy --config /repo/wrangler.jsonc',
+    'check-taxonomy-resources.mjs --remote-handlers --config /repo/wrangler.jsonc',
     'queues resume-delivery oddweb-taxonomy',
     'smoke-test.mjs --triggers-only',
   ])
@@ -742,8 +742,8 @@ test('a genuinely pending Durable Object migration uses trigger-deferred direct 
     'wrangler deploy --config /repo/.wrangler/maintenance.jsonc',
     'wrangler deploy --config /repo/.wrangler/release.jsonc',
     'smoke-test.mjs --application-only',
-    'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
-    'check-taxonomy-resources.mjs --remote-handlers',
+    'wrangler triggers deploy --config /repo/wrangler.jsonc',
+    'check-taxonomy-resources.mjs --remote-handlers --config /repo/wrangler.jsonc',
     'queues resume-delivery oddweb-taxonomy',
     'smoke-test.mjs --triggers-only',
   ])
@@ -900,7 +900,7 @@ test('code-only trigger smoke failure holds delivery and crons without claiming 
   })
   assert.throws(() => harness.execute(), /simulated command failure/)
   assertOrder(harness.events, [
-    'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
+    'wrangler triggers deploy --config /repo/wrangler.jsonc',
     'queues resume-delivery oddweb-taxonomy',
     'smoke-test.mjs --triggers-only',
     'queues pause-delivery oddweb-taxonomy',
@@ -913,8 +913,7 @@ test('code-only trigger smoke failure holds delivery and crons without claiming 
 test('partial trigger deployment failure uses the same safe code-only containment', () => {
   const harness = releaseHarness({
     failRun: (label) =>
-      label ===
-      'npx wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
+      label === 'npx wrangler triggers deploy --config /repo/wrangler.jsonc',
   })
   assert.throws(() => harness.execute(), /simulated command failure/)
   assert.ok(harness.has('queues pause-delivery oddweb-taxonomy'))
@@ -950,9 +949,7 @@ test('maintenance application smoke failure reasserts paused fetch-only maintena
   assert.equal(harness.count('queues pause-delivery oddweb-taxonomy'), 1)
   assert.equal(harness.maintenanceDeployCount(), 2)
   assert.equal(
-    harness.has(
-      'wrangler triggers deploy --config /repo/.wrangler/production.jsonc',
-    ),
+    harness.has('wrangler triggers deploy --config /repo/wrangler.jsonc'),
     false,
   )
 })

@@ -44,7 +44,8 @@ export function runRelease(options = {}) {
   io = { ...io, queueStateEnv: env }
   const baseIo = io
   const now = options.now ?? (() => new Date())
-  const config = options.config ?? readJsonc(resolve(root, 'wrangler.jsonc'))
+  const triggerConfigPath = resolve(root, 'wrangler.jsonc')
+  const config = options.config ?? readJsonc(triggerConfigPath)
 
   io.run('npm', ['run', 'release:check'])
   io.run('npm', ['run', 'verify'])
@@ -576,14 +577,14 @@ export function runRelease(options = {}) {
 
     try {
       assertArtifactUnchanged(io, artifactHashPaths, artifactDigest)
-      deployProductionTriggers(io, productionConfigPath)
+      deployProductionTriggers(io, triggerConfigPath)
       reconcileQueueConsumerRemovals({
         io,
         desiredConfig: config,
         candidateQueueNames,
-        configPath: productionConfigPath,
+        configPath: triggerConfigPath,
       })
-      runPostdeployValidation(io, productionConfigPath)
+      runPostdeployValidation(io, triggerConfigPath)
       updateJournal(io, recoveryPath, journal, 'triggers_restored', now)
       if (queuePauseChanged) {
         resumeTaxonomyDelivery(io)
