@@ -2981,6 +2981,56 @@ test('classification provider work cannot settle after the site input hash chang
   )
 })
 
+test('classification requeues current site input after a concurrent taxonomy revision', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 17_700_000 })
+  const providerId = await addProvider(service, {
+    name: 'taxonomy-race-provider',
+    credential: 'taxonomy-race-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const jobId = await service.enqueueSite(1)
+  assert.ok(jobId)
+  const sourceJob = await db
+    .prepare('SELECT input_hash AS inputHash FROM taxonomy_jobs WHERE id = ?')
+    .bind(jobId)
+    .first<{ inputHash: string }>()
+  assert.ok(sourceJob)
+
+  await db.prepare('UPDATE taxonomy_state SET published_version = 2').run()
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    { now: () => 17_701_000 },
+  )
+
+  assert.equal(result.status, 'obsolete')
+  assert.deepEqual(
+    await db
+      .prepare(
+        `SELECT status, taxonomy_version AS taxonomyVersion,
+                site_content_version AS siteContentVersion,
+                input_hash AS inputHash
+         FROM taxonomy_jobs
+         WHERE kind = 'classify_site' AND id <> ?`,
+      )
+      .bind(jobId)
+      .first(),
+    {
+      status: 'pending',
+      taxonomyVersion: 2,
+      siteContentVersion: 1,
+      inputHash: sourceJob.inputHash,
+    },
+  )
+})
+
 test('placeholder promotion preserves assignments and threshold evidence queues one reassessment', async (context) => {
   const db = await migratedTaxonomyDb(context)
   for (const siteId of [1, 2, 3]) await insertSite(db, siteId)

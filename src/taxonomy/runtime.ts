@@ -8,7 +8,7 @@ import {
   requiredConsensus,
   retryDelaySeconds,
 } from './guards'
-import { sha256Hex, stableJson } from './normalize'
+import { sha256Hex, stableJson, taxonomyJobKey } from './normalize'
 import { processOntologyJob } from './ontology-runtime'
 import { allowedProviderHosts, providerHostAllowed } from './provider-security'
 import {
@@ -125,6 +125,45 @@ function promptFor(snapshot: CandidateSnapshot): string {
       parentIds: tag.parentIds.map(String),
     })),
   })
+}
+
+async function enqueueFreshClassification(input: {
+  repository: TaxonomyRepository
+  job: TaxonomyJob
+  snapshot: CandidateSnapshot
+  now: number
+}): Promise<void> {
+  const { repository, job, snapshot, now } = input
+  if (
+    snapshot.site.contentVersion !== job.siteContentVersion ||
+    snapshot.site.classificationInputHash !== job.inputHash
+  ) {
+    return
+  }
+  const state = await repository.loadState()
+  const policy = await repository.loadPolicy(state.activePolicyConfigId)
+  const jobKey = taxonomyJobKey({
+    siteId: snapshot.site.id,
+    inputHash: job.inputHash,
+    taxonomyVersion: state.publishedVersion,
+    classifierVersion: `${policy.id}-${state.activeProviderConfigId ?? 0}`,
+  })
+  await repository.enqueueJob(
+    {
+      id: `tax:${(await sha256Hex(jobKey)).slice(0, 40)}`,
+      jobKey,
+      kind: 'classify_site',
+      siteId: snapshot.site.id,
+      inputHash: job.inputHash,
+      siteContentVersion: snapshot.site.contentVersion,
+      taxonomyVersion: state.publishedVersion,
+      providerConfigId: state.activeProviderConfigId,
+      policyConfigId: policy.id,
+      priority: 0,
+      maxAttempts: Math.max(1, policy.retryBudget + 1),
+    },
+    now,
+  )
 }
 
 async function callProvider(input: {
@@ -610,6 +649,9 @@ export async function processTaxonomyMessage(
       (job.policyConfigId !== null &&
         state.activePolicyConfigId !== job.policyConfigId)
     ) {
+      if (snapshot) {
+        await enqueueFreshClassification({ repository, job, snapshot, now })
+      }
       await repository.settleJob(
         job,
         'obsolete',
