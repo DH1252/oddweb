@@ -2,12 +2,39 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-test('timestamps use device-local time after hydration with a UTC fallback', async () => {
-  const [admin, localTime] = await Promise.all([
+const adminSourceFiles = [
+  'admin-page.tsx',
+  'admin-automation-section.tsx',
+  'admin-sections/submissions-section.tsx',
+  'admin-sections/add-site-section.tsx',
+  'admin-sections/site-management-section.tsx',
+  'admin-sections/tag-corrections-section.tsx',
+  'admin-sections/guestbook-section.tsx',
+  'admin-cards.tsx',
+  'admin-editors.tsx',
+  'admin-ui.tsx',
+]
+
+async function readAdminSources() {
+  const componentSources = await Promise.all(
+    adminSourceFiles.map((file) =>
+      readFile(new URL(`../src/components/${file}`, import.meta.url), 'utf8'),
+    ),
+  )
+  const libSources = await Promise.all([
+    readFile(new URL('../src/lib/admin-parsers.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/admin-format.ts', import.meta.url), 'utf8'),
     readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
+      new URL('../src/lib/taxonomy-policy-form.ts', import.meta.url),
       'utf8',
     ),
+  ])
+  return [...componentSources, ...libSources].join('\n')
+}
+
+test('timestamps use device-local time after hydration with a UTC fallback', async () => {
+  const [admin, localTime] = await Promise.all([
+    readAdminSources(),
     readFile(
       new URL('../src/components/local-time.tsx', import.meta.url),
       'utf8',
@@ -172,10 +199,7 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
   )
   assert.match(login, /data-od-id="admin-login"/)
 
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
   assert.match(admin, /selectedButtonClass/)
   assert.match(admin, /aria-pressed=\{dashboard\.state\.mode === mode\}/)
   assert.doesNotMatch(admin, /!bg-brown !text-paper/)
@@ -184,10 +208,7 @@ test('admin pages use high-contrast text, borders, and disabled controls', async
 test('admin audit cards use the available width and wrap opaque identifiers', async () => {
   const [styles, admin] = await Promise.all([
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
-      'utf8',
-    ),
+    readAdminSources(),
   ])
 
   assert.match(styles, /\[data-od-id='admin-page'\]\.odd-shell[\s\S]*1400px/)
@@ -200,10 +221,7 @@ test('admin audit cards use the available width and wrap opaque identifiers', as
 })
 
 test('automation jobs expose every server-retryable status', async () => {
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
 
   assert.match(
     admin,
@@ -243,10 +261,7 @@ test('suspense-backed result controls update inside transitions', async () => {
     new URL('../src/routes/tags.tsx', import.meta.url),
     'utf8',
   )
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
   const adminRoute = await readFile(
     new URL('../src/routes/admin.tsx', import.meta.url),
     'utf8',
@@ -332,10 +347,7 @@ test('surprise navigation requests a fresh filtered site', async () => {
 test('public and admin site creation accept optional preview images', async () => {
   const [directory, admin, serverData] = await Promise.all([
     readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
-      'utf8',
-    ),
+    readAdminSources(),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
   ])
 
@@ -355,10 +367,7 @@ test('public and admin site creation accept optional preview images', async () =
 })
 
 test('policy revisions can be edited into audited successor revisions', async () => {
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
 
   assert.match(admin, /onClick=\{\(\) => editPolicy\(policy\)\}/)
   assert.match(admin, /supersedesPolicyConfigId: draft\.sourceId/)
@@ -367,10 +376,7 @@ test('policy revisions can be edited into audited successor revisions', async ()
 })
 
 test('policy activation resets history pagination and backfill reports delivery separately', async () => {
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
   assert.match(
     admin,
     /async function activatePolicy[\s\S]*setPolicyPage\(0\)[\s\S]*installControlPlaneSnapshot\(result\)/,
@@ -383,10 +389,7 @@ test('policy activation resets history pagination and backfill reports delivery 
 })
 
 test('mode changes install the authoritative dashboard before UI reconciliation', async () => {
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
   assert.match(
     admin,
     /async function changeMode[\s\S]*modeMutation\.mutateAsync\(mode\)[\s\S]*installDashboard\(result\.dashboard\)/,
@@ -396,10 +399,7 @@ test('mode changes install the authoritative dashboard before UI reconciliation'
 
 test('admin buttons cancel stale reads and install authoritative control-plane snapshots', async () => {
   const [admin, server] = await Promise.all([
-    readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
-      'utf8',
-    ),
+    readAdminSources(),
     readFile(
       new URL('../src/server/taxonomy-admin.ts', import.meta.url),
       'utf8',
@@ -422,10 +422,7 @@ test('admin buttons cancel stale reads and install authoritative control-plane s
 })
 
 test('admin filters reset pagination and editor requests ignore stale responses', async () => {
-  const admin = await readFile(
-    new URL('../src/components/admin-page.tsx', import.meta.url),
-    'utf8',
-  )
+  const admin = await readAdminSources()
   assert.match(admin, /setSubmissionPage\(0\)[\s\S]*setReviewFilter\(/)
   assert.match(admin, /setSitePage\(0\)[\s\S]*setSiteFilter\(/)
   assert.match(admin, /setCandidatePage\(0\)[\s\S]*setCandidateStatus\(/)
@@ -440,10 +437,7 @@ test('admin filters reset pagination and editor requests ignore stale responses'
 
 test('admin mutations reject false success and protect bundled site status', async () => {
   const [admin, serverData, repository] = await Promise.all([
-    readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
-      'utf8',
-    ),
+    readAdminSources(),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/db/repository.ts', import.meta.url), 'utf8'),
   ])
@@ -473,10 +467,7 @@ test('admin data bypasses HTTP caches without destabilizing Suspense queries', a
 
 test('admin tag wrangling buttons force relation inference', async () => {
   const [admin, control] = await Promise.all([
-    readFile(
-      new URL('../src/components/admin-page.tsx', import.meta.url),
-      'utf8',
-    ),
+    readAdminSources(),
     readFile(
       new URL('../src/server/taxonomy-admin.ts', import.meta.url),
       'utf8',

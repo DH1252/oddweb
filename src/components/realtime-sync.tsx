@@ -14,8 +14,13 @@ export function RealtimeSync() {
     let socket: WebSocket | undefined
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let taxonomyRefreshTimer: ReturnType<typeof setTimeout> | undefined
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined
     let stopped = false
     let attempts = 0
+
+    const heartbeat = () => {
+      if (socket?.readyState === WebSocket.OPEN) socket.send('ping')
+    }
 
     const resync = async () => {
       await Promise.all([
@@ -68,6 +73,8 @@ export function RealtimeSync() {
       socket = new WebSocket(`${protocol}//${location.host}/api/realtime`)
       socket.addEventListener('open', () => {
         attempts = 0
+        if (heartbeatTimer) clearInterval(heartbeatTimer)
+        heartbeatTimer = setInterval(heartbeat, 25_000)
         void resync()
       })
       socket.addEventListener('message', async (message) => {
@@ -116,6 +123,8 @@ export function RealtimeSync() {
         }
       })
       socket.addEventListener('close', () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer)
+        heartbeatTimer = undefined
         if (stopped || document.visibilityState === 'hidden') return
         const delay = Math.min(30_000, 1_000 * 2 ** attempts++)
         reconnectTimer = setTimeout(connect, delay)
@@ -139,6 +148,7 @@ export function RealtimeSync() {
       stopped = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (taxonomyRefreshTimer) clearTimeout(taxonomyRefreshTimer)
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
       document.removeEventListener('visibilitychange', handleVisibility)
       socket?.close(1000, 'Page closed')
     }

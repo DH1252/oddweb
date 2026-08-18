@@ -2,6 +2,12 @@
 
 Oddweb is a curated directory of unusual websites. It runs as a TanStack Start application on Cloudflare Workers, with D1 for relational data and R2 for thumbnails.
 
+## Application
+
+The public site offers a D1-driven directory with include/exclude tag filtering, per-site detail pages with view counters, random navigation via the surprise button, public site submissions with optional image uploads, and a guestbook. Search and filter query variants are noindexed and canonicalize to their unfiltered page.
+
+The admin dashboard (`/admin`, behind the session cookie) manages sites, submissions, and guestbook entries, curates the tag taxonomy (canonical tags, aliases, parents, unmapped tags, audited manual corrections), operates the taxonomy automation (providers, policies, jobs) with live WebSocket updates, and runs the thumbnail reconciliation scan. All top-level admin collections use server-side pagination with a 20-record page size. All displayed times use the visitor's local timezone.
+
 ## Requirements
 
 - Node.js 24.14.x or newer Node 24
@@ -25,7 +31,7 @@ Run the complete secret-free release verification with:
 npm run verify
 ```
 
-This validates release metadata and migrations, regenerates routes, checks formatting, runs ESLint and TypeScript, verifies generated Worker types, audits dependencies, runs tests, builds production output, and performs a strict Wrangler deployment dry run.
+This validates release metadata and migrations, regenerates routes, checks formatting, runs ESLint and TypeScript, verifies generated Worker types, audits dependencies, runs the test suite plus the migration and drizzle-generation checks, builds production output, and performs a strict Wrangler deployment dry run.
 
 The audit strategy has two gates: all production dependencies fail on moderate or higher advisories, and the full dependency tree fails on high or critical advisories. `drizzle-kit` currently retains a moderate, development-server-only transitive `esbuild` advisory (`GHSA-67mh-4wv8-2f99`) with no safe upgrade offered by npm; the full audit remains visible without blocking on that known dev-only advisory. Re-evaluate this exception whenever `drizzle-kit` or its loader dependencies change.
 
@@ -61,6 +67,22 @@ npx wrangler r2 object get oddweb-thumbnails/<object-key> --file <local-file>
 
 Do not place credentials or uploaded production objects in the repository.
 
+The admin dashboard's thumbnail scan runs a report-only, two-phase D1/R2 reconciliation: it lists stored objects and flags orphans older than 24 hours (the grace period protects just-uploaded images whose database write has not landed), then flags database-referenced keys that are missing from R2. The scan never deletes anything; it reports counts and key lists through a resumable signed cursor and processes about 100 objects per step.
+
+## Taxonomy Automation
+
+Tag taxonomy processing is automated end to end: site classification, concept reassessment (ontology proposals), tag relation inference, and unmapped-tag wrangling run as D1-backed jobs on the `oddweb-taxonomy` queue (batch size 10, 5-second timeout, 5 retries, `oddweb-taxonomy-dlq` dead-letter queue). A `* * * * *` cron dispatches due jobs, and enqueue paths also dispatch immediately so new submissions and lifecycle batches do not wait for the next cron tick. `TAXONOMY_MASTER_KEY_V1` is the versioned taxonomy master key that encrypts provider credentials (A256GCM envelopes); keep every version available while any stored credential still references it.
+
+Providers (OpenAI-compatible or Gemini) are governed by immutable, audited policy revisions that carry daily request/token budgets and ontology agreement requirements. Budgets reset at UTC midnight; provider rate-limit errors are retried after the next UTC reset instead of burning attempts. When the site, taxonomy version, provider, or policy changes, stale queued classify and ontology jobs are repointed in place to the current configuration rather than retried against obsolete input. Ontology output is capped at 4096 tokens, empty proposal sets from valid providers are accepted, and contract violations settle the job as degraded with the provider's real error instead of looping through blind retries. Manual corrections remain supported and are audited; the admin taxonomy panel offers force concept reassessment, force tag relation inference, refresh tag associations (up to 50 active tags per run), and force unmapped-tag wrangling.
+
+## Realtime Updates
+
+`/api/realtime` exposes a WebSocket through the hibernating `RealtimeHub` Durable Object (`REALTIME_HUB`). The client invalidates TanStack Query caches on `directory.changed`, `guestbook.changed`, `submission.changed`, `taxonomy.changed` (debounced), and `site.viewed` events. Public pages close the socket when the tab is hidden and reconnect with exponential backoff; admin pages keep it connected while hidden so taxonomy and job state stay live. Hibernation keeps idle connections cheap.
+
+## Rate Limiting
+
+Public mutations and admin login use sliding-window limits designed for CGNAT prevalence: a per-IP key (HMAC of the connecting IP) with a generous ceiling plus a site-wide global cap, so shared NAT pools are unlikely to trip the per-IP limit while distributed abuse is still bounded. Failed submissions refund their consumed quota. Current ceilings: site submissions 24 per IP per 3 hours with a 300 global cap; guestbook entries 8 per IP per day with a 500 global cap; admin login 8 failed attempts per IP per 15 minutes with a 40 global cap, cleared on successful login. Responses carry `429` with `Retry-After`.
+
 ## Production Release
 
 Canonical production URL: <https://oddweb.page>
@@ -75,7 +97,7 @@ npx wrangler secret put ADMIN_SESSION_SECRET
 npx wrangler secret put TAXONOMY_MASTER_KEY_V1
 ```
 
-Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 may omit `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused` with `RELEASE_TAXONOMY_QUEUE_INITIAL_STATE`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without the recovery directory, Cloudflare credentials, and a queue-state declaration when the API omits state. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
+Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 may omit `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused` with `RELEASE_TAXONOMY_QUEUE_INITIAL_STATE`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without the recovery directory, Cloudflare credentials, and a queue-state declaration when the API omits state. Before any remote mutation it runs the release check, the full verification pipeline, and a remote taxonomy resource preflight (`npm run taxonomy:preflight:remote`). After promotion it runs the remote-handler postdeploy validation (`npm run taxonomy:postdeploy`); both checks are also available standalone. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
 
 ```bash
 export BACKUP_DIR=/absolute/path/to/secured/oddweb-backups
@@ -145,7 +167,7 @@ export STAGING_SECRETS_FILE=/secure/path/staging-secrets.env
 npm run staging:deploy:first
 ```
 
-`staging:deploy:first` validates all four required secret keys before remote work, runs staging verification, requires a clean worktree, hashes the config, server, client, and secrets, and dry-runs the exact strict `--secrets-file` deployment before any mutation. It rechecks cleanliness and the digest before applying isolated D1 migrations and again before deployment, then validates handlers/consumer settings and smoke-tests the exact staging release SHA. Use the ordinary staging verification and deployment controls for later changes; never commit or place the secrets file under the repository.
+`staging:deploy:first` validates all four required secret keys before remote work, runs staging verification, requires a clean worktree, hashes the config, server, client, and secrets, and dry-runs the exact strict `--secrets-file` deployment before any mutation. It rechecks cleanliness and the digest before applying isolated D1 migrations and again before deployment, then validates handlers/consumer settings and smoke-tests the exact staging release SHA. Later staging releases run `npm run staging:smoke` against the staged Worker. Use the ordinary staging verification and deployment controls for later changes; never commit or place the secrets file under the repository.
 
 Run staging checks for schema changes and risky operational changes before production. Staging data must be synthetic or separately sanitized; never bind staging to production D1 or R2.
 
@@ -158,7 +180,7 @@ npx wrangler versions list
 npx wrangler rollback <version-id>
 ```
 
-A failed code-only application smoke restores the previous Worker and its committed trigger/consumer configuration, then resumes delivery only after those restoration steps validate. A failed trigger-aware smoke intentionally leaves taxonomy delivery paused and cron schedules cleared for explicit recovery. A failed migration-path smoke keeps the maintenance Worker active because schema/data recovery requires operator judgment. If a Durable Object lifecycle migration was applied, do not attempt to deploy the previous version; Cloudflare blocks that rollback and the application must be fixed forward at the active migration tag. Inspect `/health`, `npx wrangler tail --format json`, recent versions, deployment status, and the recorded release recovery journal before intervening.
+A failed code-only application smoke restores the previous Worker and its committed trigger/consumer configuration, then resumes delivery only after those restoration steps validate. A failed trigger-aware smoke intentionally leaves taxonomy delivery paused and cron schedules cleared for explicit recovery. A release that stopped at the paused-queue operator gate after successful promotion does not need to be rerun: resume queue delivery for the already-promoted version and run trigger-only functional verification (`node scripts/smoke-test.mjs --triggers-only`) instead of invoking `npm run deploy` again. A failed migration-path smoke keeps the maintenance Worker active because schema/data recovery requires operator judgment. If a Durable Object lifecycle migration was applied, do not attempt to deploy the previous version; Cloudflare blocks that rollback and the application must be fixed forward at the active migration tag. Inspect `/health`, `npx wrangler tail --format json`, recent versions, deployment status, and the recorded release recovery journal before intervening.
 
 A Worker rollback does not reverse D1 migrations or R2 changes. Prefer forward-compatible migrations and a corrective forward migration. D1 Time Travel is always available for supported production databases; capture a bookmark before destructive recovery and follow Cloudflare's current retention policy. To restore an exported SQL backup, first preserve the failed state, stop or block writes, record the recovery point and expected data-loss window, then execute the reviewed backup file:
 

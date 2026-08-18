@@ -107,3 +107,26 @@ test('realtime Durable Object uses a hibernating WebSocket binding', async () =>
   assert.match(source, /acceptWebSocket/)
   assert.match(source, /getWebSockets/)
 })
+
+test('realtime clients heartbeat and the hub logs close codes', async () => {
+  const [client, hub] = await Promise.all([
+    readFile(
+      new URL('../src/components/realtime-sync.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(new URL('../src/realtime/hub.ts', import.meta.url), 'utf8'),
+  ])
+  assert.match(
+    client,
+    /socket\.send\('ping'\)[\s\S]*setInterval\(heartbeat, 25_000\)/,
+  )
+  assert.match(client, /clearInterval\(heartbeatTimer\)/)
+  assert.match(
+    hub,
+    /webSocketClose\([\s\S]*code: number[\s\S]*wasClean: boolean/,
+  )
+  assert.match(hub, /event: 'realtime_client_disconnected'/)
+  assert.match(hub, /durationMs/)
+  assert.match(hub, /console\.warn\(record\)/)
+  assert.match(hub, /event: 'realtime_socket_error'/)
+})
