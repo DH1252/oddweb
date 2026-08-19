@@ -204,7 +204,26 @@ function SiteDetailPage() {
       )
       setNoticeError(true)
     },
-    onSuccess: (result, { slug: entrySlug }) => {
+    onSuccess: (result, { slug: entrySlug }, context) => {
+      if (result.requireChallenge) {
+        if (context.previousMyVotes) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'my-votes'],
+            context.previousMyVotes,
+          )
+        }
+        if (context.previousSite) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'site', entrySlug],
+            context.previousSite,
+          )
+        }
+        setNotice(
+          'Multiple votes from this network on this site require verification.',
+        )
+        setNoticeError(true)
+        return
+      }
       queryClient.setQueryData<
         | {
             site: SiteEntry

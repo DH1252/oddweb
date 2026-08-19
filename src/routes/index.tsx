@@ -304,7 +304,26 @@ function DirectoryPage() {
       )
       setNoticeError(true)
     },
-    onSuccess: (result, { slug }) => {
+    onSuccess: (result, { slug }, context) => {
+      if (result.requireChallenge) {
+        if (context.previousMyVotes) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'my-votes'],
+            context.previousMyVotes,
+          )
+        }
+        for (const [queryKey, data] of context.previousDirectory) {
+          queryClient.setQueryData(queryKey, data)
+        }
+        for (const [queryKey, data] of context.previousPopular) {
+          queryClient.setQueryData(queryKey, data)
+        }
+        setNotice(
+          'Multiple votes from this network on this site require verification.',
+        )
+        setNoticeError(true)
+        return
+      }
       const updateSites = (
         current:
           | {

@@ -10,6 +10,7 @@ export { parseHostnames, validateTurnstileResult } from '../lib/turnstile'
 export const turnstileActions = {
   submission: 'site_submission',
   guestbook: 'guestbook',
+  vote: 'site_vote',
 } as const
 
 export async function requireTurnstile(

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   countSiteVotes,
+  hasOtherActiveVoteOnSite,
   readVisitorVotedSlugs,
   toggleSiteVote,
 } from '../src/db/vote-repository'
@@ -85,4 +86,53 @@ test('votes only apply to active sites', async (context) => {
   })
   assert.deepEqual(result, { updated: false, voted: false, siteFound: false })
   assert.equal(await countSiteVotes(db, 1), 0)
+})
+
+test('hasOtherActiveVoteOnSite detects other active votes on same IP', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1, 'alpha')
+
+  // No active votes yet
+  assert.equal(
+    await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-1', 'visitor-a'),
+    false,
+  )
+
+  // Visitor A votes on alpha with IP 1
+  await toggleSiteVote(db, {
+    slug: 'alpha',
+    visitorKey: 'visitor-a',
+    identityScheme: 'cookie-v1:ip-1',
+  })
+
+  // Visitor A checking their own vote -> false (same visitor)
+  assert.equal(
+    await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-1', 'visitor-a'),
+    false,
+  )
+
+  // Visitor B from same IP checking -> true (repeat IP vote!)
+  assert.equal(
+    await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-1', 'visitor-b'),
+    true,
+  )
+
+  // Visitor B from different IP checking -> false (different IP)
+  assert.equal(
+    await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-2', 'visitor-b'),
+    false,
+  )
+
+  // Visitor A unvotes
+  await toggleSiteVote(db, {
+    slug: 'alpha',
+    visitorKey: 'visitor-a',
+    identityScheme: 'cookie-v1:ip-1',
+  })
+
+  // Now no active vote from visitor-a -> false for visitor-b
+  assert.equal(
+    await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-1', 'visitor-b'),
+    false,
+  )
 })

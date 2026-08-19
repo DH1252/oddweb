@@ -22,6 +22,7 @@ import {
 } from '../db/public-attempts'
 import {
   toggleSiteVote as toggleStoredSiteVote,
+  hasOtherActiveVoteOnSite,
   readVisitorVotedSlugs,
 } from '../db/vote-repository'
 import { createTaxonomyService } from '../taxonomy'
@@ -221,11 +222,6 @@ export const recordSiteVisit = createServerFn({ method: 'POST' })
     deferVisitAccounting({ request: getRequest(), slug: data.slug }),
   )
 
-const voteInput = z.object({
-  slug: z.string().min(1).max(100),
-  requestId: z.string().uuid().optional(),
-})
-
 export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
   async () => {
     const identity = await getPublicIdentity()
@@ -234,12 +230,35 @@ export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
   },
 )
 
+const voteInput = z.object({
+  slug: z.string().min(1).max(100),
+  requestId: z.string().uuid().optional(),
+  turnstileToken: z.string().max(2048).optional(),
+})
+
 export const toggleSiteVote = createServerFn({ method: 'POST' })
   .validator((data) => voteInput.parse(data))
   .handler(async ({ data }) => {
     const identity = await getPublicIdentity()
     const requestId = data.requestId ?? crypto.randomUUID()
     const keys = await publicScopeKeys('vote', identity, getRequest())
+    const identityScheme = `cookie-v1:${keys.exactIp}`
+    const isRepeatIpVote = await hasOtherActiveVoteOnSite(
+      env.DB,
+      data.slug,
+      identityScheme,
+      keys.voteIdentity,
+    )
+    if (isRepeatIpVote && env.TURNSTILE_SECRET) {
+      if (!data.turnstileToken) {
+        return {
+          requireChallenge: true as const,
+          voted: false,
+          votes: undefined,
+        }
+      }
+      await requireTurnstile(data.turnstileToken, turnstileActions.vote)
+    }
     const releaseRateLimit = await enforcePublicRateLimit(
       'vote',
       identity,
@@ -251,7 +270,7 @@ export const toggleSiteVote = createServerFn({ method: 'POST' })
         slug: data.slug,
         visitorKey: keys.voteIdentity,
         requestId,
-        identityScheme: 'cookie-v1',
+        identityScheme,
       })
       if (!result.siteFound)
         throw new Error('That site is not available to vote on.')
@@ -272,7 +291,11 @@ export const toggleSiteVote = createServerFn({ method: 'POST' })
       })
     }
     await touchPublicIdentity(identity.key, result.updated)
-    return { voted: result.voted, votes: result.votes }
+    return {
+      requireChallenge: false as const,
+      voted: result.voted,
+      votes: result.votes,
+    }
   })
 
 export const reviewSubmission = createServerFn({ method: 'POST' })

@@ -138,6 +138,28 @@ export async function countSiteVotes(database: D1Database, siteId: number) {
   return row?.total || 0
 }
 
+export async function hasOtherActiveVoteOnSite(
+  database: D1Database,
+  siteSlug: string,
+  identityScheme: string,
+  currentVisitorKey: string,
+): Promise<boolean> {
+  const row = await database
+    .prepare(
+      `SELECT 1 FROM site_votes v
+       JOIN sites s ON s.id = v.site_id
+       WHERE s.slug = ?1
+         AND v.identity_scheme = ?2
+         AND v.visitor_key <> ?3
+         AND v.voted = 1
+         AND v.quarantined = 0
+       LIMIT 1`,
+    )
+    .bind(siteSlug, identityScheme, currentVisitorKey)
+    .first()
+  return Boolean(row)
+}
+
 export async function readVisitorVotedSlugs(
   database: D1Database,
   visitorKey: string,
@@ -147,7 +169,7 @@ export async function readVisitorVotedSlugs(
       `SELECT site.slug FROM site_votes vote
        JOIN sites site ON site.id = vote.site_id AND site.status = 'active'
        WHERE vote.visitor_key = ?1
-         AND vote.identity_scheme = 'cookie-v1'
+         AND vote.identity_scheme LIKE 'cookie-v1%'
          AND vote.voted = 1
          AND vote.quarantined = 0
        ORDER BY vote.updated_at DESC, vote.id DESC`,
