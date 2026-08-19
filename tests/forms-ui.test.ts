@@ -509,3 +509,23 @@ test('honeypot fields protect public forms and server rejects filled honeypots',
   assert.match(serverData, /Form validation failed/)
   assert.match(serverData, /Guestbook entry rejected/)
 })
+
+test('vote stepped challenge dialog renders Turnstile verification modal', async () => {
+  const [indexRoute, siteRoute, voteHook, dialog] = await Promise.all([
+    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/sites.$slug.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/hooks/use-site-vote.ts', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/components/vote-challenge-dialog.tsx', import.meta.url),
+      'utf8',
+    ),
+  ])
+
+  assert.match(indexRoute, /VoteChallengeDialog/)
+  assert.match(siteRoute, /VoteChallengeDialog/)
+  assert.match(voteHook, /requestInvisibleTurnstileToken/)
+  assert.match(voteHook, /challengeSlug/)
+  assert.match(voteHook, /submitChallengeVote/)
+  assert.match(dialog, /Quick Verification/)
+  assert.match(dialog, /action="vote"/)
+})

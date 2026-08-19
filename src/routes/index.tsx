@@ -17,6 +17,7 @@ import {
 import { TagInput } from '../components/tag-input'
 import { LocalTime } from '../components/local-time'
 import { Turnstile } from '../components/turnstile'
+import { VoteChallengeDialog } from '../components/vote-challenge-dialog'
 import {
   FieldLabel,
   ItemThumbnail,
@@ -202,7 +203,15 @@ function DirectoryPage() {
         data: { query: deferredQuery, include, exclude },
       }),
   })
-  const { toggleVote, isVoted, isPendingFor } = useSiteVote({
+  const {
+    toggleVote,
+    isVoted,
+    isPendingFor,
+    challengeSlug,
+    clearChallenge,
+    submitChallengeVote,
+    isAnyPending: isVotePending,
+  } = useSiteVote({
     setNotice,
     setNoticeError,
   })
@@ -887,6 +896,15 @@ function DirectoryPage() {
             </fieldset>
           </form>
         </ModalDialog>
+      ) : null}
+
+      {challengeSlug ? (
+        <VoteChallengeDialog
+          slug={challengeSlug}
+          onClose={clearChallenge}
+          onSubmitToken={submitChallengeVote}
+          isPending={isVotePending}
+        />
       ) : null}
     </PageShell>
   )

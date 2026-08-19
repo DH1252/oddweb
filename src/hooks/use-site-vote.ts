@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 
-import { myVotesQueryOptions } from '../queries/oddweb'
+import {
+  myVotesQueryOptions,
+  turnstileConfigQueryOptions,
+} from '../queries/oddweb'
+import { requestInvisibleTurnstileToken } from '../components/turnstile'
 import { toggleSiteVote } from '../server/data'
 import type { SiteEntry } from '../data/sites'
 
@@ -15,6 +19,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
   const queryClient = useQueryClient()
   const [localNotice, setLocalNotice] = useState('')
   const [localNoticeError, setLocalNoticeError] = useState(false)
+  const [challengeSlug, setChallengeSlug] = useState<string | null>(null)
 
   const updateNotice = useCallback(
     (message: string, isError = false) => {
@@ -28,6 +33,8 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
 
   const myVotesQuery = useQuery(myVotesQueryOptions())
   const myVotes = myVotesQuery.data?.slugs ?? []
+  const turnstileConfigQuery = useQuery(turnstileConfigQueryOptions())
+  const sitekey = turnstileConfigQuery.data?.sitekey ?? ''
 
   const voteMutation = useMutation({
     mutationFn: (input: {
@@ -194,10 +201,32 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
             context.previousSite,
           )
         }
+        if (sitekey) {
+          requestInvisibleTurnstileToken(sitekey, 'vote').then(
+            (invisibleToken) => {
+              if (invisibleToken) {
+                voteMutation.mutate({
+                  slug,
+                  requestId: crypto.randomUUID(),
+                  turnstileToken: invisibleToken,
+                })
+              } else {
+                setChallengeSlug(slug)
+                updateNotice('Verification check required for this vote.', true)
+                options?.onChallengeRequired?.(slug)
+              }
+            },
+          )
+          return
+        }
+
+        setChallengeSlug(slug)
         updateNotice('Verification check required for this vote.', true)
         options?.onChallengeRequired?.(slug)
         return
       }
+
+      setChallengeSlug(null)
 
       const updateSiteList = (
         current:
@@ -301,12 +330,33 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     [myVotes],
   )
 
+  const submitChallengeVote = useCallback(
+    async (turnstileToken: string) => {
+      if (!challengeSlug) return
+      const targetSlug = challengeSlug
+      setChallengeSlug(null)
+      await voteMutation.mutateAsync({
+        slug: targetSlug,
+        requestId: crypto.randomUUID(),
+        turnstileToken,
+      })
+    },
+    [challengeSlug, voteMutation],
+  )
+
+  const clearChallenge = useCallback(() => {
+    setChallengeSlug(null)
+  }, [])
+
   return {
     toggleVote,
     isVoted,
     isPendingFor,
     pendingSlug: voteMutation.isPending ? voteMutation.variables.slug : null,
     isAnyPending: voteMutation.isPending,
+    challengeSlug,
+    clearChallenge,
+    submitChallengeVote,
     myVotes,
     notice: localNotice,
     noticeError: localNoticeError,

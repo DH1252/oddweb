@@ -7,6 +7,7 @@ import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
 import { siteDetailQueryOptions } from '../queries/oddweb'
 import { recordSiteVisit } from '../server/data'
 import { useSiteVote } from '../hooks/use-site-vote'
+import { VoteChallengeDialog } from '../components/vote-challenge-dialog'
 import {
   SITE_ORIGIN,
   notFoundHeaders,
@@ -116,6 +117,10 @@ function SiteDetailPage() {
     toggleVote: triggerVote,
     isVoted,
     isPendingFor,
+    challengeSlug,
+    clearChallenge,
+    submitChallengeVote,
+    isAnyPending: isVotePending,
   } = useSiteVote({
     setNotice,
     setNoticeError,
@@ -302,6 +307,14 @@ function SiteDetailPage() {
         </nav>
       </main>
       <SiteFooter />
+      {challengeSlug ? (
+        <VoteChallengeDialog
+          slug={challengeSlug}
+          onClose={clearChallenge}
+          onSubmitToken={submitChallengeVote}
+          isPending={isVotePending}
+        />
+      ) : null}
     </PageShell>
   )
 }
