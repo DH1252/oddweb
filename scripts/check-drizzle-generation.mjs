@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -9,6 +16,20 @@ const output = resolve(temporaryRoot, 'drizzle')
 
 try {
   cpSync(resolve(root, 'drizzle'), output, { recursive: true })
+  const journal = JSON.parse(
+    readFileSync(resolve(root, 'drizzle/meta/_journal.json'), 'utf8'),
+  )
+  const missingSnapshots = journal.entries
+    .map((entry) => entry.tag)
+    .filter((tag) => {
+      const match = /^(\d+)_/.exec(tag)
+      return !match || !existsSync(resolve(root, `drizzle/meta/${match[1]}_snapshot.json`))
+    })
+  if (missingSnapshots.length) {
+    throw new Error(
+      `Drizzle metadata is incomplete; missing snapshots for ${missingSnapshots.join(', ')}`,
+    )
+  }
   execFileSync(
     'npx',
     [
