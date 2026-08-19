@@ -291,24 +291,39 @@ FROM taxonomy_jobs WHERE id = '${jobId}';`
       )
     }
 
+    try {
+      const probeHeaders = {}
+      if (expectedRelease) probeHeaders['x-release-probe'] = expectedRelease
+      await request('/health', {
+        method: 'POST',
+        headers: probeHeaders,
+      })
+    } catch {
+      // Fallback to scheduled cron dispatch
+    }
+
     let result
     for (let attempt = 0; attempt < taxonomyProbeAttempts; attempt += 1) {
-      const rows = queryD1(
-        database,
-        `SELECT j.status, j.attempt_count, j.last_error_code,
-                o.dispatch_attempts, o.dispatched_at
-         FROM taxonomy_jobs j JOIN taxonomy_outbox o ON o.job_id = j.id
-         WHERE j.id = '${jobId}'`,
-      )
-      result = rows[0]
-      if (
-        result &&
-        ['obsolete', 'degraded'].includes(result.status) &&
-        Number(result.attempt_count) === 1 &&
-        Number(result.dispatch_attempts) >= 1 &&
-        result.dispatched_at
-      ) {
-        break
+      try {
+        const rows = queryD1(
+          database,
+          `SELECT j.status, j.attempt_count, j.last_error_code,
+                  o.dispatch_attempts, o.dispatched_at
+           FROM taxonomy_jobs j JOIN taxonomy_outbox o ON o.job_id = j.id
+           WHERE j.id = '${jobId}'`,
+        )
+        result = rows[0]
+        if (
+          result &&
+          ['obsolete', 'degraded'].includes(result.status) &&
+          Number(result.attempt_count) === 1 &&
+          Number(result.dispatch_attempts) >= 1 &&
+          result.dispatched_at
+        ) {
+          break
+        }
+      } catch (pollError) {
+        if (attempt === taxonomyProbeAttempts - 1) throw pollError
       }
       await new Promise((resolve) =>
         setTimeout(resolve, taxonomyProbeIntervalMs),
@@ -409,18 +424,30 @@ function queryD1(database, sql) {
   return statement.results ?? []
 }
 
-function executeD1(database, sql) {
-  return wrangler([
-    'd1',
-    'execute',
-    database,
-    '--config',
-    configPath,
-    '--remote',
-    '--json',
-    '--command',
-    sql,
-  ])
+function executeD1(database, sql, maxRetries = 3) {
+  let lastError
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      return wrangler([
+        'd1',
+        'execute',
+        database,
+        '--config',
+        configPath,
+        '--remote',
+        '--json',
+        '--command',
+        sql,
+      ])
+    } catch (error) {
+      lastError = error
+      if (attempt < maxRetries) {
+        const end = Date.now() + attempt * 1000
+        while (Date.now() < end) {}
+      }
+    }
+  }
+  throw lastError
 }
 
 function wrangler(args) {
