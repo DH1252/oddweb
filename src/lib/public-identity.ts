@@ -35,3 +35,24 @@ function expandIpv6(value: string) {
     ...rightParts,
   ].map((part) => part.padStart(4, '0').toLowerCase())
 }
+
+export const blockedUserAgentPatterns = [
+  /^(curl|wget|python-requests|python-urllib|httpie|postman|insomnia|scrapy|go-http-client|apache-httpclient|okhttp|libwww-perl|aiohttp|undici|node-fetch)/i,
+]
+
+export function isLegitimateUserAgent(userAgent?: string | null): boolean {
+  if (!userAgent) return false
+  const trimmed = userAgent.trim()
+  if (trimmed.length < 5) return false
+  for (const pattern of blockedUserAgentPatterns) {
+    if (pattern.test(trimmed)) return false
+  }
+  return true
+}
+
+export function assertLegitimateClient(request: Request) {
+  const userAgent = request.headers.get('user-agent')
+  if (!isLegitimateUserAgent(userAgent)) {
+    throw new Error('Automated request blocked.')
+  }
+}

@@ -1,17 +1,12 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  useSuspenseQuery,
-} from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
 import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
-import { myVotesQueryOptions, siteDetailQueryOptions } from '../queries/oddweb'
-import { recordSiteVisit, toggleSiteVote } from '../server/data'
+import { siteDetailQueryOptions } from '../queries/oddweb'
+import { recordSiteVisit } from '../server/data'
+import { useSiteVote } from '../hooks/use-site-vote'
 import {
   SITE_ORIGIN,
   notFoundHeaders,
@@ -20,8 +15,6 @@ import {
   siteSocialImage,
   socialMeta,
 } from '../lib/seo'
-
-import type { SiteEntry } from '../data/sites'
 
 export const Route = createFileRoute('/sites/$slug')({
   loader: async ({ context, params }) => {
@@ -111,7 +104,6 @@ export const Route = createFileRoute('/sites/$slug')({
 
 function SiteDetailPage() {
   const { slug } = Route.useParams()
-  const queryClient = useQueryClient()
   const { data } = useSuspenseQuery(siteDetailQueryOptions(slug))
   const [imageFailed, setImageFailed] = useState(false)
   const [notice, setNotice] = useState('')
@@ -120,169 +112,18 @@ function SiteDetailPage() {
     mutationFn: (entrySlug: string) =>
       recordSiteVisit({ data: { slug: entrySlug } }),
   })
-  const voteMutation = useMutation({
-    mutationFn: (input: { slug: string; requestId: string }) =>
-      toggleSiteVote({ data: input }),
-    onMutate: async ({ slug: entrySlug }) => {
-      setNotice('')
-      setNoticeError(false)
-      await queryClient.cancelQueries({
-        queryKey: ['oddweb', 'public', 'my-votes'],
-      })
-      await queryClient.cancelQueries({
-        queryKey: ['oddweb', 'public', 'site', entrySlug],
-      })
-      await queryClient.cancelQueries({
-        queryKey: ['oddweb', 'public', 'directory'],
-      })
-      await queryClient.cancelQueries({
-        queryKey: ['oddweb', 'public', 'popular'],
-      })
-
-      const previousMyVotes = queryClient.getQueryData<{ slugs: string[] }>([
-        'oddweb',
-        'public',
-        'my-votes',
-      ])
-      const previousSite = queryClient.getQueryData<{
-        site: SiteEntry
-        previous: unknown
-        next: unknown
-      }>(['oddweb', 'public', 'site', entrySlug])
-
-      const currentSlugs = previousMyVotes?.slugs ?? []
-      const wasVoted = currentSlugs.includes(entrySlug)
-      const delta = wasVoted ? -1 : 1
-
-      queryClient.setQueryData<{ slugs: string[] }>(
-        ['oddweb', 'public', 'my-votes'],
-        {
-          slugs: wasVoted
-            ? currentSlugs.filter((item) => item !== entrySlug)
-            : [...currentSlugs, entrySlug],
-        },
-      )
-
-      queryClient.setQueryData<
-        | {
-            site: SiteEntry
-            previous: unknown
-            next: unknown
-          }
-        | undefined
-      >(['oddweb', 'public', 'site', entrySlug], (current) =>
-        current
-          ? {
-              ...current,
-              site: {
-                ...current.site,
-                votes: Math.max(0, current.site.votes + delta),
-              },
-            }
-          : current,
-      )
-
-      return { previousMyVotes, previousSite }
-    },
-    onError: (error, { slug: entrySlug }, context) => {
-      if (context) {
-        if (context.previousMyVotes) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'my-votes'],
-            context.previousMyVotes,
-          )
-        }
-        if (context.previousSite) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'site', entrySlug],
-            context.previousSite,
-          )
-        }
-      }
-      setNotice(
-        error instanceof Error ? error.message : 'Could not record your vote.',
-      )
-      setNoticeError(true)
-    },
-    onSuccess: (result, { slug: entrySlug }, context) => {
-      if (result.requireChallenge) {
-        if (context.previousMyVotes) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'my-votes'],
-            context.previousMyVotes,
-          )
-        }
-        if (context.previousSite) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'site', entrySlug],
-            context.previousSite,
-          )
-        }
-        setNotice(
-          'Multiple votes from this network on this site require verification.',
-        )
-        setNoticeError(true)
-        return
-      }
-      queryClient.setQueryData<
-        | {
-            site: SiteEntry
-            previous: unknown
-            next: unknown
-          }
-        | undefined
-      >(['oddweb', 'public', 'site', entrySlug], (current) =>
-        current
-          ? {
-              ...current,
-              site: {
-                ...current.site,
-                votes: result.votes ?? current.site.votes,
-              },
-            }
-          : current,
-      )
-      queryClient.setQueryData<{ slugs: string[] } | undefined>(
-        ['oddweb', 'public', 'my-votes'],
-        (current) => {
-          const slugs = current?.slugs ?? []
-          return {
-            slugs: result.voted
-              ? slugs.includes(entrySlug)
-                ? slugs
-                : [...slugs, entrySlug]
-              : slugs.filter((item) => item !== entrySlug),
-          }
-        },
-      )
-      void Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'public', 'site', entrySlug],
-          refetchType: 'none',
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'public', 'directory'],
-          refetchType: 'none',
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'public', 'popular'],
-          refetchType: 'none',
-        }),
-      ])
-    },
+  const {
+    toggleVote: triggerVote,
+    isVoted,
+    isPendingFor,
+  } = useSiteVote({
+    setNotice,
+    setNoticeError,
   })
-  const myVotes =
-    useQuery({
-      ...myVotesQueryOptions(),
-      placeholderData: keepPreviousData,
-    }).data?.slugs ?? []
+
   const recordEntry = useEffectEvent((entrySlug: string) => {
     visitMutation.mutate(entrySlug)
   })
-
-  function toggleVote() {
-    voteMutation.mutate({ slug, requestId: crypto.randomUUID() })
-  }
 
   useEffect(() => {
     setImageFailed(false)
@@ -293,6 +134,7 @@ function SiteDetailPage() {
 
   const { site } = data
   const { previous, next } = data
+  const toggleVote = () => triggerVote(site.slug)
 
   return (
     <PageShell>
@@ -360,19 +202,19 @@ function SiteDetailPage() {
             </a>
             <button
               type="button"
-              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] ${
-                myVotes.includes(site.slug)
+              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] transition-transform duration-100 active:scale-95 cursor-pointer disabled:cursor-not-allowed ${
+                isVoted(site.slug)
                   ? 'border-white bg-green-50 text-success hover:bg-green-100'
                   : 'border-white bg-paper text-ink hover:bg-warm'
               }`}
-              aria-pressed={myVotes.includes(site.slug)}
+              aria-pressed={isVoted(site.slug)}
               onClick={toggleVote}
-              disabled={voteMutation.isPending}
+              disabled={isPendingFor(site.slug)}
               data-od-id="vote-site"
             >
-              {voteMutation.isPending
+              {isPendingFor(site.slug)
                 ? 'Voting...'
-                : myVotes.includes(site.slug)
+                : isVoted(site.slug)
                   ? 'Voted'
                   : 'Vote'}{' '}
               &uarr; {site.votes}

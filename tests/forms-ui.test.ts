@@ -492,3 +492,20 @@ test('admin tag wrangling buttons force relation inference', async () => {
     /export const refreshTagAssociations = createServerFn\(\{ method: 'POST' \}\)[\s\S]*ORDER BY canonical DESC, id LIMIT 50/,
   )
 })
+
+test('honeypot fields protect public forms and server rejects filled honeypots', async () => {
+  const [indexRoute, serverData] = await Promise.all([
+    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
+  ])
+
+  // Form markup has hidden honeypot inputs
+  assert.match(indexRoute, /name="homepage_hp"/)
+  assert.match(indexRoute, /name="message_hp"/)
+  assert.match(indexRoute, /className="hidden sr-only"/)
+
+  // Server validators reject filled honeypots
+  assert.match(serverData, /homepage_hp/)
+  assert.match(serverData, /Form validation failed/)
+  assert.match(serverData, /Guestbook entry rejected/)
+})

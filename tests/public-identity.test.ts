@@ -46,3 +46,38 @@ test('Turnstile validation requires success, exact action, and hostname', () => 
     '127.0.0.1',
   ])
 })
+
+test('assertLegitimateClient blocks scrapers and permits normal browsers', async () => {
+  const { assertLegitimateClient } = await import('../src/lib/public-identity')
+
+  const legitRequest = new Request('https://oddweb.page', {
+    headers: {
+      'user-agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+  })
+  assert.doesNotThrow(() => assertLegitimateClient(legitRequest))
+
+  const botRequests = [
+    new Request('https://oddweb.page', {
+      headers: { 'user-agent': 'curl/7.88.1' },
+    }),
+    new Request('https://oddweb.page', {
+      headers: { 'user-agent': 'python-requests/2.31.0' },
+    }),
+    new Request('https://oddweb.page', {
+      headers: { 'user-agent': 'Go-http-client/2.0' },
+    }),
+    new Request('https://oddweb.page', {
+      headers: { 'user-agent': 'PostmanRuntime/7.32.3' },
+    }),
+    new Request('https://oddweb.page', { headers: {} }),
+  ]
+
+  for (const botReq of botRequests) {
+    assert.throws(
+      () => assertLegitimateClient(botReq),
+      /Automated request blocked/,
+    )
+  }
+})

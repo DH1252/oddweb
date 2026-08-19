@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   countSiteVotes,
   hasOtherActiveVoteOnSite,
+  isSiteUnderVelocitySpike,
   readVisitorVotedSlugs,
   toggleSiteVote,
 } from '../src/db/vote-repository'
@@ -133,6 +134,44 @@ test('hasOtherActiveVoteOnSite detects other active votes on same IP', async (co
   // Now no active vote from visitor-a -> false for visitor-b
   assert.equal(
     await hasOtherActiveVoteOnSite(db, 'alpha', 'cookie-v1:ip-1', 'visitor-b'),
+    false,
+  )
+})
+
+test('isSiteUnderVelocitySpike detects traffic surges', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertSite(db, 1, 'viral-site')
+
+  const now = 1000
+
+  // 0 votes initially
+  assert.equal(await isSiteUnderVelocitySpike(db, 'viral-site', now), false)
+
+  // Simulate 19 votes within the 10-minute window
+  for (let i = 1; i <= 19; i++) {
+    await toggleSiteVote(db, {
+      slug: 'viral-site',
+      visitorKey: `legit-voter-${i}`,
+      now,
+    })
+  }
+
+  // 19 votes is below threshold of 20
+  assert.equal(await isSiteUnderVelocitySpike(db, 'viral-site', now), false)
+
+  // 20th vote arrives
+  await toggleSiteVote(db, {
+    slug: 'viral-site',
+    visitorKey: 'legit-voter-20',
+    now,
+  })
+
+  // 20 votes triggers isSiteUnderVelocitySpike -> true
+  assert.equal(await isSiteUnderVelocitySpike(db, 'viral-site', now), true)
+
+  // After 11 minutes (660s later), spike window expires -> false
+  assert.equal(
+    await isSiteUnderVelocitySpike(db, 'viral-site', now + 660),
     false,
   )
 })

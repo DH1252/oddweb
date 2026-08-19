@@ -160,6 +160,25 @@ export async function hasOtherActiveVoteOnSite(
   return Boolean(row)
 }
 
+export async function isSiteUnderVelocitySpike(
+  database: D1Database,
+  siteSlug: string,
+  now = Math.floor(Date.now() / 1000),
+  threshold = 20,
+  windowSeconds = 600,
+): Promise<boolean> {
+  const cutoff = now - windowSeconds
+  const row = await database
+    .prepare(
+      `SELECT count(*) AS recent FROM site_votes v
+       JOIN sites s ON s.id = v.site_id
+       WHERE s.slug = ?1 AND v.voted = 1 AND v.updated_at >= ?2`,
+    )
+    .bind(siteSlug, cutoff)
+    .first<{ recent: number }>()
+  return (row?.recent ?? 0) >= threshold
+}
+
 export async function readVisitorVotedSlugs(
   database: D1Database,
   visitorKey: string,

@@ -8,6 +8,7 @@ import {
 } from './taxonomy/processor'
 import { runWithReleaseInvocation } from './server/release-barrier.server'
 import { publishRealtimeEvent } from './server/realtime'
+import { cleanupPublicAttempts } from './db/public-attempts'
 
 export { RealtimeHub } from './realtime/hub'
 
@@ -59,6 +60,14 @@ export default {
     }
   },
   async scheduled() {
+    try {
+      await cleanupPublicAttempts(env.DB)
+    } catch (error) {
+      console.error({
+        event: 'public_attempts_cleanup_failed',
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
     const invocation = await runWithReleaseInvocation(
       'scheduled',
       runTaxonomyMaintenance,

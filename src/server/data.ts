@@ -23,6 +23,7 @@ import {
 import {
   toggleSiteVote as toggleStoredSiteVote,
   hasOtherActiveVoteOnSite,
+  isSiteUnderVelocitySpike,
   readVisitorVotedSlugs,
 } from '../db/vote-repository'
 import { createTaxonomyService } from '../taxonomy'
@@ -37,6 +38,7 @@ import { normalizeWebsiteUrl } from '../lib/website-url'
 import { deferVisitAccounting } from './visit-accounting'
 import { publishRealtimeEvent } from './realtime'
 import {
+  assertLegitimateClient,
   getPublicIdentity,
   publicScopeKeys,
   touchPublicIdentity,
@@ -74,6 +76,7 @@ const publicRateLimits = {
 const guestbookInput = z.object({
   name: z.string().trim().min(1).max(24),
   message: z.string().trim().min(1).max(120),
+  hp: z.string().optional(),
 })
 
 const visitInput = z.object({ slug: z.string().min(1).max(100) })
@@ -107,6 +110,7 @@ const tagMergeInput = z.object({
 export const submitSite = createServerFn({ method: 'POST' })
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
+    assertLegitimateClient(getRequest())
     await requireTurnstile(data.turnstileToken, turnstileActions.submission)
     const releaseRateLimit = await enforcePublicRateLimit('submission')
     let thumbnail: Awaited<ReturnType<typeof storeThumbnail>> | undefined
@@ -190,14 +194,23 @@ export const signGuestbook = createServerFn({ method: 'POST' })
     const input = data as {
       name?: unknown
       message?: unknown
+      hp?: unknown
       turnstileToken?: unknown
     }
     return {
-      ...guestbookInput.parse({ name: input.name, message: input.message }),
+      ...guestbookInput.parse({
+        name: input.name,
+        message: input.message,
+        hp: typeof input.hp === 'string' ? input.hp : undefined,
+      }),
       turnstileToken: input.turnstileToken,
     }
   })
   .handler(async ({ data }) => {
+    assertLegitimateClient(getRequest())
+    if (data.hp && data.hp.trim().length > 0) {
+      throw new Error('Guestbook entry rejected.')
+    }
     await requireTurnstile(data.turnstileToken, turnstileActions.guestbook)
     const releaseRateLimit = await enforcePublicRateLimit('guestbook')
     try {
@@ -239,6 +252,7 @@ const voteInput = z.object({
 export const toggleSiteVote = createServerFn({ method: 'POST' })
   .validator((data) => voteInput.parse(data))
   .handler(async ({ data }) => {
+    assertLegitimateClient(getRequest())
     const identity = await getPublicIdentity()
     const requestId = data.requestId ?? crypto.randomUUID()
     const keys = await publicScopeKeys('vote', identity, getRequest())
@@ -249,7 +263,9 @@ export const toggleSiteVote = createServerFn({ method: 'POST' })
       identityScheme,
       keys.voteIdentity,
     )
-    if (isRepeatIpVote && env.TURNSTILE_SECRET) {
+    const isSpike = await isSiteUnderVelocitySpike(env.DB, data.slug)
+    const requiresChallenge = isRepeatIpVote || isSpike
+    if (requiresChallenge && env.TURNSTILE_SECRET) {
       if (!data.turnstileToken) {
         return {
           requireChallenge: true as const,
@@ -411,6 +427,10 @@ export const mergeTag = createServerFn({ method: 'POST' })
 
 function validateSiteForm(data: unknown) {
   if (!(data instanceof FormData)) throw new Error('Expected a site form.')
+  const honeypot = data.get('homepage_hp')
+  if (typeof honeypot === 'string' && honeypot.trim().length > 0) {
+    throw new Error('Form validation failed.')
+  }
   const image = optionalFormFile(data, 'image')
 
   return {

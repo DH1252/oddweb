@@ -7,10 +7,14 @@ import {
 
 import {
   coarseNetworkAddress,
+  isLegitimateUserAgent,
   isPublicIdentityId,
 } from '../lib/public-identity'
 
-export { coarseNetworkAddress } from '../lib/public-identity'
+export {
+  coarseNetworkAddress,
+  isLegitimateUserAgent,
+} from '../lib/public-identity'
 
 const publicIdentityVersion = 1
 const publicIdentityMaxAge = 365 * 24 * 60 * 60
@@ -90,6 +94,14 @@ export async function touchPublicIdentity(
       event: 'public_identity_activity_failed',
       error: error instanceof Error ? error.message : String(error),
     })
+  }
+}
+
+export function assertLegitimateClient(request: Request) {
+  const userAgent = request.headers.get('user-agent')
+  if (!isLegitimateUserAgent(userAgent)) {
+    setResponseStatus(403)
+    throw new Error('Automated request blocked.')
   }
 }
 
