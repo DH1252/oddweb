@@ -21,3 +21,4 @@ mailmap.txt
 !.env.example
 .agents/
 skills-lock.json
+AGENTS.md
