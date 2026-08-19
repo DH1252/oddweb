@@ -62,7 +62,7 @@ const tagSuggestionInput = z.object({
   limit: z.number().int().min(1).max(20).default(8),
 })
 
-export const getPublicDirectoryPage = createServerFn({ method: 'GET' })
+export const getPublicDirectoryPage = createServerFn({ method: 'POST' })
   .validator((data) => directoryInput.parse(data))
   .handler(async ({ data }) => {
     const voteRevision = await readPublicVoteRevision()
@@ -75,7 +75,7 @@ export const getPublicSurprise = createServerFn({ method: 'POST' })
   .validator((data) => surpriseInput.parse(data))
   .handler(({ data }) => readPublicSurprise(data))
 
-export const getPublicPopularPage = createServerFn({ method: 'GET' })
+export const getPublicPopularPage = createServerFn({ method: 'POST' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))
   .handler(async ({ data }) => {
     const voteRevision = await readPublicVoteRevision()
@@ -116,7 +116,7 @@ export const getPublicTagPage = createServerFn({ method: 'GET' })
     cachePublicRead('tags', data, () => readPublicTagPage(data)),
   )
 
-export const getPublicSiteDetail = createServerFn({ method: 'GET' })
+export const getPublicSiteDetail = createServerFn({ method: 'POST' })
   .validator((data) => z.string().min(1).max(100).parse(data))
   .handler(async ({ data }) => {
     const voteRevision = await readPublicVoteRevision()
