@@ -1,14 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   myVotesQueryOptions,
   turnstileConfigQueryOptions,
 } from '../queries/oddweb'
-import { requestInvisibleTurnstileToken } from '../components/turnstile'
+import {
+  ensureTurnstileScript,
+  requestInvisibleTurnstileToken,
+} from '../components/turnstile'
 import { turnstileActions } from '../lib/turnstile'
 import { toggleSiteVote } from '../server/data'
 import type { SiteEntry } from '../data/sites'
+
+export type VoteChallengeState = {
+  slug: string
+  onClose: () => void
+  onSubmitToken: (token: string) => void
+  isPending: boolean
+}
 
 export type UseSiteVoteOptions = {
   setNotice?: (message: string) => void
@@ -36,6 +46,12 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
   const myVotes = myVotesQuery.data?.slugs ?? []
   const turnstileConfigQuery = useQuery(turnstileConfigQueryOptions())
   const sitekey = turnstileConfigQuery.data?.sitekey ?? ''
+
+  useEffect(() => {
+    if (sitekey) {
+      ensureTurnstileScript(sitekey)
+    }
+  }, [sitekey])
 
   const voteMutation = useMutation({
     mutationFn: (input: {
@@ -84,18 +100,21 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         next: unknown
       }>(['oddweb', 'public', 'site', slug])
 
-      const currentSlugs = previousMyVotes?.slugs ?? []
+      const currentSlugs =
+        previousMyVotes?.slugs ?? myVotesQuery.data?.slugs ?? myVotes ?? []
       const wasVoted = currentSlugs.includes(slug)
       const delta = wasVoted ? -1 : 1
 
       // 1. Optimistically update my-votes
+      const nextSlugs = wasVoted
+        ? currentSlugs.filter((item) => item !== slug)
+        : currentSlugs.includes(slug)
+          ? currentSlugs
+          : [...currentSlugs, slug]
+
       queryClient.setQueryData<{ slugs: string[] }>(
         ['oddweb', 'public', 'my-votes'],
-        {
-          slugs: wasVoted
-            ? currentSlugs.filter((item) => item !== slug)
-            : [...currentSlugs, slug],
-        },
+        { slugs: nextSlugs },
       )
 
       // 2. Optimistically update directory queries
@@ -114,7 +133,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
               ...current,
               sites: current.sites.map((site) =>
                 site.slug === slug
-                  ? { ...site, votes: Math.max(0, site.votes + delta) }
+                  ? { ...site, votes: Math.max(0, (site.votes ?? 0) + delta) }
                   : site,
               ),
             }
@@ -143,7 +162,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
               ...current,
               site: {
                 ...current.site,
-                votes: Math.max(0, current.site.votes + delta),
+                votes: Math.max(0, (current.site.votes ?? 0) + delta),
               },
             }
           : current,
@@ -158,11 +177,16 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     },
     onError: (error, { slug }, context) => {
       if (context) {
-        if (context.previousMyVotes) {
+        if (context.previousMyVotes !== undefined) {
           queryClient.setQueryData(
             ['oddweb', 'public', 'my-votes'],
             context.previousMyVotes,
           )
+        } else {
+          queryClient.removeQueries({
+            queryKey: ['oddweb', 'public', 'my-votes'],
+            exact: true,
+          })
         }
         for (const [queryKey, data] of context.previousDirectory) {
           queryClient.setQueryData(queryKey, data)
@@ -170,11 +194,16 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         for (const [queryKey, data] of context.previousPopular) {
           queryClient.setQueryData(queryKey, data)
         }
-        if (context.previousSite) {
+        if (context.previousSite !== undefined) {
           queryClient.setQueryData(
             ['oddweb', 'public', 'site', slug],
             context.previousSite,
           )
+        } else {
+          queryClient.removeQueries({
+            queryKey: ['oddweb', 'public', 'site', slug],
+            exact: true,
+          })
         }
       }
       updateNotice(
@@ -184,11 +213,16 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     },
     onSuccess: (result, { slug }, context) => {
       if (result.requireChallenge) {
-        if (context.previousMyVotes) {
+        if (context.previousMyVotes !== undefined) {
           queryClient.setQueryData(
             ['oddweb', 'public', 'my-votes'],
             context.previousMyVotes,
           )
+        } else {
+          queryClient.removeQueries({
+            queryKey: ['oddweb', 'public', 'my-votes'],
+            exact: true,
+          })
         }
         for (const [queryKey, data] of context.previousDirectory) {
           queryClient.setQueryData(queryKey, data)
@@ -196,12 +230,23 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         for (const [queryKey, data] of context.previousPopular) {
           queryClient.setQueryData(queryKey, data)
         }
-        if (context.previousSite) {
+        if (context.previousSite !== undefined) {
           queryClient.setQueryData(
             ['oddweb', 'public', 'site', slug],
             context.previousSite,
           )
+        } else {
+          queryClient.removeQueries({
+            queryKey: ['oddweb', 'public', 'site', slug],
+            exact: true,
+          })
         }
+        const triggerChallenge = (targetSlug: string) => {
+          setChallengeSlug(targetSlug)
+          updateNotice('Verification check required for this vote.', true)
+          options?.onChallengeRequired?.(targetSlug)
+        }
+
         if (sitekey) {
           requestInvisibleTurnstileToken(sitekey, turnstileActions.vote).then(
             (invisibleToken) => {
@@ -212,18 +257,14 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
                   turnstileToken: invisibleToken,
                 })
               } else {
-                setChallengeSlug(slug)
-                updateNotice('Verification check required for this vote.', true)
-                options?.onChallengeRequired?.(slug)
+                triggerChallenge(slug)
               }
             },
           )
           return
         }
 
-        setChallengeSlug(slug)
-        updateNotice('Verification check required for this vote.', true)
-        options?.onChallengeRequired?.(slug)
+        triggerChallenge(slug)
         return
       }
 
@@ -281,7 +322,8 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       queryClient.setQueryData<{ slugs: string[] } | undefined>(
         ['oddweb', 'public', 'my-votes'],
         (current) => {
-          const slugs = current?.slugs ?? []
+          const slugs =
+            current?.slugs ?? myVotesQuery.data?.slugs ?? myVotes ?? []
           return {
             slugs: result.voted
               ? slugs.includes(slug)
@@ -305,12 +347,19 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
           queryKey: ['oddweb', 'public', 'site', slug],
           refetchType: 'none',
         }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'my-votes'],
+          refetchType: 'none',
+        }),
       ])
     },
   })
 
   const toggleVote = useCallback(
     (slug: string, turnstileToken?: string) => {
+      if (voteMutation.isPending && voteMutation.variables?.slug === slug) {
+        return
+      }
       voteMutation.mutate({
         slug,
         requestId: crypto.randomUUID(),
@@ -349,12 +398,22 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     setChallengeSlug(null)
   }, [])
 
+  const challenge: VoteChallengeState | null = challengeSlug
+    ? {
+        slug: challengeSlug,
+        onClose: clearChallenge,
+        onSubmitToken: submitChallengeVote,
+        isPending: voteMutation.isPending,
+      }
+    : null
+
   return {
     toggleVote,
     isVoted,
     isPendingFor,
     pendingSlug: voteMutation.isPending ? voteMutation.variables.slug : null,
     isAnyPending: voteMutation.isPending,
+    challenge,
     challengeSlug,
     clearChallenge,
     submitChallengeVote,

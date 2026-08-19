@@ -4,18 +4,31 @@ import { turnstileConfigQueryOptions } from '../queries/oddweb'
 import { turnstileActions } from '../lib/turnstile'
 import { ModalDialog } from './oddweb'
 import { Turnstile } from './turnstile'
+import type { VoteChallengeState } from '../hooks/use-site-vote'
 
-export function VoteChallengeDialog({
-  slug,
-  onClose,
-  onSubmitToken,
-  isPending = false,
-}: {
-  slug: string
-  onClose: () => void
-  onSubmitToken: (token: string) => void
-  isPending?: boolean
-}) {
+export type VoteChallengeDialogProps =
+  | {
+      challenge: VoteChallengeState
+      slug?: string
+      onClose?: () => void
+      onSubmitToken?: (token: string) => void
+      isPending?: boolean
+    }
+  | {
+      challenge?: null
+      slug: string
+      onClose: () => void
+      onSubmitToken: (token: string) => void
+      isPending?: boolean
+    }
+
+export function VoteChallengeDialog(props: VoteChallengeDialogProps) {
+  const slug = props.challenge?.slug ?? props.slug ?? ''
+  const onClose = props.challenge?.onClose ?? props.onClose ?? (() => {})
+  const onSubmitToken =
+    props.challenge?.onSubmitToken ?? props.onSubmitToken ?? (() => {})
+  const isPending = props.challenge?.isPending ?? props.isPending ?? false
+
   const turnstileQuery = useQuery(turnstileConfigQueryOptions())
   const sitekey = turnstileQuery.data?.sitekey ?? ''
 

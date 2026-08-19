@@ -18,6 +18,7 @@ import { TagInput } from '../components/tag-input'
 import { LocalTime } from '../components/local-time'
 import { Turnstile } from '../components/turnstile'
 import { VoteChallengeDialog } from '../components/vote-challenge-dialog'
+import { turnstileActions } from '../lib/turnstile'
 import {
   FieldLabel,
   ItemThumbnail,
@@ -57,7 +58,14 @@ import {
 import type { FormEvent } from 'react'
 import type { SiteEntry } from '../data/sites'
 
-type SortMode = 'popular' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
+type SortMode =
+  | 'popular'
+  | 'views'
+  | 'newest'
+  | 'oldest'
+  | 'tags'
+  | 'az'
+  | 'za'
 
 const pageSize = 6
 const sortStorageKey = 'oddweb-directory-sort'
@@ -66,6 +74,7 @@ const homeDescription =
   'Explore unusual, fun, and interactive websites selected for curious detours beyond the usual web.'
 const sortModes: SortMode[] = [
   'popular',
+  'views',
   'newest',
   'oldest',
   'tags',
@@ -203,15 +212,7 @@ function DirectoryPage() {
         data: { query: deferredQuery, include, exclude },
       }),
   })
-  const {
-    toggleVote,
-    isVoted,
-    isPendingFor,
-    challengeSlug,
-    clearChallenge,
-    submitChallengeVote,
-    isAnyPending: isVotePending,
-  } = useSiteVote({
+  const { toggleVote, isVoted, isPendingFor, challenge } = useSiteVote({
     setNotice,
     setNoticeError,
   })
@@ -545,6 +546,7 @@ function DirectoryPage() {
                   data-od-id="catalog-sort"
                 >
                   <option value="popular">Most voted</option>
+                  <option value="views">Most viewed</option>
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
                   <option value="tags">Most tags</option>
@@ -725,7 +727,7 @@ function DirectoryPage() {
                     />
                     <Turnstile
                       sitekey={turnstileConfig?.sitekey ?? ''}
-                      action="guestbook"
+                      action={turnstileActions.guestbook}
                       disabled={guestbookMutation.isPending}
                       resetKey={guestbookResetKey}
                       onToken={setGuestbookToken}
@@ -862,7 +864,7 @@ function DirectoryPage() {
               <div className="mb-2">
                 <Turnstile
                   sitekey={turnstileConfig?.sitekey ?? ''}
-                  action="site_submission"
+                  action={turnstileActions.submission}
                   disabled={submitPending}
                   resetKey={submissionResetKey}
                   onToken={setSubmissionToken}
@@ -898,14 +900,7 @@ function DirectoryPage() {
         </ModalDialog>
       ) : null}
 
-      {challengeSlug ? (
-        <VoteChallengeDialog
-          slug={challengeSlug}
-          onClose={clearChallenge}
-          onSubmitToken={submitChallengeVote}
-          isPending={isVotePending}
-        />
-      ) : null}
+      {challenge ? <VoteChallengeDialog challenge={challenge} /> : null}
     </PageShell>
   )
 }
@@ -983,7 +978,7 @@ function SiteRow({
             disabled={votePending}
             data-od-id={`vote-button-${site.slug}`}
           >
-            {votePending ? '...' : voted ? 'Voted' : 'Vote'} &uarr; {site.votes}
+            {voted ? 'Voted' : 'Vote'} &uarr; {site.votes}
           </button>
         </div>
       </div>

@@ -117,10 +117,7 @@ function SiteDetailPage() {
     toggleVote: triggerVote,
     isVoted,
     isPendingFor,
-    challengeSlug,
-    clearChallenge,
-    submitChallengeVote,
-    isAnyPending: isVotePending,
+    challenge,
   } = useSiteVote({
     setNotice,
     setNoticeError,
@@ -217,12 +214,7 @@ function SiteDetailPage() {
               disabled={isPendingFor(site.slug)}
               data-od-id="vote-site"
             >
-              {isPendingFor(site.slug)
-                ? 'Voting...'
-                : isVoted(site.slug)
-                  ? 'Voted'
-                  : 'Vote'}{' '}
-              &uarr; {site.votes}
+              {isVoted(site.slug) ? 'Voted' : 'Vote'} &uarr; {site.votes}
             </button>
             {notice ? (
               <p
@@ -307,14 +299,7 @@ function SiteDetailPage() {
         </nav>
       </main>
       <SiteFooter />
-      {challengeSlug ? (
-        <VoteChallengeDialog
-          slug={challengeSlug}
-          onClose={clearChallenge}
-          onSubmitToken={submitChallengeVote}
-          isPending={isVotePending}
-        />
-      ) : null}
+      {challenge ? <VoteChallengeDialog challenge={challenge} /> : null}
     </PageShell>
   )
 }

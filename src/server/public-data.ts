@@ -41,7 +41,7 @@ const directoryInput = z.object({
   include: tagsInput,
   exclude: tagsInput,
   sort: z
-    .enum(['popular', 'newest', 'oldest', 'tags', 'az', 'za'])
+    .enum(['popular', 'views', 'newest', 'oldest', 'tags', 'az', 'za'])
     .default('popular'),
   page: z.number().int().min(0).max(10_000).default(0),
 })

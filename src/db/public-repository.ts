@@ -17,7 +17,7 @@ export const publicPopularPageSize = 4
 export const publicTagPageSize = 16
 
 export type PublicSortMode =
-  'popular' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
+  | 'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
 export type PublicDirectoryInput = {
   query: string
@@ -457,6 +457,7 @@ const directoryOrder: Record<PublicSortMode, string> = {
   popular: `(SELECT count(*) FROM site_votes vote
     WHERE vote.site_id = s.id AND vote.voted = 1 AND vote.quarantined = 0) DESC,
     s.visits DESC, s.name ASC, s.id ASC`,
+  views: 's.visits DESC, s.name ASC, s.id ASC',
   newest: 's.added_at DESC, s.id DESC',
   oldest: 's.added_at ASC, s.id ASC',
   tags: `(SELECT count(*) FROM site_tags ordered_tags WHERE ordered_tags.site_id = s.id) DESC,
