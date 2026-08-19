@@ -114,6 +114,8 @@ function SiteDetailPage() {
   const queryClient = useQueryClient()
   const { data } = useSuspenseQuery(siteDetailQueryOptions(slug))
   const [imageFailed, setImageFailed] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [noticeError, setNoticeError] = useState(false)
   const visitMutation = useMutation({
     mutationFn: (entrySlug: string) =>
       recordSiteVisit({ data: { slug: entrySlug } }),
@@ -121,6 +123,132 @@ function SiteDetailPage() {
   const voteMutation = useMutation({
     mutationFn: (input: { slug: string; requestId: string }) =>
       toggleSiteVote({ data: input }),
+    onMutate: async ({ slug: entrySlug }) => {
+      setNotice('')
+      setNoticeError(false)
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'my-votes'],
+      })
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'site', entrySlug],
+      })
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'directory'],
+      })
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'popular'],
+      })
+
+      const previousMyVotes = queryClient.getQueryData<{ slugs: string[] }>([
+        'oddweb',
+        'public',
+        'my-votes',
+      ])
+      const previousSite = queryClient.getQueryData<{
+        site: SiteEntry
+        previous: unknown
+        next: unknown
+      }>(['oddweb', 'public', 'site', entrySlug])
+
+      const currentSlugs = previousMyVotes?.slugs ?? []
+      const wasVoted = currentSlugs.includes(entrySlug)
+      const delta = wasVoted ? -1 : 1
+
+      queryClient.setQueryData<{ slugs: string[] }>(
+        ['oddweb', 'public', 'my-votes'],
+        {
+          slugs: wasVoted
+            ? currentSlugs.filter((item) => item !== entrySlug)
+            : [...currentSlugs, entrySlug],
+        },
+      )
+
+      queryClient.setQueryData<{
+        site: SiteEntry
+        previous: unknown
+        next: unknown
+      } | undefined>(['oddweb', 'public', 'site', entrySlug], (current) =>
+        current
+          ? {
+              ...current,
+              site: {
+                ...current.site,
+                votes: Math.max(0, current.site.votes + delta),
+              },
+            }
+          : current,
+      )
+
+      return { previousMyVotes, previousSite }
+    },
+    onError: (error, { slug: entrySlug }, context) => {
+      if (context) {
+        if (context.previousMyVotes) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'my-votes'],
+            context.previousMyVotes,
+          )
+        }
+        if (context.previousSite) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'site', entrySlug],
+            context.previousSite,
+          )
+        }
+      }
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Could not record your vote.',
+      )
+      setNoticeError(true)
+    },
+    onSuccess: (result, { slug: entrySlug }) => {
+      queryClient.setQueryData<{
+        site: SiteEntry
+        previous: unknown
+        next: unknown
+      } | undefined>(
+        ['oddweb', 'public', 'site', entrySlug],
+        (current) =>
+          current
+            ? {
+                ...current,
+                site: {
+                  ...current.site,
+                  votes: result.votes ?? current.site.votes,
+                },
+              }
+            : current,
+      )
+      queryClient.setQueryData<{ slugs: string[] } | undefined>(
+        ['oddweb', 'public', 'my-votes'],
+        (current) => {
+          const slugs = current?.slugs ?? []
+          return {
+            slugs: result.voted
+              ? slugs.includes(entrySlug)
+                ? slugs
+                : [...slugs, entrySlug]
+              : slugs.filter((item) => item !== entrySlug),
+          }
+        },
+      )
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'site', entrySlug],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'directory'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'popular'],
+          refetchType: 'none',
+        }),
+      ])
+    },
   })
   const myVotes =
     useQuery({
@@ -132,51 +260,7 @@ function SiteDetailPage() {
   })
 
   function toggleVote() {
-    voteMutation.mutate(
-      { slug, requestId: crypto.randomUUID() },
-      {
-        onSuccess: (result) => {
-          queryClient.setQueryData<{ site: SiteEntry } | undefined>(
-            ['oddweb', 'public', 'site', slug],
-            (current) =>
-              current
-                ? {
-                    ...current,
-                    site: {
-                      ...current.site,
-                      votes: result.votes ?? current.site.votes,
-                    },
-                  }
-                : current,
-          )
-          queryClient.setQueryData<{ slugs: string[] } | undefined>(
-            ['oddweb', 'public', 'my-votes'],
-            (current) => {
-              const slugs = current?.slugs ?? []
-              return {
-                slugs: result.voted
-                  ? slugs.includes(slug)
-                    ? slugs
-                    : [...slugs, slug]
-                  : slugs.filter((item) => item !== slug),
-              }
-            },
-          )
-          void queryClient.invalidateQueries({
-            queryKey: ['oddweb', 'public'],
-            refetchType: 'active',
-          })
-        },
-        onError: (error) => {
-          voteMutation.reset()
-          console.error(
-            error instanceof Error
-              ? error.message
-              : 'Could not record your vote.',
-          )
-        },
-      },
-    )
+    voteMutation.mutate({ slug, requestId: crypto.randomUUID() })
   }
 
   useEffect(() => {
@@ -272,6 +356,18 @@ function SiteDetailPage() {
                   : 'Vote'}{' '}
               &uarr; {site.votes}
             </button>
+            {notice ? (
+              <p
+                role="status"
+                className={`mt-3 p-2 font-mono text-xs font-bold border ${
+                  noticeError
+                    ? 'border-white bg-sand text-ink'
+                    : 'border-white bg-green-50 text-success'
+                }`}
+              >
+                {notice}
+              </p>
+            ) : null}
           </div>
         </section>
 

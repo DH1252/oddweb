@@ -30,10 +30,23 @@ test('votes toggle per visitor and aggregate per site', async (context) => {
     slug: 'alpha',
     visitorKey: 'visitor-a',
     requestId: '00000000-0000-4000-8000-000000000002',
-    now: 131,
+    now: 100,
   })
   assert.deepEqual(duplicate, {
     updated: true,
+    voted: false,
+    siteFound: true,
+    votes: 0,
+  })
+
+  const idempotentRetry = await toggleSiteVote(db, {
+    slug: 'alpha',
+    visitorKey: 'visitor-a',
+    requestId: '00000000-0000-4000-8000-000000000002',
+    now: 100,
+  })
+  assert.deepEqual(idempotentRetry, {
+    updated: false,
     voted: false,
     siteFound: true,
     votes: 0,

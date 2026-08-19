@@ -208,6 +208,157 @@ function DirectoryPage() {
   const voteMutation = useMutation({
     mutationFn: (input: { slug: string; requestId: string }) =>
       toggleSiteVote({ data: input }),
+    onMutate: async ({ slug }) => {
+      setNotice('')
+      setNoticeError(false)
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'my-votes'],
+      })
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'directory'],
+      })
+      await queryClient.cancelQueries({
+        queryKey: ['oddweb', 'public', 'popular'],
+      })
+
+      const previousMyVotes = queryClient.getQueryData<{ slugs: string[] }>([
+        'oddweb',
+        'public',
+        'my-votes',
+      ])
+      const previousDirectory = queryClient.getQueriesData<{
+        sites: SiteEntry[]
+        total: number
+        page: number
+        pageSize: number
+      }>({ queryKey: ['oddweb', 'public', 'directory'] })
+      const previousPopular = queryClient.getQueriesData<{
+        sites: SiteEntry[]
+        total: number
+        page: number
+        pageSize: number
+      }>({ queryKey: ['oddweb', 'public', 'popular'] })
+
+      const currentSlugs = previousMyVotes?.slugs ?? []
+      const wasVoted = currentSlugs.includes(slug)
+      const delta = wasVoted ? -1 : 1
+
+      queryClient.setQueryData<{ slugs: string[] }>(
+        ['oddweb', 'public', 'my-votes'],
+        {
+          slugs: wasVoted
+            ? currentSlugs.filter((item) => item !== slug)
+            : [...currentSlugs, slug],
+        },
+      )
+
+      const updateSites = (
+        current:
+          | {
+              sites: SiteEntry[]
+              total: number
+              page: number
+              pageSize: number
+            }
+          | undefined,
+      ) =>
+        current
+          ? {
+              ...current,
+              sites: current.sites.map((site) =>
+                site.slug === slug
+                  ? { ...site, votes: Math.max(0, site.votes + delta) }
+                  : site,
+              ),
+            }
+          : current
+
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'directory'] },
+        updateSites,
+      )
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'popular'] },
+        updateSites,
+      )
+
+      return { previousMyVotes, previousDirectory, previousPopular }
+    },
+    onError: (error, _variables, context) => {
+      if (context) {
+        if (context.previousMyVotes) {
+          queryClient.setQueryData(
+            ['oddweb', 'public', 'my-votes'],
+            context.previousMyVotes,
+          )
+        }
+        for (const [queryKey, data] of context.previousDirectory) {
+          queryClient.setQueryData(queryKey, data)
+        }
+        for (const [queryKey, data] of context.previousPopular) {
+          queryClient.setQueryData(queryKey, data)
+        }
+      }
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Could not record your vote.',
+      )
+      setNoticeError(true)
+    },
+    onSuccess: (result, { slug }) => {
+      const updateSites = (
+        current:
+          | {
+              sites: SiteEntry[]
+              total: number
+              page: number
+              pageSize: number
+            }
+          | undefined,
+      ) =>
+        current
+          ? {
+              ...current,
+              sites: current.sites.map((site) =>
+                site.slug === slug
+                  ? { ...site, votes: result.votes ?? site.votes }
+                  : site,
+              ),
+            }
+          : current
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'directory'] },
+        updateSites,
+      )
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'popular'] },
+        updateSites,
+      )
+      queryClient.setQueryData<{ slugs: string[] } | undefined>(
+        ['oddweb', 'public', 'my-votes'],
+        (current) => {
+          const slugs = current?.slugs ?? []
+          return {
+            slugs: result.voted
+              ? slugs.includes(slug)
+                ? slugs
+                : [...slugs, slug]
+              : slugs.filter((item) => item !== slug),
+          }
+        },
+      )
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'directory'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'popular'],
+          refetchType: 'none',
+        }),
+      ])
+    },
   })
   const myVotes =
     useQuery({
@@ -284,57 +435,7 @@ function DirectoryPage() {
   }
 
   function toggleVote(slug: string) {
-    voteMutation.mutate(
-      { slug, requestId: crypto.randomUUID() },
-      {
-        onSuccess: (result) => {
-          const updateSites = (current: { sites: SiteEntry[] } | undefined) =>
-            current
-              ? {
-                  ...current,
-                  sites: current.sites.map((site) =>
-                    site.slug === slug
-                      ? { ...site, votes: result.votes ?? site.votes }
-                      : site,
-                  ),
-                }
-              : current
-          queryClient.setQueriesData(
-            { queryKey: ['oddweb', 'public', 'directory'] },
-            updateSites,
-          )
-          queryClient.setQueriesData(
-            { queryKey: ['oddweb', 'public', 'popular'] },
-            updateSites,
-          )
-          queryClient.setQueryData<{ slugs: string[] } | undefined>(
-            ['oddweb', 'public', 'my-votes'],
-            (current) => {
-              const slugs = current?.slugs ?? []
-              return {
-                slugs: result.voted
-                  ? slugs.includes(slug)
-                    ? slugs
-                    : [...slugs, slug]
-                  : slugs.filter((item) => item !== slug),
-              }
-            },
-          )
-          void queryClient.invalidateQueries({
-            queryKey: ['oddweb', 'public'],
-            refetchType: 'active',
-          })
-        },
-        onError: (error) => {
-          setNotice(
-            error instanceof Error
-              ? error.message
-              : 'Could not record your vote.',
-          )
-          setNoticeError(true)
-        },
-      },
-    )
+    voteMutation.mutate({ slug, requestId: crypto.randomUUID() })
   }
 
   function changePopularPage(nextPage: number) {

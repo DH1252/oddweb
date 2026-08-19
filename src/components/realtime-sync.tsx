@@ -30,6 +30,124 @@ export function RealtimeSync() {
       ])
     }
 
+    const applySiteVote = (slug: string, votes: number) => {
+      const updateEntry = <
+        T extends {
+          sites: Array<{
+            slug: string
+            votes?: number
+            [key: string]: unknown
+          }>
+        },
+      >(
+        current: T | undefined,
+      ) =>
+        current
+          ? {
+              ...current,
+              sites: current.sites.map((site) =>
+                site.slug === slug ? { ...site, votes } : site,
+              ),
+            }
+          : current
+
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'directory'] },
+        updateEntry,
+      )
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'popular'] },
+        updateEntry,
+      )
+      queryClient.setQueryData<
+        { site: { slug: string; votes?: number; [key: string]: unknown } } | undefined
+      >(['oddweb', 'public', 'site', slug], (current) =>
+        current
+          ? {
+              ...current,
+              site: { ...current.site, votes },
+            }
+          : current,
+      )
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'directory'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'popular'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'site', slug],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin'],
+          refetchType: 'none',
+        }),
+      ])
+    }
+
+    const applySiteViews = (slug: string, views: number) => {
+      const updateEntry = <
+        T extends {
+          sites: Array<{
+            slug: string
+            visits?: number
+            [key: string]: unknown
+          }>
+        },
+      >(
+        current: T | undefined,
+      ) =>
+        current
+          ? {
+              ...current,
+              sites: current.sites.map((site) =>
+                site.slug === slug ? { ...site, visits: views } : site,
+              ),
+            }
+          : current
+
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'directory'] },
+        updateEntry,
+      )
+      queryClient.setQueriesData(
+        { queryKey: ['oddweb', 'public', 'popular'] },
+        updateEntry,
+      )
+      queryClient.setQueryData<
+        { site: { slug: string; visits?: number; [key: string]: unknown } } | undefined
+      >(['oddweb', 'public', 'site', slug], (current) =>
+        current
+          ? {
+              ...current,
+              site: { ...current.site, visits: views },
+            }
+          : current,
+      )
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'directory'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'popular'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'site', slug],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin'],
+          refetchType: 'none',
+        }),
+      ])
+    }
+
     const refreshSiteView = async (slug: string) => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -115,7 +233,10 @@ export function RealtimeSync() {
               taxonomyRefreshTimer = undefined
               void refreshTaxonomy()
             }, 400)
+          } else if (event.type === 'site.voted') {
+            applySiteVote(event.slug, event.votes)
           } else {
+            applySiteViews(event.slug, event.views)
             await refreshSiteView(event.slug)
           }
         } catch {

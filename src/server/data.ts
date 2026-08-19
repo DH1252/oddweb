@@ -259,15 +259,17 @@ export const toggleSiteVote = createServerFn({ method: 'POST' })
       await releaseRateLimit()
       throw error
     }
-    if (result.updated) {
-      try {
-        await publishRealtimeEvent({ type: 'directory.changed' })
-      } catch (error) {
-        console.error({
-          event: 'vote_realtime_publish_failed',
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+    try {
+      await publishRealtimeEvent({
+        type: 'site.voted',
+        slug: data.slug,
+        votes: result.votes ?? 0,
+      })
+    } catch (error) {
+      console.error({
+        event: 'vote_realtime_publish_failed',
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
     await touchPublicIdentity(identity.key, result.updated)
     return { voted: result.voted, votes: result.votes }

@@ -26,6 +26,14 @@ test('realtime events accept bounded public changes', () => {
     }),
     { type: 'site.viewed', slug: 'radio-garden', views: 42 },
   )
+  assert.deepEqual(
+    parseRealtimeEvent({
+      type: 'site.voted',
+      slug: 'radio-garden',
+      votes: 12,
+    }),
+    { type: 'site.voted', slug: 'radio-garden', votes: 12 },
+  )
 })
 
 test('realtime resyncs admin and taxonomy state after missed events', async () => {
@@ -56,6 +64,14 @@ test('realtime events reject malformed or unbounded messages', () => {
     parseRealtimeEvent({ type: 'site.viewed', slug: 'valid', views: -1 }),
     null,
   )
+  assert.equal(
+    parseRealtimeEvent({ type: 'site.voted', slug: '', votes: 1 }),
+    null,
+  )
+  assert.equal(
+    parseRealtimeEvent({ type: 'site.voted', slug: 'valid', votes: -1 }),
+    null,
+  )
   assert.equal(parseRealtimeEvent({ type: 'unknown' }), null)
 })
 
@@ -83,6 +99,17 @@ test('public submissions publish a realtime event', async () => {
   assert.match(
     source,
     /export const submitSite[\s\S]*publishRealtimeEvent\(\{ type: 'submission\.changed' \}\)/,
+  )
+})
+
+test('public votes publish a realtime event', async () => {
+  const source = await readFile(
+    new URL('../src/server/data.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    source,
+    /export const toggleSiteVote[\s\S]*publishRealtimeEvent\(\{[\s\S]*type: 'site\.voted'/,
   )
 })
 

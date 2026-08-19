@@ -22,8 +22,6 @@ export class VoteRepositoryError extends Error {
   }
 }
 
-const voteCooldownSeconds = 30
-
 export async function toggleSiteVote(
   database: D1Database,
   input: ToggleSiteVoteInput,
@@ -77,17 +75,11 @@ export async function toggleSiteVote(
         .prepare(
           `INSERT INTO site_votes
              (site_id, visitor_key, identity_scheme, voted, quarantined, created_at, updated_at)
-           SELECT ?1, ?2, ?3, 1, 0, ?4, ?4
-           WHERE NOT EXISTS (
-             SELECT 1 FROM site_votes
-             WHERE visitor_key = ?2 AND site_id = ?1
-               AND updated_at > ?4 - ${voteCooldownSeconds}
-           )
+           VALUES (?1, ?2, ?3, 1, 0, ?4, ?4)
            ON CONFLICT(site_id, visitor_key) DO UPDATE SET
              voted = CASE WHEN site_votes.voted = 1 THEN 0 ELSE 1 END,
              identity_scheme = excluded.identity_scheme,
-             updated_at = excluded.updated_at
-           WHERE site_votes.updated_at <= ?4 - ${voteCooldownSeconds}`,
+             updated_at = excluded.updated_at`,
         )
         .bind(site.id, input.visitorKey, identityScheme, now),
       database
