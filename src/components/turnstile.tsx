@@ -48,14 +48,14 @@ export function Turnstile({
     const existing = document.querySelector<HTMLScriptElement>(
       'script[data-oddweb-turnstile]',
     )
-    const script =
-      existing ??
-      Object.assign(document.createElement('script'), {
-        src: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
-        async: true,
-        defer: true,
-        dataset: { oddwebTurnstile: 'true' },
-      })
+    const script = existing ?? document.createElement('script')
+    if (!existing) {
+      script.src =
+        'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+      script.async = true
+      script.defer = true
+      script.setAttribute('data-oddweb-turnstile', 'true')
+    }
     const onLoad = () => setReady(true)
     script.addEventListener('load', onLoad)
     if (!existing) document.head.appendChild(script)
