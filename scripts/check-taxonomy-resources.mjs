@@ -166,8 +166,6 @@ export function validateTaxonomyConfig(config, expected) {
     )
   if (Object.hasOwn(config.vars ?? {}, 'TAXONOMY_MASTER_KEY_V1'))
     failures.push('TAXONOMY_MASTER_KEY_V1 must not be stored in vars')
-  if (!config.secrets?.required?.includes('TURNSTILE_SECRET'))
-    failures.push('TURNSTILE_SECRET must be declared as a required secret')
   if (expected.queue === expected.dlq)
     failures.push('the taxonomy queue and DLQ must be distinct')
   const resources = taxonomyResources(config)

@@ -10,8 +10,6 @@ const required = [
   'STAGING_TAXONOMY_QUEUE',
   'STAGING_TAXONOMY_DLQ',
   'STAGING_URL',
-  'STAGING_TURNSTILE_HOSTNAMES',
-  'STAGING_TURNSTILE_SITEKEY',
 ]
 const missing = required.filter((name) => !process.env[name])
 if (missing.length)
@@ -76,8 +74,6 @@ writeFileSync(
       vars: {
         ENVIRONMENT: 'staging',
         PUBLIC_SITE_URL: stagingUrl.origin,
-        TURNSTILE_HOSTNAMES: process.env.STAGING_TURNSTILE_HOSTNAMES,
-        TURNSTILE_SITEKEY: process.env.STAGING_TURNSTILE_SITEKEY,
         RELEASE_SHA: releaseSha,
         RELEASE_TIME: releaseTime,
       },
@@ -87,7 +83,6 @@ writeFileSync(
           'ADMIN_PASSWORD_HASH',
           'ADMIN_SESSION_SECRET',
           'TAXONOMY_MASTER_KEY_V1',
-          'TURNSTILE_SECRET',
         ],
       },
       queues: {

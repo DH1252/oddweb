@@ -39,6 +39,7 @@ export function Turnstile({
 }: TurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | undefined>(undefined)
+  const previousResetKeyRef = useRef(resetKey)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const handleToken = useEffectEvent(onToken)
@@ -57,10 +58,18 @@ export function Turnstile({
       script.setAttribute('data-oddweb-turnstile', 'true')
     }
     const onLoad = () => setReady(true)
+    const onError = () => {
+      setError(true)
+      handleToken(null)
+    }
     script.addEventListener('load', onLoad)
+    script.addEventListener('error', onError)
     if (!existing) document.head.appendChild(script)
     if (window.turnstile) setReady(true)
-    return () => script.removeEventListener('load', onLoad)
+    return () => {
+      script.removeEventListener('load', onLoad)
+      script.removeEventListener('error', onError)
+    }
   }, [sitekey])
 
   useEffect(() => {
@@ -91,13 +100,16 @@ export function Turnstile({
       }
       widgetIdRef.current = undefined
     }
-  }, [action, handleToken, ready, sitekey])
+  }, [action, ready, sitekey])
 
   useEffect(() => {
+    if (previousResetKeyRef.current === resetKey) return
+    previousResetKeyRef.current = resetKey
     if (!widgetIdRef.current || !window.turnstile) return
+    setError(false)
     window.turnstile.reset(widgetIdRef.current)
     handleToken(null)
-  }, [handleToken, resetKey])
+  }, [resetKey])
 
   if (!sitekey) {
     return (

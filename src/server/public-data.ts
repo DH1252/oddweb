@@ -82,9 +82,25 @@ export const getPublicSupportData = createServerFn({ method: 'GET' }).handler(
 )
 
 export const getTurnstileConfig = createServerFn({ method: 'GET' }).handler(
-  () => ({
-    sitekey: env.TURNSTILE_SITEKEY,
-  }),
+  () => {
+    const hostname = new URL(getRequest().url).hostname.toLowerCase()
+    const configuredHostnames: unknown = Reflect.get(env, 'TURNSTILE_HOSTNAMES')
+    const configuredSitekey: unknown = Reflect.get(env, 'TURNSTILE_SITEKEY')
+    const approvedHostnames =
+      typeof configuredHostnames === 'string'
+        ? configuredHostnames
+            .split(',')
+            .map((value) => value.trim().toLowerCase())
+            .filter(Boolean)
+        : []
+    return {
+      sitekey:
+        approvedHostnames.includes(hostname) &&
+        typeof configuredSitekey === 'string'
+          ? configuredSitekey
+          : '',
+    }
+  },
 )
 
 export const getPublicTagPage = createServerFn({ method: 'GET' })

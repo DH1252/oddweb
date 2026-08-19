@@ -4,6 +4,3 @@ ADMIN_PASSWORD_HASH=replace-with-output-from-npm-run-auth-hash
 ADMIN_SESSION_SECRET=replace-with-at-least-32-random-characters
 TAXONOMY_MASTER_KEY_V1=replace-with-a-32-byte-base64url-key
 PUBLIC_SITE_URL=http://localhost:3000
-TURNSTILE_HOSTNAMES=localhost,127.0.0.1
-TURNSTILE_SITEKEY=replace-with-staging-sitekey
-TURNSTILE_SECRET=replace-with-staging-secret

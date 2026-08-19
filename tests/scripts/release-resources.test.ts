@@ -52,7 +52,7 @@ function taxonomyConfig() {
   return {
     name: 'test-worker',
     routes: [{ pattern: 'test.example', custom_domain: true }],
-    secrets: { required: ['TAXONOMY_MASTER_KEY_V1', 'TURNSTILE_SECRET'] },
+    secrets: { required: ['TAXONOMY_MASTER_KEY_V1'] },
     queues: {
       producers: [{ binding: 'TAXONOMY_QUEUE', queue: expected.queue }],
       consumers: [
@@ -89,7 +89,6 @@ test('taxonomy resource config requires isolated queues, cron, D1, R2, and secre
     'the taxonomy consumer DLQ must be test-taxonomy-dlq',
     'the taxonomy maintenance cron must be exactly * * * * * with no additional schedules',
     'TAXONOMY_MASTER_KEY_V1 must be declared as a required secret',
-    'TURNSTILE_SECRET must be declared as a required secret',
     'the DB binding must declare a D1 database name and ID',
     'the THUMBNAILS binding must declare an R2 bucket name',
   ])
@@ -202,7 +201,6 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
     if (args[0] === 'secret') {
       return JSON.stringify([
         { name: 'TAXONOMY_MASTER_KEY_V1', type: 'secret_text' },
-        { name: 'TURNSTILE_SECRET', type: 'secret_text' },
       ])
     }
     if (args[0] === 'deployments') {
@@ -1249,7 +1247,7 @@ test('staging secret parser requires all bootstrap keys', () => {
 })
 
 test('staging bootstrap validates runtime-compatible secret formats', () => {
-  const valid = `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\nTURNSTILE_SECRET=turnstile-secret\n`
+  const valid = `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\n`
   assert.equal(validateBootstrapSecrets(valid).ADMIN_USERNAME, 'admin')
   for (const [name, value, pattern] of [
     ['ADMIN_PASSWORD_HASH', '$pbkdf2-sha256$99999$bad$bad', /100000/],
@@ -1838,7 +1836,7 @@ function stagingHarness(options: StagingHarnessOptions = {}) {
   let hashCall = 0
   const secrets =
     options.secrets ??
-    `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\nTURNSTILE_SECRET=turnstile-secret\n`
+    `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\n`
   const config = {
     name: 'oddweb-staging',
     vars: { RELEASE_SHA: 'abcdef1234567890' },
