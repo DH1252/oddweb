@@ -9,15 +9,21 @@ import { z } from 'zod'
 
 import {
   addGuestbookEntry,
-  consumeSlidingRateLimit,
   createSite,
   createSubmission,
-  releaseSlidingRateLimit,
   setGuestbookVisibility,
   moderateSubmission,
   setSiteStatus,
   updateSite,
 } from '../db/repository'
+import {
+  reservePublicAttempts,
+  releasePublicAttempts,
+} from '../db/public-attempts'
+import {
+  toggleSiteVote as toggleStoredSiteVote,
+  readVisitorVotedSlugs,
+} from '../db/vote-repository'
 import { createTaxonomyService } from '../taxonomy'
 import { adminAuthMiddleware } from './auth'
 import {
@@ -29,17 +35,39 @@ import { tagSlug } from '../data/tags'
 import { normalizeWebsiteUrl } from '../lib/website-url'
 import { deferVisitAccounting } from './visit-accounting'
 import { publishRealtimeEvent } from './realtime'
+import {
+  getPublicIdentity,
+  publicScopeKeys,
+  touchPublicIdentity,
+} from './public-identity'
+import { requireTurnstile, turnstileActions } from './turnstile'
 
 const daySeconds = 24 * 60 * 60
 const submissionWindowSeconds = 3 * 60 * 60
 
 const publicRateLimits = {
   submission: {
-    perIp: 24,
+    identity: 6,
+    exactIp: 24,
+    network: 120,
     global: 300,
     windowSeconds: submissionWindowSeconds,
   },
-  guestbook: { perIp: 8, global: 500, windowSeconds: daySeconds },
+  guestbook: {
+    identity: 3,
+    exactIp: 12,
+    network: 80,
+    global: 500,
+    windowSeconds: daySeconds,
+  },
+  vote: {
+    identity: 30,
+    identityDaily: 200,
+    exactIp: 120,
+    network: 600,
+    global: 5000,
+    windowSeconds: 60 * 60,
+  },
 } as const
 
 const guestbookInput = z.object({
@@ -78,10 +106,13 @@ const tagMergeInput = z.object({
 export const submitSite = createServerFn({ method: 'POST' })
   .validator(validateSiteForm)
   .handler(async ({ data }) => {
+    await requireTurnstile(data.turnstileToken, turnstileActions.submission)
     const releaseRateLimit = await enforcePublicRateLimit('submission')
-    const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
+    let thumbnail: Awaited<ReturnType<typeof storeThumbnail>> | undefined
+    let result: Awaited<ReturnType<typeof createSubmission>>
     try {
-      const result = await createSubmission({
+      thumbnail = data.image ? await storeThumbnail(data.image) : undefined
+      result = await createSubmission({
         name: data.name,
         url: data.url,
         description: data.description,
@@ -98,16 +129,23 @@ export const submitSite = createServerFn({ method: 'POST' })
           key: result.previousThumbnailKey,
         })
       }
-      await publishRealtimeEvent({ type: 'submission.changed' })
-      return {
-        submitted: true as const,
-        thumbnailKey: thumbnail?.key ?? null,
-        reused: result.reused,
-      }
     } catch (error) {
       if (thumbnail) await removeThumbnail(thumbnail.key)
       await releaseRateLimit()
       throw error
+    }
+    try {
+      await publishRealtimeEvent({ type: 'submission.changed' })
+    } catch (error) {
+      console.error({
+        event: 'submission_realtime_publish_failed',
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    return {
+      submitted: true as const,
+      thumbnailKey: thumbnail?.key ?? null,
+      reused: result.reused,
     }
   })
 
@@ -145,11 +183,36 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
   })
 
 export const signGuestbook = createServerFn({ method: 'POST' })
-  .validator((data) => guestbookInput.parse(data))
+  .validator((data) => {
+    if (!data || typeof data !== 'object')
+      throw new Error('Invalid guestbook entry.')
+    const input = data as {
+      name?: unknown
+      message?: unknown
+      turnstileToken?: unknown
+    }
+    return {
+      ...guestbookInput.parse({ name: input.name, message: input.message }),
+      turnstileToken: input.turnstileToken,
+    }
+  })
   .handler(async ({ data }) => {
-    await enforcePublicRateLimit('guestbook')
-    await addGuestbookEntry(data)
-    await publishRealtimeEvent({ type: 'guestbook.changed' })
+    await requireTurnstile(data.turnstileToken, turnstileActions.guestbook)
+    const releaseRateLimit = await enforcePublicRateLimit('guestbook')
+    try {
+      await addGuestbookEntry({ name: data.name, message: data.message })
+    } catch (error) {
+      await releaseRateLimit()
+      throw error
+    }
+    try {
+      await publishRealtimeEvent({ type: 'guestbook.changed' })
+    } catch (error) {
+      console.error({
+        event: 'guestbook_realtime_publish_failed',
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   })
 
 export const recordSiteVisit = createServerFn({ method: 'POST' })
@@ -157,6 +220,58 @@ export const recordSiteVisit = createServerFn({ method: 'POST' })
   .handler(({ data }) =>
     deferVisitAccounting({ request: getRequest(), slug: data.slug }),
   )
+
+const voteInput = z.object({
+  slug: z.string().min(1).max(100),
+  requestId: z.string().uuid().optional(),
+})
+
+export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const identity = await getPublicIdentity()
+    const keys = await publicScopeKeys('vote', identity, getRequest())
+    return { slugs: await readVisitorVotedSlugs(env.DB, keys.voteIdentity) }
+  },
+)
+
+export const toggleSiteVote = createServerFn({ method: 'POST' })
+  .validator((data) => voteInput.parse(data))
+  .handler(async ({ data }) => {
+    const identity = await getPublicIdentity()
+    const requestId = data.requestId ?? crypto.randomUUID()
+    const keys = await publicScopeKeys('vote', identity, getRequest())
+    const releaseRateLimit = await enforcePublicRateLimit(
+      'vote',
+      identity,
+      keys,
+    )
+    let result: Awaited<ReturnType<typeof toggleStoredSiteVote>>
+    try {
+      result = await toggleStoredSiteVote(env.DB, {
+        slug: data.slug,
+        visitorKey: keys.voteIdentity,
+        requestId,
+        identityScheme: 'cookie-v1',
+      })
+      if (!result.siteFound)
+        throw new Error('That site is not available to vote on.')
+    } catch (error) {
+      await releaseRateLimit()
+      throw error
+    }
+    if (result.updated) {
+      try {
+        await publishRealtimeEvent({ type: 'directory.changed' })
+      } catch (error) {
+        console.error({
+          event: 'vote_realtime_publish_failed',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    await touchPublicIdentity(identity.key, result.updated)
+    return { voted: result.voted, votes: result.votes }
+  })
 
 export const reviewSubmission = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
@@ -279,6 +394,7 @@ function validateSiteForm(data: unknown) {
     description: formText(data, 'description', 220),
     tags: formTags(data),
     image,
+    turnstileToken: data.get('turnstileToken'),
   }
 }
 
@@ -423,49 +539,64 @@ function formTags(data: FormData) {
   return tags
 }
 
-async function enforcePublicRateLimit(action: keyof typeof publicRateLimits) {
-  const secret = env.ADMIN_SESSION_SECRET
-  if (!secret) {
-    setResponseStatus(503)
-    throw new Error(
-      'Public mutations are unavailable until rate limiting is configured.',
-    )
-  }
+async function enforcePublicRateLimit(
+  action: keyof typeof publicRateLimits,
+  identity?: Awaited<ReturnType<typeof getPublicIdentity>>,
+  keys?: Awaited<ReturnType<typeof publicScopeKeys>>,
+) {
+  identity ??= await getPublicIdentity()
+  keys ??= await publicScopeKeys(action, identity, getRequest())
   const limits = publicRateLimits[action]
-  const request = getRequest()
-  const ip =
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'local'
-  const key = await hmacKey(secret, `public:${action}:ip:${ip}`)
-  const globalKey = `public:${action}:global`
-  const perIp = await consumeSlidingRateLimit(
-    key,
-    limits.perIp,
-    limits.windowSeconds,
-  )
-  if (!perIp.allowed) {
+  const reservationId = crypto.randomUUID()
+  const scopes = [
+    {
+      scope: 'identity',
+      key: keys.identity,
+      limit: limits.identity,
+      windowSeconds: limits.windowSeconds,
+    },
+    ...(action === 'vote'
+      ? [
+          {
+            scope: 'identity_daily',
+            key: keys.identity,
+            limit: publicRateLimits.vote.identityDaily,
+            windowSeconds: daySeconds,
+          },
+        ]
+      : []),
+    {
+      scope: 'exact_ip',
+      key: keys.exactIp,
+      limit: limits.exactIp,
+      windowSeconds: limits.windowSeconds,
+    },
+    {
+      scope: 'network',
+      key: keys.network,
+      limit: limits.network,
+      windowSeconds: limits.windowSeconds,
+    },
+    {
+      scope: 'global',
+      key: keys.global,
+      limit: limits.global,
+      windowSeconds: limits.windowSeconds,
+    },
+  ]
+  const result = await reservePublicAttempts(env.DB, {
+    action,
+    reservationId,
+    scopes,
+  })
+  if (!result.allowed) {
     setResponseStatus(429)
-    setResponseHeader('Retry-After', String(perIp.retryAfter))
-    throw new Error('Too many requests. Try again later.')
-  }
-  const global = await consumeSlidingRateLimit(
-    globalKey,
-    limits.global,
-    limits.windowSeconds,
-  )
-  if (!global.allowed) {
-    await releaseSlidingRateLimit(key)
-    setResponseStatus(429)
-    setResponseHeader('Retry-After', String(global.retryAfter))
+    setResponseHeader('Retry-After', String(result.retryAfter))
     throw new Error('Too many requests. Try again later.')
   }
   return async () => {
     try {
-      await Promise.all([
-        releaseSlidingRateLimit(key),
-        releaseSlidingRateLimit(globalKey),
-      ])
+      await releasePublicAttempts(env.DB, reservationId)
     } catch (error) {
       console.error({
         event: 'rate_limit_refund_failed',
@@ -474,22 +605,4 @@ async function enforcePublicRateLimit(action: keyof typeof publicRateLimits) {
       })
     }
   }
-}
-
-async function hmacKey(secret: string, value: string) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(value),
-  )
-  return [...new Uint8Array(signature)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
 }

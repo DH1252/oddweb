@@ -93,6 +93,7 @@ type SiteSqlRow = {
   thumbnailKey: string | null
   thumbnailAlt: string | null
   visits: number
+  votes: number
   addedAt: number
 }
 
@@ -110,7 +111,10 @@ type TagSqlRow = {
 const siteColumns = `s.id, s.slug, s.name, s.url, s.description, s.summary,
   s.categories, s.poster, s.notes, s.facts, s.accent,
   s.thumbnail_key AS thumbnailKey, s.thumbnail_alt AS thumbnailAlt,
-  s.visits, s.added_at AS addedAt`
+  s.visits, s.added_at AS addedAt,
+  coalesce((SELECT count(*) FROM site_votes vote
+    WHERE vote.site_id = s.id AND vote.voted = 1 AND vote.quarantined = 0), 0)
+    AS votes`
 
 export async function readPublicDirectoryPage(
   input: PublicDirectoryInput,
@@ -441,7 +445,9 @@ export async function readPublicSitemapBatch(input: {
 }
 
 const directoryOrder: Record<PublicSortMode, string> = {
-  popular: 's.visits DESC, s.name ASC, s.id ASC',
+  popular: `(SELECT count(*) FROM site_votes vote
+    WHERE vote.site_id = s.id AND vote.voted = 1 AND vote.quarantined = 0) DESC,
+    s.visits DESC, s.name ASC, s.id ASC`,
   newest: 's.added_at DESC, s.id DESC',
   oldest: 's.added_at ASC, s.id ASC',
   tags: `(SELECT count(*) FROM site_tags ordered_tags WHERE ordered_tags.site_id = s.id) DESC,
@@ -499,6 +505,7 @@ async function hydrateSiteRows(rows: SiteSqlRow[]): Promise<SiteEntry[]> {
     notes: parseJson<string[]>(row.notes, []),
     facts: parseJson<Array<{ label: string; value: string }>>(row.facts, []),
     visits: row.visits,
+    votes: row.votes,
     added: formatIsoDate(row.addedAt),
     addedLabel: formatShortDate(row.addedAt),
     addedAt: row.addedAt,

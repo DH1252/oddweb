@@ -63,6 +63,20 @@ if (
 if (parsedWranglerConfig.workers_dev !== false) {
   failures.push('production workers_dev must be disabled')
 }
+if (!parsedWranglerConfig.secrets?.required?.includes('TURNSTILE_SECRET')) {
+  failures.push('TURNSTILE_SECRET must be declared as a required secret')
+}
+if (parsedWranglerConfig.vars?.TURNSTILE_HOSTNAMES !== 'oddweb.page') {
+  failures.push('production TURNSTILE_HOSTNAMES must be exactly oddweb.page')
+}
+if (
+  !parsedWranglerConfig.vars?.TURNSTILE_SITEKEY ||
+  parsedWranglerConfig.vars.TURNSTILE_SITEKEY.startsWith('replace-')
+) {
+  failures.push(
+    'TURNSTILE_SITEKEY must be configured before production release',
+  )
+}
 const serverEntry = readFileSync(resolve(root, 'src/server.ts'), 'utf8')
 if (!serverEntry.includes("export { RealtimeHub } from './realtime/hub'")) {
   failures.push('src/server.ts must export RealtimeHub')

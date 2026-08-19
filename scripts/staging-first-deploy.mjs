@@ -9,6 +9,7 @@ const requiredSecrets = [
   'ADMIN_PASSWORD_HASH',
   'ADMIN_SESSION_SECRET',
   'TAXONOMY_MASTER_KEY_V1',
+  'TURNSTILE_SECRET',
 ]
 
 export function runFirstStagingDeploy(options = {}) {

@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { env } from 'cloudflare:workers'
 import { getRequest } from '@tanstack/react-start/server'
 import { z } from 'zod'
 
@@ -78,6 +79,12 @@ export const getPublicPopularPage = createServerFn({ method: 'GET' })
 
 export const getPublicSupportData = createServerFn({ method: 'GET' }).handler(
   () => cachePublicRead('support', undefined, readPublicSupportData),
+)
+
+export const getTurnstileConfig = createServerFn({ method: 'GET' }).handler(
+  () => ({
+    sitekey: env.TURNSTILE_SITEKEY,
+  }),
 )
 
 export const getPublicTagPage = createServerFn({ method: 'GET' })

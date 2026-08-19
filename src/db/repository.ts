@@ -68,6 +68,9 @@ export async function ensureSeedData() {
     .first()
   if (seeded) {
     seededKeys.add(seedKey)
+    await env.DB.prepare(
+      `DELETE FROM site_votes WHERE identity_scheme = 'ip-v0' AND visitor_key LIKE 'seed%'`,
+    ).run()
     return
   }
 
@@ -119,8 +122,8 @@ export async function ensureSeedData() {
          json_extract(value, '$.categories'), json_extract(value, '$.poster'),
          json_extract(value, '$.notes'), json_extract(value, '$.facts'),
          json_extract(value, '$.accent'), json_extract(value, '$.thumbnailKey'),
-          json_extract(value, '$.thumbnailAlt'), 0, 'active', 'Directory',
-          json_extract(value, '$.addedAt') FROM json_each(?1)
+         json_extract(value, '$.thumbnailAlt'), 0, 'active', 'Directory',
+         json_extract(value, '$.addedAt') FROM json_each(?1)
        WHERE true
        ON CONFLICT DO NOTHING`,
     ).bind(sitesJson),

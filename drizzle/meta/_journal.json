@@ -85,6 +85,20 @@
       "when": 1786967231297,
       "tag": "0011_worried_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1787045122781,
+      "tag": "0012_votes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1787060000000,
+      "tag": "0013_public_abuse_protection",
+      "breakpoints": true
     }
   ]
 }

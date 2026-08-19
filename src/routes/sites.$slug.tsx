@@ -1,11 +1,17 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
 import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
-import { siteDetailQueryOptions } from '../queries/oddweb'
-import { recordSiteVisit } from '../server/data'
+import { myVotesQueryOptions, siteDetailQueryOptions } from '../queries/oddweb'
+import { recordSiteVisit, toggleSiteVote } from '../server/data'
 import {
   SITE_ORIGIN,
   notFoundHeaders,
@@ -103,15 +109,38 @@ export const Route = createFileRoute('/sites/$slug')({
 
 function SiteDetailPage() {
   const { slug } = Route.useParams()
+  const queryClient = useQueryClient()
   const { data } = useSuspenseQuery(siteDetailQueryOptions(slug))
   const [imageFailed, setImageFailed] = useState(false)
   const visitMutation = useMutation({
     mutationFn: (entrySlug: string) =>
       recordSiteVisit({ data: { slug: entrySlug } }),
   })
+  const voteMutation = useMutation({
+    mutationFn: (input: { slug: string; requestId: string }) =>
+      toggleSiteVote({ data: input }),
+  })
+  const myVotes =
+    useQuery({
+      ...myVotesQueryOptions(),
+      placeholderData: keepPreviousData,
+    }).data?.slugs ?? []
   const recordEntry = useEffectEvent((entrySlug: string) => {
     visitMutation.mutate(entrySlug)
   })
+
+  function toggleVote() {
+    voteMutation.mutate({ slug, requestId: crypto.randomUUID() }, {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'site', slug],
+        })
+        await queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public', 'my-votes'],
+        })
+      },
+    })
+  }
 
   useEffect(() => {
     setImageFailed(false)
@@ -187,6 +216,25 @@ function SiteDetailPage() {
             >
               Open {site.name} ↗
             </a>
+            <button
+              type="button"
+              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] ${
+                myVotes.includes(site.slug)
+                  ? 'border-white bg-green-50 text-success hover:bg-green-100'
+                  : 'border-white bg-paper text-ink hover:bg-warm'
+              }`}
+              aria-pressed={myVotes.includes(site.slug)}
+              onClick={toggleVote}
+              disabled={voteMutation.isPending}
+              data-od-id="vote-site"
+            >
+              {voteMutation.isPending
+                ? 'Voting...'
+                : myVotes.includes(site.slug)
+                  ? 'Voted'
+                  : 'Vote'}{' '}
+              &uarr; {site.votes}
+            </button>
           </div>
         </section>
 

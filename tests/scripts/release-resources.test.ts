@@ -52,7 +52,7 @@ function taxonomyConfig() {
   return {
     name: 'test-worker',
     routes: [{ pattern: 'test.example', custom_domain: true }],
-    secrets: { required: ['TAXONOMY_MASTER_KEY_V1'] },
+    secrets: { required: ['TAXONOMY_MASTER_KEY_V1', 'TURNSTILE_SECRET'] },
     queues: {
       producers: [{ binding: 'TAXONOMY_QUEUE', queue: expected.queue }],
       consumers: [
@@ -89,6 +89,7 @@ test('taxonomy resource config requires isolated queues, cron, D1, R2, and secre
     'the taxonomy consumer DLQ must be test-taxonomy-dlq',
     'the taxonomy maintenance cron must be exactly * * * * * with no additional schedules',
     'TAXONOMY_MASTER_KEY_V1 must be declared as a required secret',
+    'TURNSTILE_SECRET must be declared as a required secret',
     'the DB binding must declare a D1 database name and ID',
     'the THUMBNAILS binding must declare an R2 bucket name',
   ])
@@ -201,6 +202,7 @@ test('postdeploy validation checks consumers, DLQ, secrets, handlers, and bindin
     if (args[0] === 'secret') {
       return JSON.stringify([
         { name: 'TAXONOMY_MASTER_KEY_V1', type: 'secret_text' },
+        { name: 'TURNSTILE_SECRET', type: 'secret_text' },
       ])
     }
     if (args[0] === 'deployments') {
@@ -285,7 +287,10 @@ test('local and remote trigger validation reject additional trigger state', () =
       ])
     }
     if (args[0] === 'secret') {
-      return JSON.stringify([{ name: 'TAXONOMY_MASTER_KEY_V1' }])
+      return JSON.stringify([
+        { name: 'TAXONOMY_MASTER_KEY_V1' },
+        { name: 'TURNSTILE_SECRET' },
+      ])
     }
     if (args[0] === 'deployments') {
       return JSON.stringify({
@@ -342,7 +347,10 @@ test('postdeploy validation reports an invalid consumer and missing handlers', (
       ])
     }
     if (args[0] === 'secret') {
-      return JSON.stringify([{ name: 'TAXONOMY_MASTER_KEY_V1' }])
+      return JSON.stringify([
+        { name: 'TAXONOMY_MASTER_KEY_V1' },
+        { name: 'TURNSTILE_SECRET' },
+      ])
     }
     if (args[0] === 'deployments') {
       return JSON.stringify({
@@ -402,7 +410,10 @@ test('combined production preflight runs both resource and handler validation', 
     if (args[0] === 'd1') return JSON.stringify([{ success: true }])
     if (args[0] === 'r2') return 'bucket exists'
     if (args[0] === 'secret') {
-      return JSON.stringify([{ name: 'TAXONOMY_MASTER_KEY_V1' }])
+      return JSON.stringify([
+        { name: 'TAXONOMY_MASTER_KEY_V1' },
+        { name: 'TURNSTILE_SECRET' },
+      ])
     }
     if (args[0] === 'deployments') {
       return JSON.stringify({
@@ -1238,7 +1249,7 @@ test('staging secret parser requires all bootstrap keys', () => {
 })
 
 test('staging bootstrap validates runtime-compatible secret formats', () => {
-  const valid = `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\n`
+  const valid = `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\nTURNSTILE_SECRET=turnstile-secret\n`
   assert.equal(validateBootstrapSecrets(valid).ADMIN_USERNAME, 'admin')
   for (const [name, value, pattern] of [
     ['ADMIN_PASSWORD_HASH', '$pbkdf2-sha256$99999$bad$bad', /100000/],
@@ -1827,7 +1838,7 @@ function stagingHarness(options: StagingHarnessOptions = {}) {
   let hashCall = 0
   const secrets =
     options.secrets ??
-    `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\n`
+    `ADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=${validPasswordHash}\nADMIN_SESSION_SECRET=${validSessionSecret}\nTAXONOMY_MASTER_KEY_V1=${validTaxonomyKey}\nTURNSTILE_SECRET=turnstile-secret\n`
   const config = {
     name: 'oddweb-staging',
     vars: { RELEASE_SHA: 'abcdef1234567890' },
@@ -1905,8 +1916,10 @@ function productionConfig(tags: string[]) {
     vars: {
       ENVIRONMENT: 'production',
       PUBLIC_SITE_URL: 'https://oddweb.page',
+      TURNSTILE_HOSTNAMES: 'oddweb.page',
+      TURNSTILE_SITEKEY: 'production-sitekey',
     },
-    secrets: { required: ['TAXONOMY_MASTER_KEY_V1'] },
+    secrets: { required: ['TAXONOMY_MASTER_KEY_V1', 'TURNSTILE_SECRET'] },
     queues: {
       producers: [{ binding: 'TAXONOMY_QUEUE', queue: 'oddweb-taxonomy' }],
       consumers: [

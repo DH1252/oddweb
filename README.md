@@ -81,7 +81,9 @@ Providers (OpenAI-compatible or Gemini) are governed by immutable, audited polic
 
 ## Rate Limiting
 
-Public mutations and admin login use sliding-window limits designed for CGNAT prevalence: a per-IP key (HMAC of the connecting IP) with a generous ceiling plus a site-wide global cap, so shared NAT pools are unlikely to trip the per-IP limit while distributed abuse is still bounded. Failed submissions refund their consumed quota. Current ceilings: site submissions 24 per IP per 3 hours with a 300 global cap; guestbook entries 8 per IP per day with a 500 global cap; admin login 8 failed attempts per IP per 15 minutes with a 40 global cap, cleared on successful login. Responses carry `429` with `Retry-After`.
+Public submissions require Cloudflare Turnstile verification before persistence. Configure the deployment's public `TURNSTILE_SITEKEY`, exact frontend `TURNSTILE_HOSTNAMES` allowlist, and Worker secret `TURNSTILE_SECRET`. Both protected forms use separate widget instances and stable actions, `site_submission` and `guestbook`. Invalid, expired, replayed, wrong-action, wrong-hostname, and unavailable verification results fail closed. Public mutations use layered sliding-window limits designed for CGNAT prevalence: signed anonymous identity, HMAC-derived exact IP, coarse network bucket, and global caps. Site submissions allow 6/3h per identity, 24/3h per exact IP, 120/3h per network, and 300/3h globally. Guestbook entries allow 3/day, 12/day, 80/day, and 500/day across those scopes. Failed persistence refunds the reservation. Responses carry `429` with `Retry-After`; invalid challenges use `403` and verifier outages use `503`.
+
+Votes remain Turnstile-free. They use a one-year, first-party, HttpOnly signed anonymous identity cookie and an HMAC-derived vote key. Each identity can change vote state 30 times/hour and 200 times/day, with exact-IP, coarse-network, global, per-site cooldown, and idempotency controls. Clearing cookies creates a new identity, but network and global limits still apply. The cookie is not proof of a human, and shared networks may be grouped for abuse controls. Quarantined votes are excluded from public counts and ranking.
 
 ## Production Release
 
@@ -95,6 +97,7 @@ npx wrangler secret put ADMIN_USERNAME
 npx wrangler secret put ADMIN_PASSWORD_HASH
 npx wrangler secret put ADMIN_SESSION_SECRET
 npx wrangler secret put TAXONOMY_MASTER_KEY_V1
+npx wrangler secret put TURNSTILE_SECRET
 ```
 
 Set an absolute recovery directory outside the repository. Because Wrangler 4.120.1 may omit `delivery_paused`, inspect the production taxonomy queue in Cloudflare and explicitly declare whether it is currently `running` or `paused` with `RELEASE_TAXONOMY_QUEUE_INITIAL_STATE`; the release restores that state and records it in the journal. `npm run deploy` refuses to continue without the recovery directory, Cloudflare credentials, and a queue-state declaration when the API omits state. Before any remote mutation it runs the release check, the full verification pipeline, and a remote taxonomy resource preflight (`npm run taxonomy:preflight:remote`). After promotion it runs the remote-handler postdeploy validation (`npm run taxonomy:postdeploy`); both checks are also available standalone. Code-only releases write a JSON recovery journal containing the pre-release D1 Time Travel bookmark and do not export D1. Releases with pending D1 migrations first activate maintenance, set the D1 request barrier, and drain taxonomy leases, then export D1, verify that the export is non-empty, and write SHA-256 and JSON provenance sidecars:
@@ -159,7 +162,7 @@ set +a
 npm run staging:verify
 ```
 
-The generated config is `.wrangler/staging.jsonc` and targets the production build output created by `npm run staging:verify`. It records the current Git SHA and generation time. Wrangler cannot set required secrets before a Worker exists, so the first deployment must supply all four secrets atomically through a secured `.env` or JSON file outside the repository. The file must be readable only by its owner and define `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, and a 32-byte base64url `TAXONOMY_MASTER_KEY_V1`:
+The generated config is `.wrangler/staging.jsonc` and targets the production build output created by `npm run staging:verify`. It records the current Git SHA and generation time. Wrangler cannot set required secrets before a Worker exists, so the first deployment must supply all five secrets atomically through a secured `.env` or JSON file outside the repository. The file must be readable only by its owner and define `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, a 32-byte base64url `TAXONOMY_MASTER_KEY_V1`, and `TURNSTILE_SECRET`:
 
 ```bash
 chmod 600 /secure/path/staging-secrets.env
@@ -167,7 +170,7 @@ export STAGING_SECRETS_FILE=/secure/path/staging-secrets.env
 npm run staging:deploy:first
 ```
 
-`staging:deploy:first` validates all four required secret keys before remote work, runs staging verification, requires a clean worktree, hashes the config, server, client, and secrets, and dry-runs the exact strict `--secrets-file` deployment before any mutation. It rechecks cleanliness and the digest before applying isolated D1 migrations and again before deployment, then validates handlers/consumer settings and smoke-tests the exact staging release SHA. Later staging releases run `npm run staging:smoke` against the staged Worker. Use the ordinary staging verification and deployment controls for later changes; never commit or place the secrets file under the repository.
+`staging:deploy:first` validates all five required secret keys before remote work, runs staging verification, requires a clean worktree, hashes the config, server, client, and secrets, and dry-runs the exact strict `--secrets-file` deployment before any mutation. It rechecks cleanliness and the digest before applying isolated D1 migrations and again before deployment, then validates handlers/consumer settings and smoke-tests the exact staging release SHA. Later staging releases run `npm run staging:smoke` against the staged Worker. Use the ordinary staging verification and deployment controls for later changes; never commit or place the secrets file under the repository.
 
 Run staging checks for schema changes and risky operational changes before production. Staging data must be synthetic or separately sanitized; never bind staging to production D1 or R2.
 

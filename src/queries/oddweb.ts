@@ -24,9 +24,11 @@ import {
   getPublicPopularPage,
   getPublicSiteDetail,
   getPublicSupportData,
+  getTurnstileConfig,
   getPublicTagPage,
   getTagSuggestions,
 } from '../server/public-data'
+import { getMyVotedSlugs } from '../server/data'
 
 import type { PublicDirectoryInput } from '../db/public-repository'
 
@@ -88,6 +90,20 @@ export const tagSuggestionsQueryOptions = (input: {
     queryFn: () =>
       getTagSuggestions({ data: { ...input, limit: input.limit || 8 } }),
     staleTime: 30_000,
+  })
+
+export const myVotesQueryOptions = () =>
+  queryOptions({
+    queryKey: ['oddweb', 'public', 'my-votes'],
+    queryFn: () => getMyVotedSlugs(),
+    staleTime: 30_000,
+  })
+
+export const turnstileConfigQueryOptions = () =>
+  queryOptions({
+    queryKey: ['oddweb', 'public', 'turnstile-config'],
+    queryFn: () => getTurnstileConfig(),
+    staleTime: 5 * 60_000,
   })
 
 export const adminOverviewQueryOptions = () =>

@@ -16,6 +16,7 @@ export type SiteEntry = {
   notes: string[]
   facts: SiteFact[]
   visits: number
+  votes: number
   added: string
   addedLabel: string
   addedAt?: number
@@ -57,6 +58,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'radio.garden' },
     ],
     visits: 187,
+    votes: 0,
     added: '2026-07-28',
     addedLabel: 'Jul 28',
     accent: 'from-[#315c51] to-[#79a381]',
@@ -81,6 +83,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'neal.fun' },
     ],
     visits: 154,
+    votes: 0,
     added: '2026-07-30',
     addedLabel: 'Jul 30',
     accent: 'from-[#38578d] to-[#eabc52]',
@@ -102,6 +105,7 @@ export const sites: SiteEntry[] = [
     ],
     facts: [{ label: 'Address', value: 'window-swap.com' }],
     visits: 122,
+    votes: 0,
     added: '2026-08-01',
     addedLabel: 'Aug 1',
     accent: 'from-[#527797] to-[#d8a866]',
@@ -135,6 +139,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'patatap.com' },
     ],
     visits: 96,
+    votes: 0,
     added: '2026-08-02',
     addedLabel: 'Aug 2',
     accent: 'from-[#dc4f33] to-[#e9b640]',
@@ -160,6 +165,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'mapcrunch.com' },
     ],
     visits: 81,
+    votes: 0,
     added: '2026-08-03',
     addedLabel: 'Aug 3',
     accent: 'from-[#586f44] to-[#c4a866]',
@@ -184,6 +190,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'zoomquilt.org' },
     ],
     visits: 73,
+    votes: 0,
     added: '2026-08-04',
     addedLabel: 'Aug 4',
     accent: 'from-[#5b376b] to-[#b06970]',
@@ -208,6 +215,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'pointerpointer.com' },
     ],
     visits: 61,
+    votes: 0,
     added: '2026-08-05',
     addedLabel: 'Aug 5',
     accent: 'from-[#704d3f] to-[#d28f61]',
@@ -232,6 +240,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'asoftmurmur.com' },
     ],
     visits: 48,
+    votes: 0,
     added: '2026-08-06',
     addedLabel: 'Aug 6',
     accent: 'from-[#42687c] to-[#8ca8aa]',
@@ -255,6 +264,7 @@ export const sites: SiteEntry[] = [
       { label: 'Address', value: 'theuselessweb.com' },
     ],
     visits: 39,
+    votes: 0,
     added: '2026-08-07',
     addedLabel: 'Aug 7',
     accent: 'from-[#8d3b2b] to-[#d37237]',

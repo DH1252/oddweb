@@ -1243,6 +1243,96 @@ export const publicSubmissionAttemptsTable = sqliteTable(
   ],
 )
 
+export const publicAttemptsTable = sqliteTable(
+  'public_attempts',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    action: text().notNull(),
+    scope: text().notNull(),
+    key: text().notNull(),
+    reservationId: text('reservation_id').notNull(),
+    attemptedAt: integer('attempted_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('public_attempts_scope_key_time_idx').on(
+      table.action,
+      table.scope,
+      table.key,
+      table.attemptedAt,
+    ),
+    index('public_attempts_reservation_idx').on(table.reservationId),
+    index('public_attempts_time_idx').on(table.attemptedAt),
+  ],
+)
+
+export const turnstileFailuresTable = sqliteTable(
+  'turnstile_failures',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    action: text().notNull(),
+    errorCode: text('error_code').notNull(),
+    attemptedAt: integer('attempted_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [index('turnstile_failures_time_idx').on(table.attemptedAt)],
+)
+
+export const publicIdentityActivityTable = sqliteTable(
+  'public_identity_activity',
+  {
+    identityKey: text('identity_key').primaryKey(),
+    firstSeen: integer('first_seen', { mode: 'timestamp' }).notNull(),
+    lastSeen: integer('last_seen', { mode: 'timestamp' }).notNull(),
+    voteChanges: integer('vote_changes').notNull().default(0),
+  },
+  (table) => [
+    index('public_identity_activity_last_seen_idx').on(table.lastSeen),
+  ],
+)
+
+export const siteVotesTable = sqliteTable(
+  'site_votes',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    siteId: integer('site_id')
+      .notNull()
+      .references(() => sitesTable.id),
+    visitorKey: text('visitor_key').notNull(),
+    identityScheme: text('identity_scheme').notNull().default('ip-v0'),
+    voted: integer().notNull().default(1),
+    quarantined: integer().notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex('site_votes_visitor_unique').on(table.siteId, table.visitorKey),
+    index('site_votes_site_idx').on(table.siteId),
+  ],
+)
+
+export const voteToggleActionsTable = sqliteTable(
+  'vote_toggle_actions',
+  {
+    requestId: text('request_id').primaryKey(),
+    siteId: integer('site_id').notNull(),
+    visitorKey: text('visitor_key').notNull(),
+    status: text().notNull().default('pending'),
+    voted: integer(),
+    votes: integer(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('vote_toggle_actions_identity_idx').on(
+      table.visitorKey,
+      table.createdAt,
+    ),
+    index('vote_toggle_actions_time_idx').on(table.createdAt),
+  ],
+)
+
 export const appStateTable = sqliteTable('app_state', {
   key: text().primaryKey(),
   value: text().notNull(),

@@ -14,6 +14,8 @@
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_SITE_URL": "https://oddweb.page",
+    "TURNSTILE_HOSTNAMES": "oddweb.page",
+    "TURNSTILE_SITEKEY": "0x4AAAAAAEU_lgTcBBBorAM9",
     "RELEASE_SHA": "development",
     "RELEASE_TIME": "development",
     "RELEASE_FENCE_VERSION": "1",
@@ -24,6 +26,7 @@
       "ADMIN_PASSWORD_HASH",
       "ADMIN_SESSION_SECRET",
       "TAXONOMY_MASTER_KEY_V1",
+      "TURNSTILE_SECRET",
     ],
   },
   "queues": {

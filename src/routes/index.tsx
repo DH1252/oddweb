@@ -16,6 +16,7 @@ import {
 
 import { TagInput } from '../components/tag-input'
 import { LocalTime } from '../components/local-time'
+import { Turnstile } from '../components/turnstile'
 import {
   FieldLabel,
   ItemThumbnail,
@@ -36,10 +37,16 @@ import {
 } from '../data/tags'
 import {
   directoryQueryOptions,
+  myVotesQueryOptions,
   popularQueryOptions,
   publicSupportQueryOptions,
+  turnstileConfigQueryOptions,
 } from '../queries/oddweb'
-import { signGuestbook, submitSite as submitSiteMutation } from '../server/data'
+import {
+  signGuestbook,
+  submitSite as submitSiteMutation,
+  toggleSiteVote,
+} from '../server/data'
 import { getPublicSurprise } from '../server/public-data'
 import {
   SITE_ORIGIN,
@@ -160,6 +167,11 @@ function DirectoryPage() {
   const [submitOpen, setSubmitOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
+  const [guestbookToken, setGuestbookToken] = useState<string | null>(null)
+  const [guestbookResetKey, setGuestbookResetKey] = useState(0)
+  const [submissionToken, setSubmissionToken] = useState<string | null>(null)
+  const [submissionResetKey, setSubmissionResetKey] = useState(0)
+  const turnstileConfig = useQuery(turnstileConfigQueryOptions()).data
   const directoryInput = {
     query: deferredQuery,
     include,
@@ -178,8 +190,11 @@ function DirectoryPage() {
     placeholderData: keepPreviousData,
   }).data!
   const guestbookMutation = useMutation({
-    mutationFn: (input: { name: string; message: string }) =>
-      signGuestbook({ data: input }),
+    mutationFn: (input: {
+      name: string
+      message: string
+      turnstileToken: string
+    }) => signGuestbook({ data: input }),
   })
   const submissionMutation = useMutation({
     mutationFn: (form: FormData) => submitSiteMutation({ data: form }),
@@ -190,6 +205,15 @@ function DirectoryPage() {
         data: { query: deferredQuery, include, exclude },
       }),
   })
+  const voteMutation = useMutation({
+    mutationFn: (input: { slug: string; requestId: string }) =>
+      toggleSiteVote({ data: input }),
+  })
+  const myVotes =
+    useQuery({
+      ...myVotesQueryOptions(),
+      placeholderData: keepPreviousData,
+    }).data?.slugs ?? []
   const submitPending = submissionMutation.isPending
 
   useEffect(() => {
@@ -259,6 +283,22 @@ function DirectoryPage() {
     startTransition(() => setPage(nextPage))
   }
 
+  function toggleVote(slug: string) {
+    voteMutation.mutate(
+      { slug, requestId: crypto.randomUUID() },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries({
+            queryKey: ['oddweb', 'public'],
+          })
+          await queryClient.invalidateQueries({
+            queryKey: ['oddweb', 'public', 'my-votes'],
+          })
+        },
+      },
+    )
+  }
+
   function changePopularPage(nextPage: number) {
     startTransition(() => setPopularPage(nextPage))
   }
@@ -289,14 +329,27 @@ function DirectoryPage() {
     const name = String(formData.get('name') || '').trim()
     const message = String(formData.get('message') || '').trim()
     if (!name || !message) return
+    if (!guestbookToken) {
+      setNotice('Complete the verification check before signing.')
+      setNoticeError(true)
+      return
+    }
     setNotice('')
     setNoticeError(false)
     try {
-      await guestbookMutation.mutateAsync({ name, message })
+      await guestbookMutation.mutateAsync({
+        name,
+        message,
+        turnstileToken: guestbookToken,
+      })
       await queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] })
       form.reset()
+      setGuestbookToken(null)
+      setGuestbookResetKey((key) => key + 1)
       setNotice('Your guestbook note was added.')
     } catch (error) {
+      setGuestbookToken(null)
+      setGuestbookResetKey((key) => key + 1)
       setNotice(
         error instanceof Error
           ? error.message
@@ -311,6 +364,12 @@ function DirectoryPage() {
     const form = event.currentTarget
     const formData = new FormData(form)
     removeEmptyFile(formData, 'image')
+    if (!submissionToken) {
+      setNotice('Complete the verification check before submitting.')
+      setNoticeError(true)
+      return
+    }
+    formData.set('turnstileToken', submissionToken)
     const name = String(formData.get('name') || 'Your site')
 
     setNotice('')
@@ -328,7 +387,11 @@ function DirectoryPage() {
       setNotice(`${name} was submitted for review.`)
       setSubmitOpen(false)
       form.reset()
+      setSubmissionToken(null)
+      setSubmissionResetKey((key) => key + 1)
     } catch (error) {
+      setSubmissionToken(null)
+      setSubmissionResetKey((key) => key + 1)
       setNotice(
         error instanceof Error
           ? error.message
@@ -494,7 +557,7 @@ function DirectoryPage() {
                   className="min-h-11 border border-brown bg-paper px-2 text-sm shadow-[1px_1px_0_#d9aa7a]"
                   data-od-id="catalog-sort"
                 >
-                  <option value="popular">Most viewed</option>
+                  <option value="popular">Most voted</option>
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
                   <option value="tags">Most tags</option>
@@ -515,6 +578,12 @@ function DirectoryPage() {
                   excludedTags={exclude}
                   onInclude={toggleIncludedTag}
                   onExclude={addExcludedTag}
+                  voted={myVotes.includes(site.slug)}
+                  votePending={
+                    voteMutation.isPending &&
+                    voteMutation.variables.slug === site.slug
+                  }
+                  onVote={toggleVote}
                 />
               ))}
             </div>
@@ -662,6 +731,13 @@ function DirectoryPage() {
                         placeholder="What did you discover?"
                       />
                     </label>
+                    <Turnstile
+                      sitekey={turnstileConfig?.sitekey ?? ''}
+                      action="guestbook"
+                      disabled={guestbookMutation.isPending}
+                      resetKey={guestbookResetKey}
+                      onToken={setGuestbookToken}
+                    />
                     <button className={buttonClass} type="submit">
                       {guestbookMutation.isPending
                         ? 'Signing...'
@@ -783,6 +859,15 @@ function DirectoryPage() {
                   placeholder="What happens when you click?"
                 />
               </div>
+              <div className="mb-2">
+                <Turnstile
+                  sitekey={turnstileConfig?.sitekey ?? ''}
+                  action="site_submission"
+                  disabled={submitPending}
+                  resetKey={submissionResetKey}
+                  onToken={setSubmissionToken}
+                />
+              </div>
               {noticeError ? (
                 <p
                   className="mb-2 border border-danger bg-canvas px-2 py-1.5 font-mono text-xs text-danger"
@@ -822,12 +907,18 @@ function SiteRow({
   excludedTags,
   onInclude,
   onExclude,
+  voted,
+  votePending,
+  onVote,
 }: {
   site: SiteEntry
   includedTags: string[]
   excludedTags: string[]
   onInclude: (tag: string) => void
   onExclude: (tag: string) => void
+  voted: boolean
+  votePending: boolean
+  onVote: (slug: string) => void
 }) {
   const allTags = site.tags
 
@@ -869,6 +960,22 @@ function SiteRow({
             Added{' '}
             <LocalTime seconds={site.addedAt} fallback={site.addedLabel} />
           </span>
+          <button
+            type="button"
+            className={`ml-auto inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs ${
+              voted
+                ? 'border-success bg-green-50 text-success'
+                : 'border-brown bg-paper text-brown hover:bg-warm'
+            }`}
+            aria-pressed={voted}
+            aria-label={`Vote for ${site.name}`}
+            title={voted ? 'Remove your vote' : `Vote for ${site.name}`}
+            onClick={() => onVote(site.slug)}
+            disabled={votePending}
+            data-od-id={`vote-button-${site.slug}`}
+          >
+            {votePending ? '...' : voted ? 'Voted' : 'Vote'} &uarr; {site.votes}
+          </button>
         </div>
       </div>
     </article>
