@@ -6,6 +6,7 @@ import {
   turnstileConfigQueryOptions,
 } from '../queries/oddweb'
 import { requestInvisibleTurnstileToken } from '../components/turnstile'
+import { turnstileActions } from '../lib/turnstile'
 import { toggleSiteVote } from '../server/data'
 import type { SiteEntry } from '../data/sites'
 
@@ -202,7 +203,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
           )
         }
         if (sitekey) {
-          requestInvisibleTurnstileToken(sitekey, 'vote').then(
+          requestInvisibleTurnstileToken(sitekey, turnstileActions.vote).then(
             (invisibleToken) => {
               if (invisibleToken) {
                 voteMutation.mutate({

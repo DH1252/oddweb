@@ -1,3 +1,12 @@
+export const turnstileActions = {
+  submission: 'site_submission',
+  guestbook: 'guestbook',
+  vote: 'site_vote',
+} as const
+
+export type TurnstileAction =
+  (typeof turnstileActions)[keyof typeof turnstileActions]
+
 export type SiteverifyResult = {
   success?: boolean
   action?: string

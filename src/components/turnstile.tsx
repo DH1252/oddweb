@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 
+import { turnstileActions } from '../lib/turnstile'
+
 declare global {
   interface Window {
     turnstile?: {
@@ -52,7 +54,7 @@ export function ensureTurnstileScript(
 
 export function requestInvisibleTurnstileToken(
   sitekey: string,
-  action = 'vote',
+  action: string = turnstileActions.vote,
 ): Promise<string | null> {
   if (typeof window === 'undefined' || !sitekey) return Promise.resolve(null)
 

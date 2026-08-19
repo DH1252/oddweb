@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { turnstileConfigQueryOptions } from '../queries/oddweb'
+import { turnstileActions } from '../lib/turnstile'
 import { ModalDialog } from './oddweb'
 import { Turnstile } from './turnstile'
 
@@ -49,7 +50,7 @@ export function VoteChallengeDialog({
         <div className="flex justify-center py-2">
           <Turnstile
             sitekey={sitekey}
-            action="vote"
+            action={turnstileActions.vote}
             disabled={isPending}
             onToken={(token) => {
               if (token) {

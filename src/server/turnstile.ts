@@ -3,19 +3,18 @@ import { getRequest, setResponseStatus } from '@tanstack/react-start/server'
 
 import { clientAddress } from './public-identity'
 import { parseHostnames, validateTurnstileResult } from '../lib/turnstile'
-import type { SiteverifyResult } from '../lib/turnstile'
+import type { SiteverifyResult, TurnstileAction } from '../lib/turnstile'
 
-export { parseHostnames, validateTurnstileResult } from '../lib/turnstile'
-
-export const turnstileActions = {
-  submission: 'site_submission',
-  guestbook: 'guestbook',
-  vote: 'site_vote',
-} as const
+export {
+  parseHostnames,
+  turnstileActions,
+  validateTurnstileResult,
+} from '../lib/turnstile'
+export type { TurnstileAction } from '../lib/turnstile'
 
 export async function requireTurnstile(
   token: unknown,
-  action: (typeof turnstileActions)[keyof typeof turnstileActions],
+  action: TurnstileAction,
 ) {
   const secret = env.TURNSTILE_SECRET
   const hostnames = parseHostnames(env.TURNSTILE_HOSTNAMES)

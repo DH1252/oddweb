@@ -527,5 +527,5 @@ test('vote stepped challenge dialog renders Turnstile verification modal', async
   assert.match(voteHook, /challengeSlug/)
   assert.match(voteHook, /submitChallengeVote/)
   assert.match(dialog, /Quick Verification/)
-  assert.match(dialog, /action="vote"/)
+  assert.match(dialog, /turnstileActions\.vote/)
 })
