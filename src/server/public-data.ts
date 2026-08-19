@@ -18,6 +18,7 @@ import {
   readPublicSurprise,
   readPublicSupportData,
   readPublicTagPage,
+  readPublicVoteRevision,
   readTagSuggestions,
 } from '../db/public-repository'
 import { cachedPublicRead } from './public-cache'
@@ -63,9 +64,12 @@ const tagSuggestionInput = z.object({
 
 export const getPublicDirectoryPage = createServerFn({ method: 'GET' })
   .validator((data) => directoryInput.parse(data))
-  .handler(({ data }) =>
-    cachePublicRead('directory', data, () => readPublicDirectoryPage(data)),
-  )
+  .handler(async ({ data }) => {
+    const voteRevision = await readPublicVoteRevision()
+    return cachePublicRead('directory', { ...data, voteRevision }, () =>
+      readPublicDirectoryPage(data),
+    )
+  })
 
 export const getPublicSurprise = createServerFn({ method: 'POST' })
   .validator((data) => surpriseInput.parse(data))
@@ -73,9 +77,12 @@ export const getPublicSurprise = createServerFn({ method: 'POST' })
 
 export const getPublicPopularPage = createServerFn({ method: 'GET' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))
-  .handler(({ data }) =>
-    cachePublicRead('popular', data, () => readPublicPopularPage(data)),
-  )
+  .handler(async ({ data }) => {
+    const voteRevision = await readPublicVoteRevision()
+    return cachePublicRead('popular', { page: data, voteRevision }, () =>
+      readPublicPopularPage(data),
+    )
+  })
 
 export const getPublicSupportData = createServerFn({ method: 'GET' }).handler(
   () => cachePublicRead('support', undefined, readPublicSupportData),
@@ -111,9 +118,12 @@ export const getPublicTagPage = createServerFn({ method: 'GET' })
 
 export const getPublicSiteDetail = createServerFn({ method: 'GET' })
   .validator((data) => z.string().min(1).max(100).parse(data))
-  .handler(({ data }) =>
-    cachePublicRead('site', data, () => readPublicSiteDetail(data)),
-  )
+  .handler(async ({ data }) => {
+    const voteRevision = await readPublicVoteRevision()
+    return cachePublicRead('site', { slug: data, voteRevision }, () =>
+      readPublicSiteDetail(data),
+    )
+  })
 
 export const getTagSuggestions = createServerFn({ method: 'GET' })
   .validator((data) => tagSuggestionInput.parse(data))

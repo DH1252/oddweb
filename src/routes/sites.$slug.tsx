@@ -21,6 +21,8 @@ import {
   socialMeta,
 } from '../lib/seo'
 
+import type { SiteEntry } from '../data/sites'
+
 export const Route = createFileRoute('/sites/$slug')({
   loader: async ({ context, params }) => {
     const data = await context.queryClient.fetchQuery(
@@ -133,13 +135,45 @@ function SiteDetailPage() {
     voteMutation.mutate(
       { slug, requestId: crypto.randomUUID() },
       {
-        onSuccess: async () => {
-          await queryClient.invalidateQueries({
-            queryKey: ['oddweb', 'public', 'site', slug],
+        onSuccess: (result) => {
+          queryClient.setQueryData<{ site: SiteEntry } | undefined>(
+            ['oddweb', 'public', 'site', slug],
+            (current) =>
+              current
+                ? {
+                    ...current,
+                    site: {
+                      ...current.site,
+                      votes: result.votes ?? current.site.votes,
+                    },
+                  }
+                : current,
+          )
+          queryClient.setQueryData<{ slugs: string[] } | undefined>(
+            ['oddweb', 'public', 'my-votes'],
+            (current) => {
+              const slugs = current?.slugs ?? []
+              return {
+                slugs: result.voted
+                  ? slugs.includes(slug)
+                    ? slugs
+                    : [...slugs, slug]
+                  : slugs.filter((item) => item !== slug),
+              }
+            },
+          )
+          void queryClient.invalidateQueries({
+            queryKey: ['oddweb', 'public'],
+            refetchType: 'active',
           })
-          await queryClient.invalidateQueries({
-            queryKey: ['oddweb', 'public', 'my-votes'],
-          })
+        },
+        onError: (error) => {
+          voteMutation.reset()
+          console.error(
+            error instanceof Error
+              ? error.message
+              : 'Could not record your vote.',
+          )
         },
       },
     )

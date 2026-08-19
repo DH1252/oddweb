@@ -287,13 +287,51 @@ function DirectoryPage() {
     voteMutation.mutate(
       { slug, requestId: crypto.randomUUID() },
       {
-        onSuccess: async () => {
-          await queryClient.invalidateQueries({
+        onSuccess: (result) => {
+          const updateSites = (current: { sites: SiteEntry[] } | undefined) =>
+            current
+              ? {
+                  ...current,
+                  sites: current.sites.map((site) =>
+                    site.slug === slug
+                      ? { ...site, votes: result.votes ?? site.votes }
+                      : site,
+                  ),
+                }
+              : current
+          queryClient.setQueriesData(
+            { queryKey: ['oddweb', 'public', 'directory'] },
+            updateSites,
+          )
+          queryClient.setQueriesData(
+            { queryKey: ['oddweb', 'public', 'popular'] },
+            updateSites,
+          )
+          queryClient.setQueryData<{ slugs: string[] } | undefined>(
+            ['oddweb', 'public', 'my-votes'],
+            (current) => {
+              const slugs = current?.slugs ?? []
+              return {
+                slugs: result.voted
+                  ? slugs.includes(slug)
+                    ? slugs
+                    : [...slugs, slug]
+                  : slugs.filter((item) => item !== slug),
+              }
+            },
+          )
+          void queryClient.invalidateQueries({
             queryKey: ['oddweb', 'public'],
+            refetchType: 'active',
           })
-          await queryClient.invalidateQueries({
-            queryKey: ['oddweb', 'public', 'my-votes'],
-          })
+        },
+        onError: (error) => {
+          setNotice(
+            error instanceof Error
+              ? error.message
+              : 'Could not record your vote.',
+          )
+          setNoticeError(true)
         },
       },
     )

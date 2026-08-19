@@ -78,6 +78,15 @@ export type TagSuggestionResult = {
   selected: CanonicalTag[]
 }
 
+export async function readPublicVoteRevision() {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(created_at), 0) || ':' || count(*) AS revision
+     FROM vote_toggle_actions
+     WHERE status = 'complete'`,
+  ).first<{ revision: string }>()
+  return row?.revision ?? '0:0'
+}
+
 type SiteSqlRow = {
   id: number
   slug: string
