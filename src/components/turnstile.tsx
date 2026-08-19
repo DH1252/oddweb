@@ -8,7 +8,7 @@ declare global {
         options: {
           sitekey: string
           action: string
-          size?: 'normal' | 'compact' | 'flexible' | 'invisible'
+          size?: 'normal' | 'compact' | 'flexible'
           execution?: 'render' | 'execute'
           appearance?: 'always' | 'execute' | 'interaction-only'
           callback: (token: string) => void
@@ -101,7 +101,7 @@ export function requestInvisibleTurnstileToken(
         widgetId = window.turnstile.render(container, {
           sitekey,
           action,
-          size: 'invisible',
+          appearance: 'interaction-only',
           callback: (token) => finish(token),
           'error-callback': () => finish(null),
           'expired-callback': () => finish(null),
