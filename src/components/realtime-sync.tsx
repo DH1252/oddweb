@@ -60,7 +60,8 @@ export function RealtimeSync() {
         updateEntry,
       )
       queryClient.setQueryData<
-        { site: { slug: string; votes?: number; [key: string]: unknown } } | undefined
+        | { site: { slug: string; votes?: number; [key: string]: unknown } }
+        | undefined
       >(['oddweb', 'public', 'site', slug], (current) =>
         current
           ? {
@@ -119,7 +120,8 @@ export function RealtimeSync() {
         updateEntry,
       )
       queryClient.setQueryData<
-        { site: { slug: string; visits?: number; [key: string]: unknown } } | undefined
+        | { site: { slug: string; visits?: number; [key: string]: unknown } }
+        | undefined
       >(['oddweb', 'public', 'site', slug], (current) =>
         current
           ? {

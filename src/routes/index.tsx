@@ -300,9 +300,7 @@ function DirectoryPage() {
         }
       }
       setNotice(
-        error instanceof Error
-          ? error.message
-          : 'Could not record your vote.',
+        error instanceof Error ? error.message : 'Could not record your vote.',
       )
       setNoticeError(true)
     },

@@ -163,11 +163,14 @@ function SiteDetailPage() {
         },
       )
 
-      queryClient.setQueryData<{
-        site: SiteEntry
-        previous: unknown
-        next: unknown
-      } | undefined>(['oddweb', 'public', 'site', entrySlug], (current) =>
+      queryClient.setQueryData<
+        | {
+            site: SiteEntry
+            previous: unknown
+            next: unknown
+          }
+        | undefined
+      >(['oddweb', 'public', 'site', entrySlug], (current) =>
         current
           ? {
               ...current,
@@ -197,29 +200,28 @@ function SiteDetailPage() {
         }
       }
       setNotice(
-        error instanceof Error
-          ? error.message
-          : 'Could not record your vote.',
+        error instanceof Error ? error.message : 'Could not record your vote.',
       )
       setNoticeError(true)
     },
     onSuccess: (result, { slug: entrySlug }) => {
-      queryClient.setQueryData<{
-        site: SiteEntry
-        previous: unknown
-        next: unknown
-      } | undefined>(
-        ['oddweb', 'public', 'site', entrySlug],
-        (current) =>
-          current
-            ? {
-                ...current,
-                site: {
-                  ...current.site,
-                  votes: result.votes ?? current.site.votes,
-                },
-              }
-            : current,
+      queryClient.setQueryData<
+        | {
+            site: SiteEntry
+            previous: unknown
+            next: unknown
+          }
+        | undefined
+      >(['oddweb', 'public', 'site', entrySlug], (current) =>
+        current
+          ? {
+              ...current,
+              site: {
+                ...current.site,
+                votes: result.votes ?? current.site.votes,
+              },
+            }
+          : current,
       )
       queryClient.setQueryData<{ slugs: string[] } | undefined>(
         ['oddweb', 'public', 'my-votes'],
