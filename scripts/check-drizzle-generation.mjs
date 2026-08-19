@@ -23,7 +23,10 @@ try {
     .map((entry) => entry.tag)
     .filter((tag) => {
       const match = /^(\d+)_/.exec(tag)
-      return !match || !existsSync(resolve(root, `drizzle/meta/${match[1]}_snapshot.json`))
+      return (
+        !match ||
+        !existsSync(resolve(root, `drizzle/meta/${match[1]}_snapshot.json`))
+      )
     })
   if (missingSnapshots.length) {
     throw new Error(

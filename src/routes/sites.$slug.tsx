@@ -130,16 +130,19 @@ function SiteDetailPage() {
   })
 
   function toggleVote() {
-    voteMutation.mutate({ slug, requestId: crypto.randomUUID() }, {
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'public', 'site', slug],
-        })
-        await queryClient.invalidateQueries({
-          queryKey: ['oddweb', 'public', 'my-votes'],
-        })
+    voteMutation.mutate(
+      { slug, requestId: crypto.randomUUID() },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries({
+            queryKey: ['oddweb', 'public', 'site', slug],
+          })
+          await queryClient.invalidateQueries({
+            queryKey: ['oddweb', 'public', 'my-votes'],
+          })
+        },
       },
-    })
+    )
   }
 
   useEffect(() => {
