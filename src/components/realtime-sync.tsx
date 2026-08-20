@@ -271,11 +271,7 @@ export function RealtimeSync() {
         socket?.close(1000, 'Page hidden')
       } else {
         void resync()
-        if (
-          !socket ||
-          socket.readyState === WebSocket.CLOSED ||
-          socket.readyState === WebSocket.CLOSING
-        ) {
+        if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
           connect()
         } else if (socket.readyState === WebSocket.OPEN) {
           socket.send('ping')
