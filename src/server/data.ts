@@ -37,6 +37,7 @@ import { tagSlug } from '../data/tags'
 import { normalizeWebsiteUrl } from '../lib/website-url'
 import { deferVisitAccounting } from './visit-accounting'
 import { publishRealtimeEvent } from './realtime'
+import { triggerIndexNowSiteSync } from './indexnow'
 import {
   assertLegitimateClient,
   getPublicIdentity,
@@ -168,7 +169,7 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const thumbnail = data.image ? await storeThumbnail(data.image) : undefined
     try {
-      const id = await createSite({
+      const { id, slug } = await createSite({
         name: data.name,
         url: data.url,
         description: data.description,
@@ -178,6 +179,9 @@ export const createDirectorySite = createServerFn({ method: 'POST' })
         status: data.status,
         source: 'Manual',
       })
+      if (data.status === 'active') {
+        triggerIndexNowSiteSync(slug)
+      }
       await publishRealtimeEvent({ type: 'directory.changed' })
       return {
         created: true as const,
@@ -327,7 +331,10 @@ export const reviewSubmission = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => moderationInput.parse(data))
   .handler(async ({ data }) => {
-    await moderateSubmission(data.id, data.status)
+    const result = await moderateSubmission(data.id, data.status)
+    if (result.slug) {
+      triggerIndexNowSiteSync(result.slug)
+    }
     await publishRealtimeEvent({ type: 'directory.changed' })
   })
 
@@ -335,7 +342,10 @@ export const updateSiteStatus = createServerFn({ method: 'POST' })
   .middleware([adminAuthMiddleware])
   .validator((data) => siteStatusInput.parse(data))
   .handler(async ({ data }) => {
-    await setSiteStatus(data.id, data.status)
+    const result = await setSiteStatus(data.id, data.status)
+    if (data.status === 'active' && result.slug) {
+      triggerIndexNowSiteSync(result.slug)
+    }
     await publishRealtimeEvent({ type: 'directory.changed' })
   })
 
@@ -398,6 +408,9 @@ export const updateDirectorySite = createServerFn({ method: 'POST' })
         event: 'thumbnail_retained_for_recovery',
         key: result.previousThumbnailKey,
       })
+    }
+    if (data.status === 'active' && result.slug) {
+      triggerIndexNowSiteSync(result.slug)
     }
     await publishRealtimeEvent({ type: 'directory.changed' })
     return { id: data.id, thumbnailKey: result.thumbnailKey }

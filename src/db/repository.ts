@@ -315,7 +315,7 @@ export async function createSite(input: {
       .limit(1)
   ).at(0)
   if (!site) throw new Error('Site creation did not complete.')
-  return site.id
+  return { id: site.id, slug }
 }
 
 export async function addGuestbookEntry(input: {
@@ -419,7 +419,7 @@ export async function moderateSubmission(
         lifecycle,
       })
       await dispatchTaxonomyOutbox(env, { limit: 25 })
-      return
+      return { slug: ownedSite.slug }
     }
     const slug = await uniqueSiteSlug(submission.name)
     const summary = submission.description
@@ -478,6 +478,7 @@ export async function moderateSubmission(
       ...lifecycle,
     ])
     await dispatchTaxonomyOutbox(env, { limit: 25 })
+    return { slug }
   } else {
     await env.DB.batch([
       env.DB.prepare(
@@ -491,6 +492,7 @@ export async function moderateSubmission(
          WHERE id = ?1`,
       ).bind(submission.id, status),
     ])
+    return { slug: null }
   }
 }
 
@@ -503,13 +505,14 @@ export async function setSiteStatus(id: number, status: 'active' | 'archived') {
          WHERE submissions.id = sites.submission_id
            AND submissions.status = 'approved'
        )
-     ) RETURNING id`,
+     ) RETURNING id, slug`,
   )
     .bind(id, status)
-    .first()
+    .first<{ id: number; slug: string }>()
   if (!result) {
     throw new Error('Site not found or its submission is not approved.')
   }
+  return { id: result.id, slug: result.slug }
 }
 
 export async function updateSite(input: {
@@ -544,7 +547,10 @@ export async function updateSite(input: {
 
   const result = await updateSiteFromSnapshot(env.DB, input, existing)
   await dispatchTaxonomyOutbox(env, { limit: 25 })
-  return result
+  return {
+    ...result,
+    slug: existing.slug,
+  }
 }
 
 async function taxonomyPublishedVersion(db: D1Database = env.DB) {
