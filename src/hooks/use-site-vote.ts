@@ -103,9 +103,22 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       slug: string
       requestId: string
       turnstileToken?: string
+      isContinuation?: boolean
+      previousContext?: {
+        previousMyVotes?: { slugs: string[] }
+        previousDirectory: Array<[readonly unknown[], unknown]>
+        previousPopular: Array<[readonly unknown[], unknown]>
+        previousSite?: unknown
+        slug: string
+        intendedVoted: boolean
+      }
     }) => toggleSiteVote({ data: input }),
-    onMutate: ({ slug }) => {
+    onMutate: ({ slug, isContinuation, previousContext }) => {
       updateNotice('', false)
+
+      if (isContinuation && previousContext) {
+        return previousContext
+      }
 
       void Promise.all([
         queryClient.cancelQueries({
@@ -147,14 +160,15 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
 
       const currentSlugs = previousMyVotes?.slugs ?? myVotes
       const wasVoted = currentSlugs.includes(slug)
-      const delta = wasVoted ? -1 : 1
+      const nextVoted = !wasVoted
+      const delta = nextVoted ? 1 : -1
 
       // 1. Optimistically update my-votes
-      const nextSlugs = wasVoted
-        ? currentSlugs.filter((item) => item !== slug)
-        : currentSlugs.includes(slug)
+      const nextSlugs = nextVoted
+        ? currentSlugs.includes(slug)
           ? currentSlugs
           : [...currentSlugs, slug]
+        : currentSlugs.filter((item) => item !== slug)
 
       queryClient.setQueryData<{ slugs: string[] }>(
         ['oddweb', 'public', 'my-votes'],
@@ -217,6 +231,8 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         previousDirectory,
         previousPopular,
         previousSite,
+        slug,
+        intendedVoted: nextVoted,
       }
     },
     onError: (error, { slug }, context) => {
@@ -226,7 +242,8 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         true,
       )
     },
-    onSuccess: (result, { slug }, context) => {
+    onSuccess: (result, variables, context) => {
+      const { slug } = variables
       if (result.requireChallenge) {
         const triggerChallenge = (targetSlug: string) => {
           rollbackVoteSnapshot(context, slug)
@@ -243,6 +260,8 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
                   slug,
                   requestId: crypto.randomUUID(),
                   turnstileToken: invisibleToken,
+                  isContinuation: true,
+                  previousContext: context,
                 })
               } else {
                 triggerChallenge(slug)
