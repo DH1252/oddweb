@@ -204,7 +204,7 @@ function SiteDetailPage() {
             </a>
             <button
               type="button"
-              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] transition-transform duration-100 active:scale-95 cursor-pointer disabled:cursor-not-allowed ${
+              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] cursor-pointer disabled:cursor-not-allowed ${
                 isVoted(site.slug)
                   ? 'border-white bg-green-50 text-success hover:bg-green-100'
                   : 'border-white bg-paper text-ink hover:bg-warm'

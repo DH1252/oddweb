@@ -11,6 +11,24 @@ test('coarse network keys group IPv4 and IPv6 addresses', () => {
     '2001:0db8:abcd:0012::/64',
   )
   assert.equal(coarseNetworkAddress('local'), 'local')
+
+  // Different devices on the same IPv4 /24 subnet
+  assert.equal(
+    coarseNetworkAddress('192.168.1.42'),
+    coarseNetworkAddress('192.168.1.99'),
+  )
+
+  // Different devices on the same IPv6 /64 customer network
+  assert.equal(
+    coarseNetworkAddress('2001:db8:abcd:12:1111:2222:3333:4444'),
+    coarseNetworkAddress('2001:db8:abcd:12:5555:6666:7777:8888'),
+  )
+
+  // Devices on different subnets
+  assert.notEqual(
+    coarseNetworkAddress('192.168.1.42'),
+    coarseNetworkAddress('192.168.2.42'),
+  )
 })
 
 test('Turnstile validation requires success, exact action, and hostname', () => {

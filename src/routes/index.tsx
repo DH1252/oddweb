@@ -959,7 +959,7 @@ function SiteRow({
           </span>
           <button
             type="button"
-            className={`ml-auto inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs transition-transform duration-100 active:scale-95 cursor-pointer disabled:cursor-not-allowed ${
+            className={`ml-auto inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs cursor-pointer disabled:cursor-not-allowed ${
               voted
                 ? 'border-success bg-green-50 text-success shadow-[1px_1px_0_#2b7a4b]'
                 : 'border-brown bg-paper text-brown hover:bg-warm shadow-[1px_1px_0_#d9aa7a]'

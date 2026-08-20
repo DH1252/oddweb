@@ -231,9 +231,14 @@ export const signGuestbook = createServerFn({ method: 'POST' })
 
 export const recordSiteVisit = createServerFn({ method: 'POST' })
   .validator((data) => visitInput.parse(data))
-  .handler(({ data }) =>
-    deferVisitAccounting({ request: getRequest(), slug: data.slug }),
-  )
+  .handler(async ({ data }) => {
+    const identity = await getPublicIdentity()
+    return deferVisitAccounting({
+      request: getRequest(),
+      slug: data.slug,
+      identityKey: identity.key,
+    })
+  })
 
 export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
   async () => {

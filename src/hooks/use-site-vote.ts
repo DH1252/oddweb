@@ -228,16 +228,16 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     },
     onSuccess: (result, { slug }, context) => {
       if (result.requireChallenge) {
-        rollbackVoteSnapshot(context, slug)
         const triggerChallenge = (targetSlug: string) => {
+          rollbackVoteSnapshot(context, slug)
           setChallengeSlug(targetSlug)
           updateNotice('Verification check required for this vote.', true)
           options?.onChallengeRequired?.(targetSlug)
         }
 
         if (sitekey) {
-          requestInvisibleTurnstileToken(sitekey, turnstileActions.vote).then(
-            (invisibleToken) => {
+          requestInvisibleTurnstileToken(sitekey, turnstileActions.vote)
+            .then((invisibleToken) => {
               if (invisibleToken) {
                 voteMutation.mutate({
                   slug,
@@ -247,8 +247,10 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
               } else {
                 triggerChallenge(slug)
               }
-            },
-          )
+            })
+            .catch(() => {
+              triggerChallenge(slug)
+            })
           return
         }
 

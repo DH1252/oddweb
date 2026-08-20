@@ -7,6 +7,7 @@ import { publishRealtimeEvent } from './realtime'
 export type DeferredVisitInput = {
   request: Request
   slug: string
+  identityKey?: string
   database?: D1Database
   secret?: string
 }
@@ -18,7 +19,8 @@ export type DeferredVisitAccepted = {
 export class VisitAccountingError extends Error {
   constructor(
     readonly code:
-      'VISIT_ACCOUNTING_INVALID_INPUT' | 'VISIT_ACCOUNTING_NOT_CONFIGURED',
+      | 'VISIT_ACCOUNTING_INVALID_INPUT'
+      | 'VISIT_ACCOUNTING_NOT_CONFIGURED',
     message: string,
   ) {
     super(message)
@@ -38,6 +40,7 @@ export async function visitorVisitKey(
   request: Request,
   slug: string,
   secret: string,
+  identityKey?: string,
 ) {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -46,10 +49,13 @@ export async function visitorVisitKey(
     false,
     ['sign'],
   )
+  const target = identityKey
+    ? `visit:${slug}:identity:${identityKey}`
+    : `visit:${slug}:ip:${visitorAddress(request)}`
   const signature = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(`visit:${slug}:ip:${visitorAddress(request)}`),
+    new TextEncoder().encode(target),
   )
   return [...new Uint8Array(signature)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -59,6 +65,7 @@ export async function visitorVisitKey(
 export async function deferVisitAccounting({
   request,
   slug,
+  identityKey,
   database = env.DB,
   secret = env.ADMIN_SESSION_SECRET,
 }: DeferredVisitInput): Promise<DeferredVisitAccepted> {
@@ -75,7 +82,7 @@ export async function deferVisitAccounting({
     )
   }
 
-  const visitorKey = await visitorVisitKey(request, slug, secret)
+  const visitorKey = await visitorVisitKey(request, slug, secret, identityKey)
   waitUntil(
     runWithReleaseInvocation(
       'deferred',
