@@ -154,7 +154,7 @@ function SiteDetailPage() {
 
   const { site } = data
   const { previous, next } = data
-  const toggleVote = () => triggerVote(site.slug)
+  const toggleVote = () => triggerVote(site.slug, site.votes)
 
   const {
     voted: isSiteVoted,

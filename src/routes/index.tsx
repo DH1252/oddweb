@@ -927,7 +927,7 @@ function SiteRow({
   voted: boolean
   votes: number
   votePending: boolean
-  onVote: (slug: string) => void
+  onVote: (slug: string, currentVotes?: number) => void
 }) {
   const allTags = site.tags
 
@@ -986,7 +986,7 @@ function SiteRow({
             title={
               voted ? 'Click to remove your vote' : `Vote for ${site.name}`
             }
-            onClick={() => onVote(site.slug)}
+            onClick={() => onVote(site.slug, site.votes)}
             disabled={votePending}
             data-od-id={`vote-button-${site.slug}`}
           >
