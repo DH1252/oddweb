@@ -56,3 +56,26 @@ export function assertLegitimateClient(request: Request) {
     throw new Error('Automated request blocked.')
   }
 }
+
+export function resolveClientDeviceSignature(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    const screen = `${window.screen.width || 0}x${window.screen.height || 0}@${window.devicePixelRatio || 1}`
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    const lang = navigator.language || ''
+    return `${screen}|${tz}|${lang}`
+  } catch {
+    return ''
+  }
+}
+
+export function extractOsFromUserAgent(ua?: string | null): string {
+  if (!ua) return 'unknown'
+  if (/windows/i.test(ua)) return 'Windows'
+  if (/iphone|ipad|ipod/i.test(ua)) return 'iOS'
+  if (/android/i.test(ua)) return 'Android'
+  if (/macintosh|mac os x/i.test(ua)) return 'macOS'
+  if (/cros/i.test(ua)) return 'ChromeOS'
+  if (/linux/i.test(ua)) return 'Linux'
+  return 'Other'
+}

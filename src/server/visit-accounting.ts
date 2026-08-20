@@ -4,10 +4,13 @@ import { recordAtomicVisit, VisitRepositoryError } from '../db/visit-repository'
 import { runWithReleaseInvocation } from './release-barrier.server'
 import { publishRealtimeEvent } from './realtime'
 
+import { extractOsFromUserAgent } from '../lib/public-identity'
+
 export type DeferredVisitInput = {
   request: Request
   slug: string
   identityKey?: string
+  deviceSignature?: string
   database?: D1Database
   secret?: string
 }
@@ -35,12 +38,32 @@ export function visitorAddress(request: Request) {
   )
 }
 
+export function extractPlatformHeader(request: Request): string {
+  const platform = request.headers
+    .get('sec-ch-ua-platform')
+    ?.replaceAll('"', '')
+    .trim()
+  if (platform) return platform
+  return extractOsFromUserAgent(request.headers.get('user-agent'))
+}
+
 export async function visitorVisitKey(
   request: Request,
   slug: string,
   secret: string,
   identityKey?: string,
+  deviceSignature?: string,
 ) {
+  const ip = visitorAddress(request)
+  const platform = extractPlatformHeader(request)
+  const signatureData = deviceSignature?.trim() || ''
+
+  const target = signatureData
+    ? `visit:${slug}:dev:${ip}:${platform}:${signatureData}`
+    : identityKey
+      ? `visit:${slug}:identity:${identityKey}`
+      : `visit:${slug}:ip:${ip}`
+
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -48,9 +71,6 @@ export async function visitorVisitKey(
     false,
     ['sign'],
   )
-  const target = identityKey
-    ? `visit:${slug}:identity:${identityKey}`
-    : `visit:${slug}:ip:${visitorAddress(request)}`
   const signature = await crypto.subtle.sign(
     'HMAC',
     key,
@@ -65,6 +85,7 @@ export async function deferVisitAccounting({
   request,
   slug,
   identityKey,
+  deviceSignature,
   database = env.DB,
   secret = env.ADMIN_SESSION_SECRET,
 }: DeferredVisitInput): Promise<DeferredVisitAccepted> {
@@ -81,7 +102,13 @@ export async function deferVisitAccounting({
     )
   }
 
-  const visitorKey = await visitorVisitKey(request, slug, secret, identityKey)
+  const visitorKey = await visitorVisitKey(
+    request,
+    slug,
+    secret,
+    identityKey,
+    deviceSignature,
+  )
   waitUntil(
     runWithReleaseInvocation(
       'deferred',

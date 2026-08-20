@@ -1,6 +1,6 @@
-export const visitWindowSeconds = 6 * 60 * 60
+export const visitWindowSeconds = 24 * 60 * 60
 
-const cleanupAfterSeconds = 24 * 60 * 60
+const cleanupAfterSeconds = 72 * 60 * 60
 const cleanupBatchSize = 100
 const cleanupSampleMask = 0x3f
 

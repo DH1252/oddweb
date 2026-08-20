@@ -8,6 +8,7 @@ import { siteDetailQueryOptions } from '../queries/oddweb'
 import { recordSiteVisit } from '../server/data'
 import { useSiteVote } from '../hooks/use-site-vote'
 import { VoteChallengeDialog } from '../components/vote-challenge-dialog'
+import { resolveClientDeviceSignature } from '../lib/public-identity'
 import {
   SITE_ORIGIN,
   notFoundHeaders,
@@ -129,8 +130,8 @@ function SiteDetailPage() {
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
   const visitMutation = useMutation({
-    mutationFn: (entrySlug: string) =>
-      recordSiteVisit({ data: { slug: entrySlug } }),
+    mutationFn: (input: { slug: string; deviceSignature?: string }) =>
+      recordSiteVisit({ data: input }),
   })
   const {
     toggleVote: triggerVote,
@@ -142,7 +143,10 @@ function SiteDetailPage() {
   })
 
   const recordEntry = useEffectEvent((entrySlug: string) => {
-    visitMutation.mutate(entrySlug)
+    visitMutation.mutate({
+      slug: entrySlug,
+      deviceSignature: resolveClientDeviceSignature(),
+    })
   })
 
   useEffect(() => {

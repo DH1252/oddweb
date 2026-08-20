@@ -99,3 +99,39 @@ test('assertLegitimateClient blocks scrapers and permits normal browsers', async
     )
   }
 })
+
+test('extractOsFromUserAgent correctly maps common platforms', async () => {
+  const { extractOsFromUserAgent } = await import('../src/lib/public-identity')
+  assert.equal(
+    extractOsFromUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0',
+    ),
+    'Windows',
+  )
+  assert.equal(
+    extractOsFromUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/17.0',
+    ),
+    'macOS',
+  )
+  assert.equal(
+    extractOsFromUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+    ),
+    'iOS',
+  )
+  assert.equal(
+    extractOsFromUserAgent(
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0',
+    ),
+    'Android',
+  )
+  assert.equal(
+    extractOsFromUserAgent(
+      'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+    ),
+    'Linux',
+  )
+  assert.equal(extractOsFromUserAgent(''), 'unknown')
+  assert.equal(extractOsFromUserAgent(null), 'unknown')
+})

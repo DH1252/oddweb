@@ -7,8 +7,8 @@ import {
   visitWindowSeconds,
 } from '../src/db/visit-repository'
 
-test('visit limiter uses a six-hour window', () => {
-  assert.equal(visitWindowSeconds, 21_600)
+test('visit limiter uses a 24-hour window', () => {
+  assert.equal(visitWindowSeconds, 86_400)
 })
 
 test('visit timestamps use whole Unix seconds', () => {

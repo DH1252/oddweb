@@ -79,7 +79,10 @@ const guestbookInput = z.object({
   hp: z.string().optional(),
 })
 
-const visitInput = z.object({ slug: z.string().min(1).max(100) })
+const visitInput = z.object({
+  slug: z.string().min(1).max(100),
+  deviceSignature: z.string().max(256).optional(),
+})
 
 const moderationInput = z.object({
   id: z.number().int().positive(),
@@ -237,6 +240,7 @@ export const recordSiteVisit = createServerFn({ method: 'POST' })
       request: getRequest(),
       slug: data.slug,
       identityKey: identity.key,
+      deviceSignature: data.deviceSignature,
     })
   })
 
