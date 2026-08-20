@@ -246,10 +246,28 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       }
     : null
 
+  const getOptimisticVoteState = useCallback(
+    (slug: string, serverVotes: number) => {
+      const serverVoted = isVoted(slug)
+      const isPending =
+        voteMutation.isPending && voteMutation.variables.slug === slug
+      const voted = isPending ? !serverVoted : serverVoted
+      const delta = isPending ? (serverVoted ? -1 : 1) : 0
+      const votes = Math.max(0, serverVotes + delta)
+      return {
+        voted,
+        votes,
+        isPending,
+      }
+    },
+    [isVoted, voteMutation.isPending, voteMutation.variables?.slug],
+  )
+
   return {
     toggleVote,
     isVoted,
     isPendingFor,
+    getOptimisticVoteState,
     pendingSlug: voteMutation.isPending ? voteMutation.variables.slug : null,
     isAnyPending: voteMutation.isPending,
     challenge,

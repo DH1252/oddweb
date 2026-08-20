@@ -205,7 +205,7 @@ function DirectoryPage() {
         data: { query: deferredQuery, include, exclude },
       }),
   })
-  const { toggleVote, isVoted, isPendingFor, challenge } = useSiteVote({
+  const { toggleVote, getOptimisticVoteState, challenge } = useSiteVote({
     setNotice,
     setNoticeError,
   })
@@ -553,19 +553,26 @@ function DirectoryPage() {
 
           {visibleSites.length ? (
             <div>
-              {visibleSites.map((site) => (
-                <SiteRow
-                  key={site.slug}
-                  site={site}
-                  includedTags={include}
-                  excludedTags={exclude}
-                  onInclude={toggleIncludedTag}
-                  onExclude={addExcludedTag}
-                  voted={isVoted(site.slug)}
-                  votePending={isPendingFor(site.slug)}
-                  onVote={toggleVote}
-                />
-              ))}
+              {visibleSites.map((site) => {
+                const { voted, votes, isPending } = getOptimisticVoteState(
+                  site.slug,
+                  site.votes,
+                )
+                return (
+                  <SiteRow
+                    key={site.slug}
+                    site={site}
+                    includedTags={include}
+                    excludedTags={exclude}
+                    onInclude={toggleIncludedTag}
+                    onExclude={addExcludedTag}
+                    voted={voted}
+                    votes={votes}
+                    votePending={isPending}
+                    onVote={toggleVote}
+                  />
+                )
+              })}
             </div>
           ) : (
             <div
@@ -908,6 +915,7 @@ function SiteRow({
   onInclude,
   onExclude,
   voted,
+  votes,
   votePending,
   onVote,
 }: {
@@ -917,6 +925,7 @@ function SiteRow({
   onInclude: (tag: string) => void
   onExclude: (tag: string) => void
   voted: boolean
+  votes: number
   votePending: boolean
   onVote: (slug: string) => void
 }) {
@@ -966,7 +975,7 @@ function SiteRow({
           </div>
           <button
             type="button"
-            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs font-bold transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-wait disabled:opacity-80 ${
+            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs font-bold transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-wait ${
               voted
                 ? 'border-success bg-success text-white shadow-[1px_1px_0_#1b4e30] hover:bg-[#225530] hover:brightness-110'
                 : 'border-brown bg-paper text-brown hover:bg-warm shadow-[1px_1px_0_#d9aa7a]'
@@ -975,19 +984,13 @@ function SiteRow({
             aria-busy={votePending}
             aria-label={`Vote for ${site.name}`}
             title={
-              votePending
-                ? 'Submitting vote...'
-                : voted
-                  ? 'Click to remove your vote'
-                  : `Vote for ${site.name}`
+              voted ? 'Click to remove your vote' : `Vote for ${site.name}`
             }
             onClick={() => onVote(site.slug)}
             disabled={votePending}
             data-od-id={`vote-button-${site.slug}`}
           >
-            {votePending
-              ? 'Voting...'
-              : `${voted ? 'Voted' : 'Vote'} ↑ ${site.votes}`}
+            {voted ? 'Voted' : 'Vote'} ↑ {votes}
           </button>
         </div>
       </div>

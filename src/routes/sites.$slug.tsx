@@ -134,8 +134,7 @@ function SiteDetailPage() {
   })
   const {
     toggleVote: triggerVote,
-    isVoted,
-    isPendingFor,
+    getOptimisticVoteState,
     challenge,
   } = useSiteVote({
     setNotice,
@@ -156,6 +155,12 @@ function SiteDetailPage() {
   const { site } = data
   const { previous, next } = data
   const toggleVote = () => triggerVote(site.slug)
+
+  const {
+    voted: isSiteVoted,
+    votes: siteVotes,
+    isPending: votePending,
+  } = getOptimisticVoteState(site.slug, site.votes)
 
   return (
     <PageShell>
@@ -223,28 +228,24 @@ function SiteDetailPage() {
             </a>
             <button
               type="button"
-              className={`mt-3 inline-flex min-h-11 max-w-full items-center gap-1.5 border px-3 font-bold transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-wait disabled:opacity-80 ${
-                isVoted(site.slug)
+              className={`mt-3 inline-flex min-h-11 max-w-full items-center gap-1.5 border px-3 font-bold transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-wait ${
+                isSiteVoted
                   ? 'border-white bg-success text-white shadow-[2px_2px_0_#1b4e30] hover:bg-[#225530] hover:brightness-110'
                   : 'border-white bg-paper text-ink hover:bg-warm shadow-[2px_2px_0_#2a1810]'
               }`}
-              aria-pressed={isVoted(site.slug)}
-              aria-busy={isPendingFor(site.slug)}
+              aria-pressed={isSiteVoted}
+              aria-busy={votePending}
               title={
-                isPendingFor(site.slug)
-                  ? 'Submitting vote...'
-                  : isVoted(site.slug)
-                    ? 'Click to remove your vote'
-                    : `Vote for ${site.name}`
+                isSiteVoted
+                  ? 'Click to remove your vote'
+                  : `Vote for ${site.name}`
               }
               onClick={toggleVote}
-              disabled={isPendingFor(site.slug)}
+              disabled={votePending}
               data-od-id="vote-site"
             >
               <span className="truncate">
-                {isPendingFor(site.slug)
-                  ? 'Voting...'
-                  : `${isVoted(site.slug) ? 'Voted' : 'Vote'} ↑ ${site.votes}`}
+                {isSiteVoted ? 'Voted' : 'Vote'} &uarr; {siteVotes}
               </span>
             </button>
             {notice ? (
