@@ -58,14 +58,7 @@ import {
 import type { FormEvent } from 'react'
 import type { SiteEntry } from '../data/sites'
 
-type SortMode =
-  | 'popular'
-  | 'views'
-  | 'newest'
-  | 'oldest'
-  | 'tags'
-  | 'az'
-  | 'za'
+type SortMode = 'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
 const pageSize = 6
 const sortStorageKey = 'oddweb-directory-sort'

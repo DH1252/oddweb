@@ -53,6 +53,51 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     }
   }, [sitekey])
 
+  const rollbackVoteSnapshot = useCallback(
+    (
+      context:
+        | {
+            previousMyVotes?: { slugs: string[] }
+            previousDirectory: Array<[readonly unknown[], unknown]>
+            previousPopular: Array<[readonly unknown[], unknown]>
+            previousSite?: unknown
+          }
+        | undefined,
+      slug: string,
+    ) => {
+      if (!context) return
+      if (context.previousMyVotes !== undefined) {
+        queryClient.setQueryData(
+          ['oddweb', 'public', 'my-votes'],
+          context.previousMyVotes,
+        )
+      } else {
+        queryClient.removeQueries({
+          queryKey: ['oddweb', 'public', 'my-votes'],
+          exact: true,
+        })
+      }
+      for (const [queryKey, data] of context.previousDirectory) {
+        queryClient.setQueryData(queryKey, data)
+      }
+      for (const [queryKey, data] of context.previousPopular) {
+        queryClient.setQueryData(queryKey, data)
+      }
+      if (context.previousSite !== undefined) {
+        queryClient.setQueryData(
+          ['oddweb', 'public', 'site', slug],
+          context.previousSite,
+        )
+      } else {
+        queryClient.removeQueries({
+          queryKey: ['oddweb', 'public', 'site', slug],
+          exact: true,
+        })
+      }
+    },
+    [queryClient],
+  )
+
   const voteMutation = useMutation({
     mutationFn: (input: {
       slug: string
@@ -100,8 +145,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
         next: unknown
       }>(['oddweb', 'public', 'site', slug])
 
-      const currentSlugs =
-        previousMyVotes?.slugs ?? myVotesQuery.data?.slugs ?? myVotes ?? []
+      const currentSlugs = previousMyVotes?.slugs ?? myVotes
       const wasVoted = currentSlugs.includes(slug)
       const delta = wasVoted ? -1 : 1
 
@@ -133,7 +177,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
               ...current,
               sites: current.sites.map((site) =>
                 site.slug === slug
-                  ? { ...site, votes: Math.max(0, (site.votes ?? 0) + delta) }
+                  ? { ...site, votes: Math.max(0, site.votes + delta) }
                   : site,
               ),
             }
@@ -162,7 +206,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
               ...current,
               site: {
                 ...current.site,
-                votes: Math.max(0, (current.site.votes ?? 0) + delta),
+                votes: Math.max(0, current.site.votes + delta),
               },
             }
           : current,
@@ -176,36 +220,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       }
     },
     onError: (error, { slug }, context) => {
-      if (context) {
-        if (context.previousMyVotes !== undefined) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'my-votes'],
-            context.previousMyVotes,
-          )
-        } else {
-          queryClient.removeQueries({
-            queryKey: ['oddweb', 'public', 'my-votes'],
-            exact: true,
-          })
-        }
-        for (const [queryKey, data] of context.previousDirectory) {
-          queryClient.setQueryData(queryKey, data)
-        }
-        for (const [queryKey, data] of context.previousPopular) {
-          queryClient.setQueryData(queryKey, data)
-        }
-        if (context.previousSite !== undefined) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'site', slug],
-            context.previousSite,
-          )
-        } else {
-          queryClient.removeQueries({
-            queryKey: ['oddweb', 'public', 'site', slug],
-            exact: true,
-          })
-        }
-      }
+      rollbackVoteSnapshot(context, slug)
       updateNotice(
         error instanceof Error ? error.message : 'Could not record your vote.',
         true,
@@ -213,34 +228,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     },
     onSuccess: (result, { slug }, context) => {
       if (result.requireChallenge) {
-        if (context.previousMyVotes !== undefined) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'my-votes'],
-            context.previousMyVotes,
-          )
-        } else {
-          queryClient.removeQueries({
-            queryKey: ['oddweb', 'public', 'my-votes'],
-            exact: true,
-          })
-        }
-        for (const [queryKey, data] of context.previousDirectory) {
-          queryClient.setQueryData(queryKey, data)
-        }
-        for (const [queryKey, data] of context.previousPopular) {
-          queryClient.setQueryData(queryKey, data)
-        }
-        if (context.previousSite !== undefined) {
-          queryClient.setQueryData(
-            ['oddweb', 'public', 'site', slug],
-            context.previousSite,
-          )
-        } else {
-          queryClient.removeQueries({
-            queryKey: ['oddweb', 'public', 'site', slug],
-            exact: true,
-          })
-        }
+        rollbackVoteSnapshot(context, slug)
         const triggerChallenge = (targetSlug: string) => {
           setChallengeSlug(targetSlug)
           updateNotice('Verification check required for this vote.', true)
@@ -322,8 +310,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       queryClient.setQueryData<{ slugs: string[] } | undefined>(
         ['oddweb', 'public', 'my-votes'],
         (current) => {
-          const slugs =
-            current?.slugs ?? myVotesQuery.data?.slugs ?? myVotes ?? []
+          const slugs = current?.slugs ?? myVotes
           return {
             slugs: result.voted
               ? slugs.includes(slug)
@@ -357,7 +344,7 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
 
   const toggleVote = useCallback(
     (slug: string, turnstileToken?: string) => {
-      if (voteMutation.isPending && voteMutation.variables?.slug === slug) {
+      if (voteMutation.isPending && voteMutation.variables.slug === slug) {
         return
       }
       voteMutation.mutate({

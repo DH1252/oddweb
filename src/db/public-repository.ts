@@ -17,7 +17,7 @@ export const publicPopularPageSize = 4
 export const publicTagPageSize = 16
 
 export type PublicSortMode =
-  | 'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
+  'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
 export type PublicDirectoryInput = {
   query: string
