@@ -19,8 +19,7 @@ export type DeferredVisitAccepted = {
 export class VisitAccountingError extends Error {
   constructor(
     readonly code:
-      | 'VISIT_ACCOUNTING_INVALID_INPUT'
-      | 'VISIT_ACCOUNTING_NOT_CONFIGURED',
+      'VISIT_ACCOUNTING_INVALID_INPUT' | 'VISIT_ACCOUNTING_NOT_CONFIGURED',
     message: string,
   ) {
     super(message)
