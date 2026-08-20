@@ -966,21 +966,28 @@ function SiteRow({
           </div>
           <button
             type="button"
-            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs font-bold cursor-pointer transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed ${
+            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs font-bold transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-wait disabled:opacity-80 ${
               voted
                 ? 'border-success bg-success text-white shadow-[1px_1px_0_#1b4e30] hover:bg-[#225530] hover:brightness-110'
                 : 'border-brown bg-paper text-brown hover:bg-warm shadow-[1px_1px_0_#d9aa7a]'
             }`}
             aria-pressed={voted}
+            aria-busy={votePending}
             aria-label={`Vote for ${site.name}`}
             title={
-              voted ? 'Click to remove your vote' : `Vote for ${site.name}`
+              votePending
+                ? 'Submitting vote...'
+                : voted
+                  ? 'Click to remove your vote'
+                  : `Vote for ${site.name}`
             }
             onClick={() => onVote(site.slug)}
             disabled={votePending}
             data-od-id={`vote-button-${site.slug}`}
           >
-            {voted ? 'Voted' : 'Vote'} &uarr; {site.votes}
+            {votePending
+              ? 'Voting...'
+              : `${voted ? 'Voted' : 'Vote'} ↑ ${site.votes}`}
           </button>
         </div>
       </div>
