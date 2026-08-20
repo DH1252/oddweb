@@ -51,7 +51,7 @@ test('realtime resyncs admin and taxonomy state after missed events', async () =
   assert.match(source, /queryKey: \['oddweb', 'admin', 'sites'\]/)
   assert.match(source, /queryKey: \['oddweb', 'admin', 'site'\]/)
   assert.match(source, /queryKey: \['oddweb', 'public', 'support'\]/)
-  assert.match(source, /void resync\(\)[\s\S]*if \(!socket/)
+  assert.match(source, /void resync\(\)[\s\S]*if\s*\(\s*!socket/)
 })
 
 test('realtime events reject malformed or unbounded messages', () => {
