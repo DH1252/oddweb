@@ -223,12 +223,17 @@ function SiteDetailPage() {
             </a>
             <button
               type="button"
-              className={`mt-3 inline-flex min-h-11 max-w-full items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] cursor-pointer disabled:cursor-not-allowed ${
+              className={`mt-3 inline-flex min-h-11 max-w-full items-center gap-1.5 border px-3 font-bold cursor-pointer transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed ${
                 isVoted(site.slug)
-                  ? 'border-white bg-green-50 text-success hover:bg-green-100'
-                  : 'border-white bg-paper text-ink hover:bg-warm'
+                  ? 'border-white bg-success text-white shadow-[2px_2px_0_#1b4e30] hover:bg-[#225530] hover:brightness-110'
+                  : 'border-white bg-paper text-ink hover:bg-warm shadow-[2px_2px_0_#2a1810]'
               }`}
               aria-pressed={isVoted(site.slug)}
+              title={
+                isVoted(site.slug)
+                  ? 'Click to remove your vote'
+                  : `Vote for ${site.name}`
+              }
               onClick={toggleVote}
               disabled={isPendingFor(site.slug)}
               data-od-id="vote-site"

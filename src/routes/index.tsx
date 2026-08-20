@@ -966,14 +966,16 @@ function SiteRow({
           </div>
           <button
             type="button"
-            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs cursor-pointer disabled:cursor-not-allowed ${
+            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs font-bold cursor-pointer transition-all active:translate-x-px active:translate-y-px active:shadow-none disabled:cursor-not-allowed ${
               voted
-                ? 'border-success bg-green-50 text-success shadow-[1px_1px_0_#2b7a4b]'
+                ? 'border-success bg-success text-white shadow-[1px_1px_0_#1b4e30] hover:bg-[#225530] hover:brightness-110'
                 : 'border-brown bg-paper text-brown hover:bg-warm shadow-[1px_1px_0_#d9aa7a]'
             }`}
             aria-pressed={voted}
             aria-label={`Vote for ${site.name}`}
-            title={voted ? 'Remove your vote' : `Vote for ${site.name}`}
+            title={
+              voted ? 'Click to remove your vote' : `Vote for ${site.name}`
+            }
             onClick={() => onVote(site.slug)}
             disabled={votePending}
             data-od-id={`vote-button-${site.slug}`}
