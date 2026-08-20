@@ -89,6 +89,9 @@ test('admin pages keep the realtime socket connected while hidden', async () => 
   )
   assert.match(source, /isAdminPath\(window\.location\.pathname\)/)
   assert.match(source, /visibilityState === 'hidden'[\s\S]*socket\?\.close/)
+  assert.match(source, /window\.addEventListener\('focus', handleActive\)/)
+  assert.match(source, /window\.addEventListener\('pageshow', handleActive\)/)
+  assert.match(source, /window\.addEventListener\('online', handleActive\)/)
 })
 
 test('public submissions publish a realtime event', async () => {

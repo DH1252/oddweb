@@ -27,6 +27,7 @@ export function RealtimeSync() {
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
         queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
+        queryClient.refetchQueries({ type: 'active' }),
       ])
     }
 
@@ -154,15 +155,24 @@ export function RealtimeSync() {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['oddweb', 'public', 'directory'],
+          refetchType: 'none',
         }),
         queryClient.invalidateQueries({
           queryKey: ['oddweb', 'public', 'popular'],
+          refetchType: 'none',
         }),
         queryClient.invalidateQueries({
           queryKey: ['oddweb', 'public', 'site', slug],
+          refetchType: 'none',
         }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'tags'],
+          refetchType: 'none',
+        }),
       ])
     }
 
@@ -254,25 +264,39 @@ export function RealtimeSync() {
       })
     }
 
-    const handleVisibility = () => {
+    const handleActive = () => {
       if (document.visibilityState === 'hidden') {
         if (isAdminPath(window.location.pathname)) return
         if (reconnectTimer) clearTimeout(reconnectTimer)
         socket?.close(1000, 'Page hidden')
       } else {
         void resync()
-        if (!socket || socket.readyState === WebSocket.CLOSED) connect()
+        if (
+          !socket ||
+          socket.readyState === WebSocket.CLOSED ||
+          socket.readyState === WebSocket.CLOSING
+        ) {
+          connect()
+        } else if (socket.readyState === WebSocket.OPEN) {
+          socket.send('ping')
+        }
       }
     }
 
-    document.addEventListener('visibilitychange', handleVisibility)
+    document.addEventListener('visibilitychange', handleActive)
+    window.addEventListener('focus', handleActive)
+    window.addEventListener('pageshow', handleActive)
+    window.addEventListener('online', handleActive)
     connect()
     return () => {
       stopped = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (taxonomyRefreshTimer) clearTimeout(taxonomyRefreshTimer)
       if (heartbeatTimer) clearInterval(heartbeatTimer)
-      document.removeEventListener('visibilitychange', handleVisibility)
+      document.removeEventListener('visibilitychange', handleActive)
+      window.removeEventListener('focus', handleActive)
+      window.removeEventListener('pageshow', handleActive)
+      window.removeEventListener('online', handleActive)
       socket?.close(1000, 'Page closed')
     }
   }, [queryClient])

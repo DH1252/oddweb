@@ -104,10 +104,10 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       requestId: string
       turnstileToken?: string
     }) => toggleSiteVote({ data: input }),
-    onMutate: async ({ slug }) => {
+    onMutate: ({ slug }) => {
       updateNotice('', false)
 
-      await Promise.all([
+      void Promise.all([
         queryClient.cancelQueries({
           queryKey: ['oddweb', 'public', 'my-votes'],
         }),
@@ -365,8 +365,16 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
   )
 
   const isVoted = useCallback(
-    (slug: string) => myVotes.includes(slug),
-    [myVotes],
+    (slug: string) => {
+      const cached = queryClient.getQueryData<{ slugs: string[] }>([
+        'oddweb',
+        'public',
+        'my-votes',
+      ])
+      const activeSlugs = cached?.slugs ?? myVotes
+      return activeSlugs.includes(slug)
+    },
+    [myVotes, queryClient],
   )
 
   const submitChallengeVote = useCallback(
