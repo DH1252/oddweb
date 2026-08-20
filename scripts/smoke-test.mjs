@@ -627,16 +627,18 @@ function isLoopback(hostname) {
   return ['localhost', '127.0.0.1', '::1'].includes(hostname)
 }
 
-async function retry(check) {
+async function retry(check, maxAttempts = 15, baseIntervalMs = 3000) {
   let lastError
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await check()
       return
     } catch (error) {
       lastError = error
-      if (attempt < 6)
-        await new Promise((resolve) => setTimeout(resolve, attempt * 2000))
+      if (attempt < maxAttempts)
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(10_000, attempt * baseIntervalMs)),
+        )
     }
   }
   throw lastError
