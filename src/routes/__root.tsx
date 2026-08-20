@@ -111,6 +111,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         ),
       ],
       links: [
+        { rel: 'preconnect', href: 'https://challenges.cloudflare.com' },
+        { rel: 'dns-prefetch', href: 'https://challenges.cloudflare.com' },
         { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
         {
           rel: 'icon',

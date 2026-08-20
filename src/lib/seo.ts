@@ -5,7 +5,7 @@ import type { SiteEntry } from '../data/sites'
 export const FALLBACK_SITE_ORIGIN = 'https://oddweb.page'
 export const SITE_NAME = 'Oddweb'
 export const DEFAULT_DESCRIPTION =
-  'A collection of unusual, playful, and interactive websites worth exploring.'
+  'A public, crowdsourced directory of weird, unusual, and interactive websites curated by the community.'
 export const DEFAULT_SOCIAL_IMAGE_PATH = '/oddweb-social.png'
 export const SITE_ORIGIN = resolveSiteOrigin(
   typeof process === 'undefined' ? undefined : process.env.PUBLIC_SITE_URL,
@@ -87,7 +87,7 @@ export function socialMeta({
   description,
   url,
   image = DEFAULT_SOCIAL_IMAGE,
-  imageAlt = "Oddweb, an index of the web's odd corners",
+  imageAlt = "Oddweb, a public crowdsourced index of the web's odd corners",
   type = 'website',
 }: {
   title: string
@@ -147,8 +147,18 @@ export const websiteStructuredData: JsonLdValue = {
   '@id': `${SITE_ORIGIN}/#website`,
   url: `${SITE_ORIGIN}/`,
   name: SITE_NAME,
-  alternateName: 'Oddweb Directory',
+  alternateName: 'Oddweb Crowdsourced Directory',
   description: DEFAULT_DESCRIPTION,
+  keywords:
+    'weird websites, cool websites, crowdsourced web directory, public directory, indie web, interactive websites, community directory, useless web alternatives',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: `${SITE_ORIGIN}/?q={search_term_string}`,
+    },
+    'query-input': 'required name=search_term_string',
+  },
   publisher: {
     '@type': 'Organization',
     '@id': `${SITE_ORIGIN}/#organization`,
@@ -161,6 +171,26 @@ export const websiteStructuredData: JsonLdValue = {
       height: 630,
     },
   },
+}
+
+export function llmsText(origin = SITE_ORIGIN) {
+  return `# Oddweb
+
+> Oddweb is a public, crowdsourced directory of weird, unusual, playful, and interactive websites curated by the community.
+
+## Core Topics & Tags
+- **Audio & Sound**: Radio Garden, sound synthesizers, ambient generators, interactive music.
+- **Visual Toys & Creative Coding**: WebGL experiments, canvas toys, interactive physics simulations.
+- **Retro & Nostalgia**: 90s web aesthetic, vintage operating systems, nostalgic digital playgrounds.
+- **Games & Distractions**: Quirky browser games, interactive puzzles, playful browser detours.
+- **Tools & Utilities**: Novelty generators, unusual productivity toys, single-purpose fun apps.
+
+## Key URLs
+- Homepage & Directory: ${origin}/
+- Tag Index: ${origin}/tags
+- XML Sitemap: ${origin}/sitemap.xml
+- Submit a Site: ${origin}/
+`
 }
 
 export function escapeXml(value: string) {
@@ -215,20 +245,35 @@ export function buildSitemapXml(
   sites: Array<Pick<SiteEntry, 'slug' | 'added'> & { id?: number }>,
   origin = SITE_ORIGIN,
 ) {
-  const entries: { loc: string; lastmod?: string }[] = [
-    { loc: absoluteUrl('/', origin) },
-    { loc: absoluteUrl('/tags', origin) },
+  const entries: {
+    loc: string
+    lastmod?: string
+    changefreq: string
+    priority: string
+  }[] = [
+    {
+      loc: absoluteUrl('/', origin),
+      changefreq: 'daily',
+      priority: '1.0',
+    },
+    {
+      loc: absoluteUrl('/tags', origin),
+      changefreq: 'weekly',
+      priority: '0.8',
+    },
     ...sites.map((site) => ({
       loc: absoluteUrl(siteDetailPath(site.slug), origin),
       lastmod: site.added,
+      changefreq: 'weekly',
+      priority: '0.7',
     })),
   ]
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${entries
   .map(
-    ({ loc, lastmod }) =>
-      `  <url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : ''}</url>`,
+    ({ loc, lastmod, changefreq, priority }) =>
+      `  <url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : ''}<changefreq>${changefreq}</changefreq><priority>${priority}</priority></url>`,
   )
   .join('\n')}
 </urlset>

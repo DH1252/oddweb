@@ -29,8 +29,11 @@ export const Route = createFileRoute('/sites/$slug')({
     if (!loaderData) return { meta: [{ name: 'robots', content: 'noindex' }] }
 
     const { site } = loaderData
-    const title = `${site.name}: What It Is and Why Visit | Oddweb`
-    const description = site.summary
+    const primaryTag = site.tags[0] ? site.tags[0].replace(/^~/, '') : 'Web'
+    const capitalizedTag =
+      primaryTag.charAt(0).toUpperCase() + primaryTag.slice(1)
+    const title = `${site.name} – Interactive ${capitalizedTag} Experience | Oddweb`
+    const description = `${site.summary} Discovered on Oddweb, the public crowdsourced directory of weird and unusual websites.`
     const url = siteDetailUrl(site.slug)
     const image = siteSocialImage(site)
 
@@ -74,6 +77,22 @@ export const Route = createFileRoute('/sites/$slug')({
                   '@type': 'ImageObject',
                   url: image,
                 },
+                interactionStatistic: [
+                  {
+                    '@type': 'InteractionCounter',
+                    interactionType: {
+                      '@type': 'https://schema.org/LikeAction',
+                    },
+                    userInteractionCount: site.votes,
+                  },
+                  {
+                    '@type': 'InteractionCounter',
+                    interactionType: {
+                      '@type': 'https://schema.org/ViewAction',
+                    },
+                    userInteractionCount: site.visits,
+                  },
+                ],
               },
               {
                 '@type': 'BreadcrumbList',

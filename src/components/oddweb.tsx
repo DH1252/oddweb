@@ -128,10 +128,16 @@ export function SiteThumbnail({
   compact?: boolean
   thumbnailKey?: string
 }) {
+  const tagSummary = site.tags.length
+    ? ` (${site.tags.slice(0, 3).join(', ')})`
+    : ''
   return (
     <ItemThumbnail
       thumbnailKey={thumbnailKey}
-      alt={site.thumbnailAlt || `Thumbnail for ${site.name}`}
+      alt={
+        site.thumbnailAlt ||
+        `Preview screenshot of ${site.name}${tagSummary} on Oddweb`
+      }
       label={site.name}
       className={compact ? 'aspect-4/3 w-16' : 'h-[78px] w-full'}
       fallbackClassName={site.accent}

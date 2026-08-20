@@ -23,9 +23,9 @@ import {
   socialMeta,
 } from '../lib/seo'
 
-const tagsTitle = 'Browse Website Tags | Oddweb'
+const tagsTitle = 'Explore Crowdsourced Website Tags & Categories | Oddweb'
 const tagsDescription =
-  'Browse the tags Oddweb uses to organize unusual, playful, and interactive websites by mood, medium, and activity.'
+  'Browse crowdsourced tags to discover unusual, playful, and interactive websites curated across audio, games, visual toys, and retro web experiments on Oddweb.'
 
 export const Route = createFileRoute('/tags')({
   shouldReload: false,

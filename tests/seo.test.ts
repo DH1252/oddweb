@@ -10,9 +10,11 @@ import {
   canonicalUrl,
   escapeXml,
   jsonLd,
+  llmsText,
   robotsText,
   resolveSiteOrigin,
   sitemapXml,
+  websiteStructuredData,
 } from '../src/lib/seo'
 
 test('public origin uses safe environment parsing and fallback', () => {
@@ -72,9 +74,25 @@ test('dynamic sitemap includes supplied active sites, dates, and escaped URLs', 
     /https:\/\/staging\.example\.com\/sites\/active%20%26%20odd/,
   )
   assert.match(sitemap, /<lastmod>2026-08-13<\/lastmod>/)
+  assert.match(sitemap, /<changefreq>weekly<\/changefreq>/)
+  assert.match(sitemap, /<priority>0\.7<\/priority>/)
   assert.match(sitemap, /^<\?xml version="1\.0" encoding="UTF-8"\?>/)
   const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
     (match) => match[1],
   )
   assert.ok(locations.every((location) => !/admin|health|\?/.test(location)))
+})
+
+test('llmsText generates markdown overview with key directory links', () => {
+  const markdown = llmsText('https://oddweb.page')
+  assert.match(markdown, /^# Oddweb/)
+  assert.match(markdown, /crowdsourced directory/i)
+  assert.match(markdown, /https:\/\/oddweb\.page\/sitemap\.xml/)
+  assert.match(markdown, /https:\/\/oddweb\.page\/tags/)
+})
+
+test('websiteStructuredData includes SearchAction for Google sitelinks search box', () => {
+  assert.equal(typeof websiteStructuredData, 'object')
+  assert.match(JSON.stringify(websiteStructuredData), /"@type":"SearchAction"/)
+  assert.match(JSON.stringify(websiteStructuredData), /urlTemplate/)
 })

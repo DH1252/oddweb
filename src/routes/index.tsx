@@ -62,9 +62,9 @@ type SortMode = 'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
 
 const pageSize = 6
 const sortStorageKey = 'oddweb-directory-sort'
-const homeTitle = 'Oddweb: Unusual, Fun and Interactive Websites'
+const homeTitle = 'Oddweb – Public Directory of Weird & Interactive Websites'
 const homeDescription =
-  'Explore unusual, fun, and interactive websites selected for curious detours beyond the usual web.'
+  'Explore a public, crowdsourced directory of weird, unusual, and interactive websites curated by the community beyond the usual web.'
 const sortModes: SortMode[] = [
   'popular',
   'views',
@@ -392,14 +392,15 @@ function DirectoryPage() {
         <div className="grid items-stretch gap-3 md:grid-cols-[1.35fr_.65fr]">
           <div className="border border-ink bg-rust px-4 py-3 text-white">
             <p className="mb-1 font-mono text-xs font-bold tracking-[0.08em] uppercase">
-              No Algorithms, No Feeds
+              Public & Crowdsourced • No Algorithms
             </p>
             <h1 className="mb-1 font-mono text-[clamp(29px,5vw,44px)] leading-none font-bold tracking-[-0.04em]">
               Oddweb Directory
             </h1>
             <p className="m-0 max-w-2xl leading-relaxed">
-              A directory of one-of-a-kind websites made to surprise, delight,
-              teach, distract, or simply do something different.
+              A public, community-curated directory of one-of-a-kind websites
+              made to surprise, delight, teach, distract, or simply do something
+              different.
             </p>
           </div>
           <div

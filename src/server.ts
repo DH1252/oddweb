@@ -10,10 +10,31 @@ import { runWithReleaseInvocation } from './server/release-barrier.server'
 import { publishRealtimeEvent } from './server/realtime'
 import { cleanupPublicAttempts } from './db/public-attempts'
 
+import { resolveIndexNowKey } from './lib/indexnow'
+import { llmsText } from './lib/seo'
+
 export { RealtimeHub } from './realtime/hub'
 
 const fetchHandler = createServerEntry({
   fetch(request) {
+    const url = new URL(request.url)
+    const indexNowKey = resolveIndexNowKey(Reflect.get(env, 'INDEXNOW_KEY'))
+    if (url.pathname === `/${indexNowKey}.txt`) {
+      return new Response(indexNowKey, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      })
+    }
+    if (url.pathname === '/llms.txt') {
+      return new Response(llmsText(), {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      })
+    }
     return handler.fetch(request)
   },
 })
