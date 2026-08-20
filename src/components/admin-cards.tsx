@@ -31,7 +31,7 @@ export function SubmissionCard({
           label={submission.name}
           className="aspect-4/3 w-full"
         />
-        <div>
+        <div className="min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="m-0 font-mono text-base font-bold">

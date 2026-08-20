@@ -612,7 +612,7 @@ function DirectoryPage() {
               {visiblePopular.map((site, index) => (
                 <li
                   key={site.slug}
-                  className="min-h-24 border-t border-dotted border-muted px-0 py-3 sm:border-r sm:px-4 sm:first:border-t-0 sm:nth-[2]:border-t-0 sm:nth-[even]:border-r-0"
+                  className="min-h-24 min-w-0 border-t border-dotted border-muted px-0 py-3 sm:border-r sm:px-4 sm:first:border-t-0 sm:nth-[2]:border-t-0 sm:nth-[even]:border-r-0"
                 >
                   <span className="block font-mono text-xs text-muted">
                     {String(popularPage * 4 + index + 1).padStart(2, '0')}
@@ -620,14 +620,14 @@ function DirectoryPage() {
                   <Link
                     to="/sites/$slug"
                     params={{ slug: site.slug }}
-                    className="font-mono font-bold underline-offset-4 hover:text-rust"
+                    className="font-mono font-bold underline-offset-4 hover:text-rust break-words [overflow-wrap:anywhere]"
                   >
                     {site.name}
                   </Link>
                   <span className="ml-2 font-mono text-xs text-muted">
                     {site.visits} {site.visits === 1 ? 'view' : 'views'}
                   </span>
-                  <p className="mt-1 mb-0 text-sm text-brown">
+                  <p className="mt-1 mb-0 text-sm text-brown break-words [overflow-wrap:anywhere]">
                     {site.description}
                   </p>
                 </li>
@@ -647,7 +647,7 @@ function DirectoryPage() {
               {communityFilings.slice(0, 6).map((filing) => (
                 <li
                   key={filing.url}
-                  className="border-t border-dotted border-muted py-2 first:border-t-0 sm:border-t-0 sm:border-l sm:px-3 sm:nth-[3n+1]:border-l-0"
+                  className="min-w-0 border-t border-dotted border-muted py-2 first:border-t-0 sm:border-t-0 sm:border-l sm:px-3 sm:nth-[3n+1]:border-l-0"
                 >
                   {filing.thumbnailKey ? (
                     <ItemThumbnail
@@ -661,7 +661,7 @@ function DirectoryPage() {
                     href={filing.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-mono font-bold underline-offset-4 hover:text-rust"
+                    className="font-mono font-bold underline-offset-4 hover:text-rust break-words [overflow-wrap:anywhere]"
                   >
                     {filing.name}
                   </a>
@@ -671,7 +671,7 @@ function DirectoryPage() {
                       fallback={filing.date}
                     />
                   </span>
-                  <p className="mt-1 mb-0 text-sm text-brown">
+                  <p className="mt-1 mb-0 text-sm text-brown break-words [overflow-wrap:anywhere]">
                     {filing.description}
                   </p>
                 </li>
@@ -742,16 +742,18 @@ function DirectoryPage() {
                 {guestbook.map((entry) => (
                   <li
                     key={`${entry.name}-${entry.message}`}
-                    className="grid grid-cols-[1fr_auto] gap-x-2 border-t border-dotted border-muted py-1.5 first:border-t-0"
+                    className="grid grid-cols-[1fr_auto] gap-x-2 border-t border-dotted border-muted py-1.5 first:border-t-0 min-w-0"
                   >
-                    <strong>{entry.name}</strong>
-                    <span className="text-muted">
+                    <strong className="min-w-0 break-words [overflow-wrap:anywhere]">
+                      {entry.name}
+                    </strong>
+                    <span className="text-muted shrink-0">
                       <LocalTime
                         seconds={entry.createdAt}
                         fallback={entry.date}
                       />
                     </span>
-                    <span className="col-span-2 text-brown">
+                    <span className="col-span-2 text-brown break-words [overflow-wrap:anywhere]">
                       {entry.message}
                     </span>
                   </li>
@@ -928,18 +930,20 @@ function SiteRow({
       <div className="my-3 mr-2 sm:mr-2.5">
         <SiteThumbnail site={site} />
       </div>
-      <div className="py-2.5">
+      <div className="min-w-0 py-2.5">
         <h3 className="m-0 font-mono text-base leading-snug font-bold">
           <Link
             id={`site-${site.slug}`}
             to="/sites/$slug"
             params={{ slug: site.slug }}
-            className="inline-flex min-h-11 items-center underline underline-offset-2 hover:text-rust"
+            className="inline-flex min-h-11 max-w-full items-center underline underline-offset-2 hover:text-rust break-words [overflow-wrap:anywhere]"
           >
             {site.name}
           </Link>
         </h3>
-        <p className="m-0 text-brown">{site.description}</p>
+        <p className="m-0 text-brown break-words [overflow-wrap:anywhere]">
+          {site.description}
+        </p>
         <CardTagPages
           siteName={site.name}
           tags={allTags}
@@ -949,18 +953,20 @@ function SiteRow({
           onExclude={onExclude}
           labels={site.tagLabels || {}}
         />
-        <div className="mt-1.5 flex gap-2 font-mono text-xs text-muted">
-          <span>
-            {site.visits} {site.visits === 1 ? 'view' : 'views'}
-          </span>
-          <span aria-hidden="true">/</span>
-          <span>
-            Added{' '}
-            <LocalTime seconds={site.addedAt} fallback={site.addedLabel} />
-          </span>
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              {site.visits} {site.visits === 1 ? 'view' : 'views'}
+            </span>
+            <span aria-hidden="true">/</span>
+            <span>
+              Added{' '}
+              <LocalTime seconds={site.addedAt} fallback={site.addedLabel} />
+            </span>
+          </div>
           <button
             type="button"
-            className={`ml-auto inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs cursor-pointer disabled:cursor-not-allowed ${
+            className={`inline-flex min-h-8 shrink-0 items-center gap-1 border px-2 font-mono text-xs cursor-pointer disabled:cursor-not-allowed ${
               voted
                 ? 'border-success bg-green-50 text-success shadow-[1px_1px_0_#2b7a4b]'
                 : 'border-brown bg-paper text-brown hover:bg-warm shadow-[1px_1px_0_#d9aa7a]'

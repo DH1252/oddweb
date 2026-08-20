@@ -251,7 +251,7 @@ export function ModalDialog({
     <dialog
       ref={dialogRef}
       aria-labelledby={labelledBy}
-      className="m-auto h-full max-h-[100dvh] w-full max-w-none place-items-center overflow-y-auto overscroll-contain border-0 bg-transparent p-3 text-ink open:grid backdrop:bg-ink/55"
+      className="m-auto h-full max-h-[100dvh] w-full max-w-none place-items-center overflow-x-hidden overflow-y-auto overscroll-contain border-0 bg-transparent p-3 text-ink open:grid backdrop:bg-ink/55"
       onCancel={(event) => {
         event.preventDefault()
         if (event.target !== event.currentTarget) {

@@ -233,20 +233,20 @@ function TagsPage() {
             {visibleTags.map((tag) => (
               <article key={tag.slug} className="min-w-0 bg-canvas p-2.5">
                 <div className="flex items-start justify-between gap-2">
-                  <h2 className="m-0 font-mono text-sm font-bold">
+                  <h2 className="m-0 font-mono text-sm font-bold break-words [overflow-wrap:anywhere]">
                     {tag.name}
                   </h2>
                   <span className="shrink-0 font-mono text-xs text-muted">
                     {tag.count} {tag.count === 1 ? 'site' : 'sites'}
                   </span>
                 </div>
-                <p className="my-1 min-h-5 text-xs text-muted">
+                <p className="my-1 min-h-5 text-xs text-muted break-words [overflow-wrap:anywhere]">
                   {tag.aliases.length
                     ? `Synonyms: ${tag.aliases.join(', ')}`
                     : 'Canonical tag'}
                 </p>
                 {tag.parents.length ? (
-                  <p className="my-1 font-mono text-[11px] text-brown">
+                  <p className="my-1 font-mono text-[11px] text-brown break-words [overflow-wrap:anywhere]">
                     Subtag of{' '}
                     {tag.parents
                       .map((parent) => tagPage.tagLabels[parent] || parent)
@@ -256,7 +256,7 @@ function TagsPage() {
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    className={buttonClass}
+                    className={`${buttonClass} max-w-full`}
                     aria-pressed={include.includes(tag.slug)}
                     onClick={() =>
                       setFilterTags(
@@ -267,16 +267,18 @@ function TagsPage() {
                       )
                     }
                   >
-                    {include.includes(tag.slug)
-                      ? `Remove ${tag.name} filter`
-                      : `Include ${tag.name}`}
+                    <span className="truncate">
+                      {include.includes(tag.slug)
+                        ? `Remove ${tag.name} filter`
+                        : `Include ${tag.name}`}
+                    </span>
                   </button>
                   <Link
                     to="/"
                     search={{ include: [tag.slug] }}
-                    className={buttonClass}
+                    className={`${buttonClass} max-w-full`}
                   >
-                    Filter by {tag.name}
+                    <span className="truncate">Filter by {tag.name}</span>
                   </Link>
                 </div>
               </article>

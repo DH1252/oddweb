@@ -202,28 +202,28 @@ function SiteDetailPage() {
               </>
             )}
           </div>
-          <div className="flex flex-col items-start justify-center border-t border-ink bg-rust px-5 py-6 text-white md:border-t-0 md:border-l">
+          <div className="flex min-w-0 flex-col items-start justify-center border-t border-ink bg-rust px-5 py-6 text-white md:border-t-0 md:border-l">
             <h1
-              className="m-0 mb-2 font-mono text-[clamp(34px,6vw,62px)] leading-none font-bold tracking-[-0.05em]"
+              className="m-0 mb-2 font-mono text-[clamp(34px,6vw,62px)] leading-none font-bold tracking-[-0.05em] break-words [overflow-wrap:anywhere]"
               data-od-id="entry-title"
             >
               {site.name}
             </h1>
-            <p className="mb-5 max-w-xl text-base leading-relaxed">
+            <p className="mb-5 max-w-xl text-base leading-relaxed break-words [overflow-wrap:anywhere]">
               {site.summary}
             </p>
             <a
-              className="inline-flex min-h-11 items-center border border-white bg-paper px-3 font-bold text-ink no-underline shadow-[2px_2px_0_#2a1810] hover:bg-warm"
+              className="inline-flex min-h-11 max-w-full items-center border border-white bg-paper px-3 font-bold text-ink no-underline shadow-[2px_2px_0_#2a1810] hover:bg-warm"
               href={site.externalUrl}
               target="_blank"
               rel="noopener noreferrer"
               data-od-id="visit-original"
             >
-              Open {site.name} ↗
+              <span className="truncate">Open {site.name} ↗</span>
             </a>
             <button
               type="button"
-              className={`mt-3 inline-flex min-h-11 items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] cursor-pointer disabled:cursor-not-allowed ${
+              className={`mt-3 inline-flex min-h-11 max-w-full items-center gap-1.5 border px-3 font-bold shadow-[2px_2px_0_#2a1810] cursor-pointer disabled:cursor-not-allowed ${
                 isVoted(site.slug)
                   ? 'border-white bg-green-50 text-success hover:bg-green-100'
                   : 'border-white bg-paper text-ink hover:bg-warm'
@@ -233,12 +233,14 @@ function SiteDetailPage() {
               disabled={isPendingFor(site.slug)}
               data-od-id="vote-site"
             >
-              {isVoted(site.slug) ? 'Voted' : 'Vote'} &uarr; {site.votes}
+              <span className="truncate">
+                {isVoted(site.slug) ? 'Voted' : 'Vote'} &uarr; {site.votes}
+              </span>
             </button>
             {notice ? (
               <p
                 role="status"
-                className={`mt-3 p-2 font-mono text-xs font-bold border ${
+                className={`mt-3 p-2 font-mono text-xs font-bold border break-words ${
                   noticeError
                     ? 'border-white bg-sand text-ink'
                     : 'border-white bg-green-50 text-success'
@@ -254,7 +256,10 @@ function SiteDetailPage() {
           <Panel title="What you will find" className="h-full">
             <div data-od-id="entry-notes">
               {site.notes.map((note) => (
-                <p key={note} className="last:mb-0">
+                <p
+                  key={note}
+                  className="last:mb-0 break-words [overflow-wrap:anywhere]"
+                >
                   {note}
                 </p>
               ))}
@@ -265,12 +270,14 @@ function SiteDetailPage() {
               {site.facts.map((fact) => (
                 <div
                   key={fact.label}
-                  className="grid grid-cols-[80px_1fr] gap-2 border-t border-dotted border-muted py-2 first:border-t-0 first:pt-0 last:pb-0"
+                  className="grid grid-cols-[80px_minmax(0,1fr)] gap-2 border-t border-dotted border-muted py-2 first:border-t-0 first:pt-0 last:pb-0"
                 >
                   <dt className="font-mono text-xs font-bold tracking-wide uppercase">
                     {fact.label}
                   </dt>
-                  <dd className="m-0 text-brown">{fact.value}</dd>
+                  <dd className="m-0 min-w-0 text-brown break-all [overflow-wrap:anywhere]">
+                    {fact.value}
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -285,10 +292,12 @@ function SiteDetailPage() {
                       key={siteTag}
                       to="/"
                       search={{ include: [siteTag] }}
-                      className="border border-line bg-canvas px-2 py-1 font-mono text-xs underline-offset-2 hover:bg-brown hover:text-paper"
+                      className="max-w-full border border-line bg-canvas px-2 py-1 font-mono text-xs underline-offset-2 hover:bg-brown hover:text-paper"
                     >
-                      Filter by{' '}
-                      {site.tagLabels?.[siteTag] || siteTag.replace(/^~/, '')}
+                      <span className="truncate">
+                        Filter by{' '}
+                        {site.tagLabels?.[siteTag] || siteTag.replace(/^~/, '')}
+                      </span>
                     </Link>
                   )
                 })}
@@ -304,16 +313,16 @@ function SiteDetailPage() {
           <Link
             to="/sites/$slug"
             params={{ slug: previous.slug }}
-            className="inline-flex min-h-11 items-center px-2 underline-offset-4 hover:bg-brown hover:text-paper"
+            className="inline-flex min-h-11 min-w-0 max-w-[48%] items-center px-2 underline-offset-4 hover:bg-brown hover:text-paper"
           >
-            &larr; {previous.name}
+            <span className="truncate">&larr; {previous.name}</span>
           </Link>
           <Link
             to="/sites/$slug"
             params={{ slug: next.slug }}
-            className="inline-flex min-h-11 items-center px-2 text-right underline-offset-4 hover:bg-brown hover:text-paper"
+            className="inline-flex min-h-11 min-w-0 max-w-[48%] items-center justify-end px-2 text-right underline-offset-4 hover:bg-brown hover:text-paper"
           >
-            {next.name} &rarr;
+            <span className="truncate">{next.name} &rarr;</span>
           </Link>
         </nav>
       </main>
