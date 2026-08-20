@@ -529,3 +529,14 @@ test('vote stepped challenge dialog renders Turnstile verification modal', async
   assert.match(dialog, /Quick Verification/)
   assert.match(dialog, /turnstileActions\.vote/)
 })
+
+test('modal dialog ignores bubbling cancel events from child file inputs', async () => {
+  const modalSource = await readFile(
+    new URL('../src/components/oddweb.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    modalSource,
+    /event\.target !== event\.currentTarget[\s\S]*event\.stopPropagation\(\)/,
+  )
+})
