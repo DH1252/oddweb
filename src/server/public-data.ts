@@ -18,10 +18,8 @@ import {
   readPublicSurprise,
   readPublicSupportData,
   readPublicTagPage,
-  readPublicVoteRevision,
   readTagSuggestions,
 } from '../db/public-repository'
-import { cachedPublicRead } from './public-cache'
 
 const filterTagInput = z
   .string()
@@ -64,12 +62,7 @@ const tagSuggestionInput = z.object({
 
 export const getPublicDirectoryPage = createServerFn({ method: 'POST' })
   .validator((data) => directoryInput.parse(data))
-  .handler(async ({ data }) => {
-    const voteRevision = await readPublicVoteRevision()
-    return cachePublicRead('directory', { ...data, voteRevision }, () =>
-      readPublicDirectoryPage(data),
-    )
-  })
+  .handler(({ data }) => readPublicDirectoryPage(data))
 
 export const getPublicSurprise = createServerFn({ method: 'POST' })
   .validator((data) => surpriseInput.parse(data))
@@ -77,15 +70,10 @@ export const getPublicSurprise = createServerFn({ method: 'POST' })
 
 export const getPublicPopularPage = createServerFn({ method: 'POST' })
   .validator((data) => z.number().int().min(0).max(10_000).parse(data))
-  .handler(async ({ data }) => {
-    const voteRevision = await readPublicVoteRevision()
-    return cachePublicRead('popular', { page: data, voteRevision }, () =>
-      readPublicPopularPage(data),
-    )
-  })
+  .handler(({ data }) => readPublicPopularPage(data))
 
 export const getPublicSupportData = createServerFn({ method: 'GET' }).handler(
-  () => cachePublicRead('support', undefined, readPublicSupportData),
+  () => readPublicSupportData(),
 )
 
 export const getTurnstileConfig = createServerFn({ method: 'GET' }).handler(
@@ -112,35 +100,12 @@ export const getTurnstileConfig = createServerFn({ method: 'GET' }).handler(
 
 export const getPublicTagPage = createServerFn({ method: 'GET' })
   .validator((data) => tagPageInput.parse(data))
-  .handler(({ data }) =>
-    cachePublicRead('tags', data, () => readPublicTagPage(data)),
-  )
+  .handler(({ data }) => readPublicTagPage(data))
 
 export const getPublicSiteDetail = createServerFn({ method: 'POST' })
   .validator((data) => z.string().min(1).max(100).parse(data))
-  .handler(async ({ data }) => {
-    const voteRevision = await readPublicVoteRevision()
-    return cachePublicRead('site', { slug: data, voteRevision }, () =>
-      readPublicSiteDetail(data),
-    )
-  })
+  .handler(({ data }) => readPublicSiteDetail(data))
 
 export const getTagSuggestions = createServerFn({ method: 'GET' })
   .validator((data) => tagSuggestionInput.parse(data))
   .handler(({ data }) => readTagSuggestions(data))
-
-function cachePublicRead<T>(
-  name: string,
-  payload: unknown,
-  read: () => Promise<T>,
-  ttlSeconds?: number,
-) {
-  return cachedPublicRead({
-    cache: (caches as unknown as { default: Cache }).default,
-    request: getRequest(),
-    name,
-    payload,
-    ttlSeconds,
-    read,
-  })
-}

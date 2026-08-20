@@ -32,6 +32,14 @@ import { getMyVotedSlugs } from '../server/data'
 
 import type { PublicDirectoryInput } from '../db/public-repository'
 
+const realtimeQueryFreshness = {
+  staleTime: 0,
+  gcTime: 5 * 60_000,
+  refetchOnMount: true,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
+} as const
+
 const adminQueryFreshness = {
   staleTime: 0,
   gcTime: 5 * 60_000,
@@ -44,21 +52,21 @@ export const directoryQueryOptions = (input: PublicDirectoryInput) =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'directory', input],
     queryFn: () => getPublicDirectoryPage({ data: input }),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const popularQueryOptions = (page: number) =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'popular', page],
     queryFn: () => getPublicPopularPage({ data: page }),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const publicSupportQueryOptions = () =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'support'],
     queryFn: () => getPublicSupportData(),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const tagPageQueryOptions = (input: {
@@ -70,14 +78,14 @@ export const tagPageQueryOptions = (input: {
   queryOptions({
     queryKey: ['oddweb', 'public', 'tags', input],
     queryFn: () => getPublicTagPage({ data: input }),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const siteDetailQueryOptions = (slug: string) =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'site', slug],
     queryFn: () => getPublicSiteDetail({ data: slug }),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const tagSuggestionsQueryOptions = (input: {
@@ -96,7 +104,7 @@ export const myVotesQueryOptions = () =>
   queryOptions({
     queryKey: ['oddweb', 'public', 'my-votes'],
     queryFn: () => getMyVotedSlugs(),
-    staleTime: 30_000,
+    ...realtimeQueryFreshness,
   })
 
 export const turnstileConfigQueryOptions = () =>
