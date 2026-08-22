@@ -97,6 +97,9 @@ export const tagSuggestionsQueryOptions = (input: {
     queryKey: ['oddweb', 'tags', 'suggestions', input],
     queryFn: () =>
       getTagSuggestions({ data: { ...input, limit: input.limit || 8 } }),
+    enabled:
+      Boolean(input.query) ||
+      input.selected.some((tag) => !tag.startsWith('~')),
     staleTime: 30_000,
   })
 

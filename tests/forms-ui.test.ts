@@ -99,6 +99,29 @@ test('tag input Enter prefers canonical suggestions over freeform text', async (
   )
 })
 
+test('empty tag suggestion inputs avoid Worker and D1 reads', async () => {
+  const [queries, repository] = await Promise.all([
+    readFile(new URL('../src/queries/oddweb.ts', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../src/db/public-repository.ts', import.meta.url),
+      'utf8',
+    ),
+  ])
+  const suggestions = repository.match(
+    /export async function readTagSuggestions[\s\S]*?\n}\n\nexport async function readPublicSitemapBatch/,
+  )?.[0]
+
+  assert.ok(suggestions)
+  assert.ok(
+    suggestions.indexOf('if (!search.exact && selected.length === 0)') <
+      suggestions.indexOf('await ensureSeedData()'),
+  )
+  assert.match(
+    queries,
+    /tagSuggestionsQueryOptions[\s\S]*enabled:[\s\S]*Boolean\(input\.query\)[\s\S]*!tag\.startsWith\('~'\)/,
+  )
+})
+
 test('tag lookup rejection retains input and exposes an accessible error', async () => {
   const source = await readFile(
     new URL('../src/components/tag-input.tsx', import.meta.url),

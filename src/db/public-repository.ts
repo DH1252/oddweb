@@ -375,12 +375,15 @@ export async function readTagSuggestions(input: {
   selected: string[]
   limit: number
 }): Promise<TagSuggestionResult> {
-  await ensureSeedData()
   const search = d1ExactAndFuzzySearch(input.query)
   const selected = input.selected
     .filter((token) => !token.startsWith('~'))
     .map((token) => normalizeTag(token))
     .slice(0, 20)
+  if (!search.exact && selected.length === 0) {
+    return { selected: [], suggestions: [] }
+  }
+  await ensureSeedData()
   const selectedJson = JSON.stringify(selected)
   const rows = await env.DB.prepare(
     `SELECT tag.id, tag.slug, tag.name, 0 AS count,

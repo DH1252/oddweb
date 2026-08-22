@@ -99,6 +99,13 @@
       "when": 1787060000000,
       "tag": "0013_public_abuse_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1787417528982,
+      "tag": "0014_d1_read_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -643,6 +643,17 @@ export const taxonomyJobsTable = sqliteTable(
       table.policyConfigId,
       table.providerConfigId,
     ),
+    index('taxonomy_jobs_reassess_lookup_idx')
+      .on(table.conceptKey, table.taxonomyVersion, table.providerConfigId)
+      .where(sql`${table.kind} = 'reassess_concept'`),
+    index('taxonomy_jobs_classification_window_idx')
+      .on(table.status, table.updatedAt)
+      .where(
+        sql`${table.kind} = 'classify_site' AND ${table.status} IN ('settled', 'retry_wait', 'dead', 'degraded')`,
+      ),
+    index('taxonomy_jobs_disagreement_window_idx')
+      .on(table.updatedAt)
+      .where(sql`${table.lastErrorCode} = 'provider_disagreement'`),
     check('taxonomy_jobs_id_check', sql`length(trim(${table.id})) > 0`),
     check(
       'taxonomy_jobs_kind_check',
@@ -721,6 +732,10 @@ export const taxonomyJobAttemptsTable = sqliteTable(
     index('taxonomy_job_attempts_provider_idx').on(
       table.providerConfigId,
       table.startedAt,
+    ),
+    index('taxonomy_job_attempts_circuit_window_idx').on(
+      table.startedAt,
+      table.status,
     ),
     index('taxonomy_job_attempts_raw_expiry_idx')
       .on(table.rawResponseExpiresAt)
@@ -924,6 +939,9 @@ export const taxonomyConceptEvidenceTable = sqliteTable(
       table.observedAt,
       table.siteId,
     ),
+    index('taxonomy_concept_evidence_accepted_site_idx')
+      .on(table.normalizedConcept, table.siteId, table.observedAt)
+      .where(sql`${table.accepted} = 1`),
     index('taxonomy_concept_evidence_config_idx').on(
       table.providerConfigId,
       table.policyConfigId,
@@ -1118,6 +1136,11 @@ export const taxonomyAuditEventsTable = sqliteTable(
     ),
     index('taxonomy_audit_events_job_idx').on(table.jobId, table.createdAt),
     index('taxonomy_audit_events_rollback_idx').on(table.rollbackOfEventId),
+    index('taxonomy_audit_events_mutation_window_idx')
+      .on(table.createdAt)
+      .where(
+        sql`${table.eventType} IN ('assignment_add', 'assignment_remove', 'canonical_created', 'alias_created', 'tags_merged', 'parent_created')`,
+      ),
     check(
       'taxonomy_audit_events_actor_check',
       sql`${table.actorType} IN ('system', 'provider', 'admin', 'migration')`,

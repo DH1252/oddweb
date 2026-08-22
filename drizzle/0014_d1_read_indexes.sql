@@ -1,0 +1,6 @@
+CREATE INDEX `taxonomy_audit_events_mutation_window_idx` ON `taxonomy_audit_events` (`created_at`) WHERE "taxonomy_audit_events"."event_type" IN ('assignment_add', 'assignment_remove', 'canonical_created', 'alias_created', 'tags_merged', 'parent_created');--> statement-breakpoint
+CREATE INDEX `taxonomy_concept_evidence_accepted_site_idx` ON `taxonomy_concept_evidence` (`normalized_concept`,`site_id`,`observed_at`) WHERE "taxonomy_concept_evidence"."accepted" = 1;--> statement-breakpoint
+CREATE INDEX `taxonomy_job_attempts_circuit_window_idx` ON `taxonomy_job_attempts` (`started_at`,`status`);--> statement-breakpoint
+CREATE INDEX `taxonomy_jobs_reassess_lookup_idx` ON `taxonomy_jobs` (`concept_key`,`taxonomy_version`,`provider_config_id`) WHERE "taxonomy_jobs"."kind" = 'reassess_concept';--> statement-breakpoint
+CREATE INDEX `taxonomy_jobs_classification_window_idx` ON `taxonomy_jobs` (`status`,`updated_at`) WHERE "taxonomy_jobs"."kind" = 'classify_site' AND "taxonomy_jobs"."status" IN ('settled', 'retry_wait', 'dead', 'degraded');--> statement-breakpoint
+CREATE INDEX `taxonomy_jobs_disagreement_window_idx` ON `taxonomy_jobs` (`updated_at`) WHERE "taxonomy_jobs"."last_error_code" = 'provider_disagreement';

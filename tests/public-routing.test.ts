@@ -116,6 +116,12 @@ test('realtime directory refresh invalidates query data without reloading routes
     source,
     /await Promise\.all\([\s\S]*queryClient\.invalidateQueries/,
   )
+  const resync = source.match(
+    /const resync = async \(\) => \{[\s\S]*?\n {4}\}/,
+  )?.[0]
+  assert.ok(resync)
+  assert.equal(resync.match(/refetchType: 'none'/g)?.length, 3)
+  assert.equal(resync.match(/refetchQueries/g)?.length, 1)
   assert.match(source, /const refreshSiteView = async[\s\S]*await Promise\.all/)
   assert.doesNotMatch(source, /useRouter|router\.invalidate/)
   assert.match(source, /await refreshSiteView\(event\.slug\)/)

@@ -2854,14 +2854,14 @@ export class TaxonomyRepository {
             WHERE job.kind = 'reassess_concept'
               AND job.concept_key = evidence.normalized_concept
               AND job.taxonomy_version = ?
-              AND coalesce(job.provider_config_id, 0) = ?
+              AND job.provider_config_id IS ?
           )
        ORDER BY min(evidence.observed_at), evidence.normalized_concept
        LIMIT ?`,
       [
         policy.novelEvidenceSiteThreshold,
         state.publishedVersion,
-        state.activeProviderConfigId ?? 0,
+        state.activeProviderConfigId,
         Math.max(1, Math.min(limit, 100)),
       ],
     )

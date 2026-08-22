@@ -24,11 +24,23 @@ export function RealtimeSync() {
 
     const resync = async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'public'] }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
-        queryClient.invalidateQueries({ queryKey: ['oddweb', 'tags'] }),
-        queryClient.refetchQueries({ type: 'active' }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'public'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'admin'],
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['oddweb', 'tags'],
+          refetchType: 'none',
+        }),
       ])
+      await queryClient.refetchQueries(
+        { type: 'active' },
+        { cancelRefetch: false },
+      )
     }
 
     const applySiteVote = (slug: string, votes: number) => {
