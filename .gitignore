@@ -23,3 +23,5 @@ mailmap.txt
 skills-lock.json
 AGENTS.md
 docs/
+.kilocode/
+.kilo/
