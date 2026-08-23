@@ -77,6 +77,13 @@ import type {
 
 import type { FormEvent } from 'react'
 
+const modeOptions: TaxonomyMode[] = [
+  'disabled',
+  'shadow',
+  'gradual',
+  'autonomous',
+]
+
 function assertAdminResult(
   condition: unknown,
   message: string,
@@ -861,12 +868,6 @@ export function useAutomationController({
 
   const initialPolicy: TaxonomyPolicyInput =
     policyDraft?.values ?? policyDefaults.items.at(0) ?? defaultTaxonomyPolicy
-  const modeOptions: TaxonomyMode[] = [
-    'disabled',
-    'shadow',
-    'gradual',
-    'autonomous',
-  ]
 
   return {
     overview: {
