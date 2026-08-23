@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   dispatchTaxonomyOutbox,
+  processTaxonomyQueueBatch,
   processTaxonomyMessage,
   rolloutSelected,
   runTaxonomyMaintenance,
@@ -1092,6 +1093,122 @@ test('event, site, and batch rollback helpers compensate only their selected aud
   )
 })
 
+test('mixed rollback preparation checks later events after an earlier failure', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  await insertTag(db, 2)
+  await db
+    .prepare(
+      `INSERT INTO tag_aliases (alias, tag_id)
+       VALUES ('older alias', 1), ('newer alias', 2)`,
+    )
+    .run()
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO taxonomy_change_batches
+         (id, kind, status, actor_type, expected_taxonomy_version,
+          resulting_taxonomy_version, summary, applied_at, completed_at,
+          created_at)
+         VALUES (?, 'ontology', 'applied', 'system', 1, 1, ?, 7000, 7000,
+                 7000)`,
+      )
+      .bind('mixed-rollback', 'mixed rollback'),
+    db
+      .prepare(
+        `INSERT INTO taxonomy_change_batches
+         (id, kind, status, actor_type, expected_taxonomy_version,
+          resulting_taxonomy_version, summary, applied_at, completed_at,
+          created_at)
+         VALUES (?, 'ontology', 'applied', 'system', 1, 1, ?, 7000, 7000,
+                 7000)`,
+      )
+      .bind('mixed-rollback-blocker', 'mixed rollback blocker'),
+    db
+      .prepare(
+        `INSERT INTO taxonomy_audit_events
+         (id, batch_id, event_type, entity_type, entity_id, actor_type,
+          taxonomy_version_before, taxonomy_version_after, scores, evidence,
+          before, after, release_sha, created_at)
+         VALUES ('mixed-older', 'mixed-rollback', 'alias_created', 'alias',
+                 'older alias', 'system', 1, 1, '{}', '', '{}', ?, 'test',
+                 7001)`,
+      )
+      .bind(JSON.stringify({ targetTagId: 1, targetTagRevision: 1 })),
+    db
+      .prepare(
+        `INSERT INTO taxonomy_audit_events
+         (id, batch_id, event_type, entity_type, entity_id, actor_type,
+          taxonomy_version_before, taxonomy_version_after, scores, evidence,
+          before, after, release_sha, created_at)
+         VALUES ('mixed-newer', 'mixed-rollback', 'alias_created', 'alias',
+                 'newer alias', 'system', 1, 1, '{}', '', '{}', ?, 'test',
+                 7002)`,
+      )
+      .bind(JSON.stringify({ targetTagId: 2, targetTagRevision: 1 })),
+    db
+      .prepare(
+        `INSERT INTO taxonomy_audit_events
+         (id, batch_id, event_type, entity_type, entity_id, actor_type,
+          taxonomy_version_before, taxonomy_version_after, scores, evidence,
+          before, after, release_sha, created_at)
+         VALUES ('mixed-blocker', 'mixed-rollback-blocker', 'alias_created',
+                 'alias', 'newer alias', 'system', 1, 1, '{}', '', '{}', ?,
+                 'test', 7003)`,
+      )
+      .bind(JSON.stringify({ targetTagId: 2, targetTagRevision: 1 })),
+  ])
+
+  const checkedEntities: string[] = []
+  const observedDb = new Proxy(db, {
+    get(target, property, receiver) {
+      if (property === 'prepare') {
+        return (query: string) => {
+          const prepared = target.prepare(query)
+          if (!query.includes('SELECT id FROM taxonomy_audit_events')) {
+            return prepared
+          }
+          return new Proxy(prepared, {
+            get(statement, statementProperty, statementReceiver) {
+              if (statementProperty === 'bind') {
+                return (...values: unknown[]) => {
+                  checkedEntities.push(String(values[1]))
+                  return Reflect.apply(statement.bind, statement, values)
+                }
+              }
+              const value = Reflect.get(
+                statement,
+                statementProperty,
+                statementReceiver,
+              ) as unknown
+              return typeof value === 'function' ? value.bind(statement) : value
+            },
+          })
+        }
+      }
+      const value = Reflect.get(target, property, receiver) as unknown
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as D1Database
+  const service = new TaxonomyService(serviceEnv(observedDb), {
+    now: () => 7_004_000,
+  })
+
+  await assert.rejects(
+    service.rollbackBatch('mixed-rollback', 'admin'),
+    /mixed-blocker/,
+  )
+  assert.deepEqual(checkedEntities, ['newer alias', 'older alias'])
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_audit_events WHERE event_type = 'compensating_rollback'",
+      )
+      .first('count(*)'),
+    0,
+  )
+})
+
 test('max-size classification batches and sites roll back atomically', async (context) => {
   const db = await migratedTaxonomyDb(context)
   const service = new TaxonomyService(serviceEnv(db), { now: () => 7_500_000 })
@@ -1930,6 +2047,120 @@ test('candidate snapshots include only relevant locks despite global lock satura
     [1, 12],
   )
   assert.deepEqual(snapshot.activeLockKeys, ['site:1:tag:12', 'tag:1'])
+})
+
+test('two applicable ontology queue jobs from one batch settle without permanent degradation', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 11_900_000 })
+  await db
+    .prepare(
+      `INSERT INTO taxonomy_jobs
+       (id, job_key, kind, concept_key, input_hash, taxonomy_version,
+        policy_config_id, status, max_attempts, available_at, created_at,
+        updated_at, completed_at)
+       VALUES ('batch-source-job', 'batch-source-key', 'reassess_concept',
+               'batch aliases', ?, 1, 1, 'settled', 1, 11900, 11900, 11900,
+               11900)`,
+    )
+    .bind(hash)
+    .run()
+  const proposals = [
+    {
+      id: 'batch-candidate-one',
+      alias: 'batch alias one',
+      rank: 0,
+    },
+    {
+      id: 'batch-candidate-two',
+      alias: 'batch alias two',
+      rank: 1,
+    },
+  ]
+  await db.batch(
+    proposals.map(({ id, alias, rank }) =>
+      db
+        .prepare(
+          `INSERT INTO taxonomy_candidates
+           (id, job_id, candidate_key, kind, tag_id, normalized_concept,
+            payload, confidence_micros, rank)
+           VALUES (?, 'batch-source-job', ?, 'alias', 1, ?, ?, 990000, ?)`,
+        )
+        .bind(
+          id,
+          `alias:${alias}:1`,
+          alias,
+          JSON.stringify({
+            kind: 'alias',
+            alias,
+            targetTagId: '1',
+            confidence: 0.99,
+            evidence: 'The terms are equivalent.',
+          }),
+          rank,
+        ),
+    ),
+  )
+  const jobIds = await Promise.all(
+    proposals.map(({ id }) => service.enqueueOntologyCandidate(id)),
+  )
+  assert.ok(jobIds[0])
+  assert.ok(jobIds[1])
+
+  let releasePublications: () => void = () => undefined
+  const bothPublicationsReady = new Promise<void>((resolve) => {
+    releasePublications = resolve
+  })
+  let publicationBatchCount = 0
+  const racingDb = new Proxy(db, {
+    get(target, property) {
+      if (property === 'batch') {
+        return async (statements: D1PreparedStatement[]) => {
+          publicationBatchCount += 1
+          if (publicationBatchCount <= 2) {
+            if (publicationBatchCount === 2) releasePublications()
+            await Promise.race([
+              bothPublicationsReady,
+              new Promise<void>((resolve) => setTimeout(resolve, 500)),
+            ])
+          }
+          return target.batch(statements)
+        }
+      }
+      const value = Reflect.get(target, property, target) as unknown
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as D1Database
+
+  await processTaxonomyQueueBatch(jobIds as string[], async (jobId) => {
+    await processTaxonomyMessage(
+      { jobId },
+      { ...env, DB: racingDb, TAXONOMY_QUEUE: mockQueue() },
+      { now: () => 11_901_000 },
+    )
+  })
+
+  const statuses = await Promise.all(
+    (jobIds as string[]).map((jobId) =>
+      db
+        .prepare('SELECT status FROM taxonomy_jobs WHERE id = ?')
+        .bind(jobId)
+        .first<string>('status'),
+    ),
+  )
+  assert.deepEqual(statuses.sort(), ['settled', 'settled'])
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_aliases').first('count(*)'),
+    2,
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT published_version FROM taxonomy_state WHERE id = 1')
+      .first('published_version'),
+    3,
+  )
 })
 
 test('ontology candidate redelivery is idempotent and control changes are audited', async (context) => {

@@ -1,5 +1,5 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
-import { startTransition, useDeferredValue, useEffect, useState } from 'react'
+import { useSuspenseQuery } from '@tanstack/react-query'
+import { startTransition, useDeferredValue, useState } from 'react'
 
 import { adminSitesQueryOptions } from '../../queries/oddweb'
 import { updateSiteStatus } from '../../server/data'
@@ -7,6 +7,7 @@ import { Panel, buttonClass, fieldClass } from '../oddweb'
 import { AdminPagination, Empty } from '../admin-ui'
 import { ManagedRow } from '../admin-cards'
 import { TagInput } from '../tag-input'
+import { useAdminMutation } from '../use-admin-mutation'
 import type { EntryStatus } from '../../lib/admin-types'
 import type { AdminSite } from '../../db/repository'
 
@@ -29,7 +30,12 @@ export function SiteManagementSection({
   const [siteSearch, setSiteSearch] = useState('')
   const [includedTags, setIncludedTags] = useState<string[]>([])
   const [excludedTags, setExcludedTags] = useState<string[]>([])
-  const [sitePage, setSitePage] = useState(0)
+  const [sitePageState, setSitePageState] = useState({ resetToken, page: 0 })
+  const sitePage =
+    sitePageState.resetToken === resetToken ? sitePageState.page : 0
+  function setSitePage(page: number) {
+    setSitePageState({ resetToken, page })
+  }
   const deferredSiteSearch = useDeferredValue(siteSearch.trim())
   const { data: siteResults } = useSuspenseQuery(
     adminSitesQueryOptions({
@@ -40,14 +46,14 @@ export function SiteManagementSection({
       excludeTags: excludedTags,
     }),
   )
-  const statusMutation = useMutation({
+  const statusMutation = useAdminMutation({
     mutationFn: (input: { id: number; status: EntryStatus }) =>
       updateSiteStatus({ data: input }),
+    onSuccess: async () => {
+      setSitePage(0)
+      await refresh()
+    },
   })
-
-  useEffect(() => {
-    setSitePage(0)
-  }, [resetToken])
 
   async function toggleEntry(entry: AdminSite) {
     if (entry.source === 'Directory') return
@@ -59,8 +65,6 @@ export function SiteManagementSection({
       return
     try {
       await statusMutation.mutateAsync({ id: entry.id, status: nextStatus })
-      setSitePage(0)
-      await refresh()
       showStatus(
         `${entry.name} is now ${nextStatus === 'active' ? 'published' : 'archived'}.`,
         'success',
@@ -74,17 +78,14 @@ export function SiteManagementSection({
   }
 
   function setManagementTags(type: 'include' | 'exclude', tags: string[]) {
+    const tagSet = new Set(tags)
     startTransition(() => {
       if (type === 'include') {
         setIncludedTags(tags)
-        setExcludedTags((current) =>
-          current.filter((tag) => !tags.includes(tag)),
-        )
+        setExcludedTags((current) => current.filter((tag) => !tagSet.has(tag)))
       } else {
         setExcludedTags(tags)
-        setIncludedTags((current) =>
-          current.filter((tag) => !tags.includes(tag)),
-        )
+        setIncludedTags((current) => current.filter((tag) => !tagSet.has(tag)))
       }
       setSitePage(0)
     })

@@ -12,6 +12,12 @@ import {
 import type { RecentFiling, SiteEntry } from '../data/sites'
 import type { CanonicalTag } from '../data/tags'
 
+const shortDateFormatter = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+
 export const publicDirectoryPageSize = 6
 export const publicPopularPageSize = 4
 export const publicTagPageSize = 16
@@ -376,10 +382,11 @@ export async function readTagSuggestions(input: {
   limit: number
 }): Promise<TagSuggestionResult> {
   const search = d1ExactAndFuzzySearch(input.query)
-  const selected = input.selected
-    .filter((token) => !token.startsWith('~'))
-    .map((token) => normalizeTag(token))
-    .slice(0, 20)
+  const selected: string[] = []
+  for (const token of input.selected) {
+    if (!token.startsWith('~')) selected.push(normalizeTag(token))
+    if (selected.length === 20) break
+  }
   if (!search.exact && selected.length === 0) {
     return { selected: [], suggestions: [] }
   }
@@ -425,9 +432,10 @@ export async function readTagSuggestions(input: {
     parents: [],
     count: 0,
   }))
-  const selectedSlugs = new Set(
-    rows.results.filter((tag) => tag.isSelected).map((tag) => tag.slug),
-  )
+  const selectedSlugs = new Set<string>()
+  for (const tag of rows.results) {
+    if (tag.isSelected) selectedSlugs.add(tag.slug)
+  }
   return {
     selected: mapped.filter((tag) => selectedSlugs.has(tag.slug)),
     suggestions: mapped
@@ -557,9 +565,5 @@ function formatIsoDate(timestamp: number) {
 }
 
 function formatShortDate(timestamp: number) {
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(timestamp * 1000))
+  return shortDateFormatter.format(new Date(timestamp * 1000))
 }

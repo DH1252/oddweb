@@ -75,9 +75,11 @@ export function consensusValues<T>(
       })
     }
   }
-  return [...counts.values()]
-    .filter(({ count }) => count >= threshold)
-    .map(({ value }) => value)
+  const values: T[] = []
+  for (const { count, value } of counts.values()) {
+    if (count >= threshold) values.push(value)
+  }
+  return values
 }
 
 export function requiredConsensus<T>(

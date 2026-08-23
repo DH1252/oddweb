@@ -1,3 +1,4 @@
+import { mapSeries } from '../lib/async'
 import { sha256Hex, stableJson, taxonomyJobKey } from './normalize'
 import type {
   CandidateSnapshot,
@@ -350,7 +351,8 @@ export class TaxonomyRepository {
          ORDER BY available_at, id LIMIT 1`,
         [jobId, now, now],
       )
-      for (const row of rows) {
+      const row = rows.at(0)
+      if (row) {
         const id = text(row, 'id')
         const token = crypto.randomUUID()
         const leased = await changes(
@@ -361,24 +363,25 @@ export class TaxonomyRepository {
              AND (leased_until IS NULL OR leased_until < ?)`,
           [token, now + 60, id, now],
         )
-        if (!leased) continue
-        try {
-          await this.queue.send({ jobId })
-          await changes(
-            this.db,
-            `UPDATE taxonomy_outbox SET dispatched_at = ?, lease_token = NULL,
-             leased_until = NULL, last_error = NULL
-             WHERE id = ? AND lease_token = ?`,
-            [now, id, token],
-          )
-        } catch (error) {
-          await changes(
-            this.db,
-            `UPDATE taxonomy_outbox SET available_at = ?, lease_token = NULL,
-             leased_until = NULL, last_error = ?
-             WHERE id = ? AND lease_token = ?`,
-            [now + 60, String(error).slice(0, 500), id, token],
-          )
+        if (leased) {
+          try {
+            await this.queue.send({ jobId })
+            await changes(
+              this.db,
+              `UPDATE taxonomy_outbox SET dispatched_at = ?, lease_token = NULL,
+                leased_until = NULL, last_error = NULL
+                WHERE id = ? AND lease_token = ?`,
+              [now, id, token],
+            )
+          } catch (error) {
+            await changes(
+              this.db,
+              `UPDATE taxonomy_outbox SET available_at = ?, lease_token = NULL,
+                leased_until = NULL, last_error = ?
+                WHERE id = ? AND lease_token = ?`,
+              [now + 60, String(error).slice(0, 500), id, token],
+            )
+          }
         }
       }
     } catch {
@@ -686,9 +689,9 @@ export class TaxonomyRepository {
         'classification_input_hash',
       ),
       assignedTagIds: assignedRows.map((row) => integer(row, 'tag_id')),
-      automationAssignedTagIds: assignedRows
-        .filter((row) => text(row, 'source') === 'automation')
-        .map((row) => integer(row, 'tag_id')),
+      automationAssignedTagIds: assignedRows.flatMap((row) =>
+        text(row, 'source') === 'automation' ? [integer(row, 'tag_id')] : [],
+      ),
       assignments: assignedRows.map((row) => ({
         tagId: integer(row, 'tag_id'),
         rawName: text(row, 'raw_name'),
@@ -1658,8 +1661,10 @@ export class TaxonomyRepository {
     application?: OntologyApplication
   }): Promise<void> {
     const nextVersion = input.expectedVersion + 1
-    const source = await this.tagRecord(input.sourceTagId)
-    const target = await this.tagRecord(input.targetTagId)
+    const [source, target] = await Promise.all([
+      this.tagRecord(input.sourceTagId),
+      this.tagRecord(input.targetTagId),
+    ])
     if (!source || !target) throw new Error('Merge tag not found')
     const [sourceAssignments, targetAssignments, sourceAliases, sourceEdges] =
       await Promise.all([
@@ -2711,8 +2716,7 @@ export class TaxonomyRepository {
        AND (leased_until IS NULL OR leased_until < ?) ORDER BY available_at, id LIMIT ?`,
       [now, now, limit],
     )
-    const leased: Array<{ id: string; jobId: string; token: string }> = []
-    for (const row of rows) {
+    const results = await mapSeries(rows, async (row) => {
       const id = text(row, 'id')
       const token = crypto.randomUUID()
       const changed = await changes(
@@ -2722,14 +2726,17 @@ export class TaxonomyRepository {
          AND (leased_until IS NULL OR leased_until < ?)`,
         [token, now + leaseSeconds, id, now],
       )
-      if (!changed) continue
+      if (!changed) return null
       const leasedRow = await first(
         this.db,
         'SELECT job_id FROM taxonomy_outbox WHERE id = ? AND lease_token = ?',
         [id, token],
       )
-      if (leasedRow)
-        leased.push({ id, jobId: text(leasedRow, 'job_id'), token })
+      return leasedRow ? { id, jobId: text(leasedRow, 'job_id'), token } : null
+    })
+    const leased: Array<{ id: string; jobId: string; token: string }> = []
+    for (const result of results) {
+      if (result) leased.push(result)
     }
     return leased
   }
@@ -2781,51 +2788,58 @@ export class TaxonomyRepository {
     reconciledOutbox: number
     eligibleConceptsEnqueued: number
   }> {
-    const eligibleConceptsEnqueued =
-      await this.enqueueEligibleConceptReassessments(now)
-    const results = await this.db.batch([
-      statement(
-        this.db,
-        `UPDATE taxonomy_jobs SET status = CASE WHEN attempt_count >= max_attempts THEN 'dead' ELSE 'retry_wait' END,
-         available_at = ?, lease_owner = NULL, lease_token = NULL, leased_until = NULL,
-         completed_at = CASE WHEN attempt_count >= max_attempts THEN ? ELSE NULL END,
-         updated_at = ?, last_error_code = 'stale_lease', last_error_summary = 'Lease expired before settlement.'
-         WHERE status = 'leased' AND leased_until < ?`,
-        [now, now, now, now],
-      ),
-      statement(
-        this.db,
-        `UPDATE taxonomy_outbox SET lease_token = NULL, leased_until = NULL,
-         last_error = 'Dispatch lease expired.' WHERE dispatched_at IS NULL AND leased_until < ?`,
-        [now],
-      ),
-      statement(
-        this.db,
-        `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
-         lease_token = NULL, leased_until = NULL, last_error = 'Runnable job queue delivery reconciled.'
-         WHERE job_id IN (SELECT id FROM taxonomy_jobs
-                           WHERE status IN ('pending', 'retry_wait')
-                           ORDER BY updated_at, id LIMIT 500)
-           AND dispatched_at IS NOT NULL AND dispatched_at <= ?`,
-        [now, now - 300],
-      ),
-      statement(
-        this.db,
-        `INSERT OR IGNORE INTO taxonomy_outbox
-         (id, job_id, payload, available_at, created_at)
-         SELECT 'outbox:' || id, id, json_object('jobId', id), available_at, ?
-         FROM taxonomy_jobs
-         WHERE status IN ('pending', 'retry_wait')
-         ORDER BY updated_at, id LIMIT 500`,
-        [now],
-      ),
-      statement(
-        this.db,
-        `UPDATE taxonomy_job_attempts SET raw_response = NULL, raw_response_expires_at = NULL
-         WHERE raw_response IS NOT NULL AND raw_response_expires_at <= ?`,
-        [now],
-      ),
-    ])
+    const { eligibleConceptsEnqueued, results } =
+      await this.enqueueEligibleConceptReassessments(now).then(
+        (enqueuedConcepts) =>
+          this.db
+            .batch([
+              statement(
+                this.db,
+                `UPDATE taxonomy_jobs SET status = CASE WHEN attempt_count >= max_attempts THEN 'dead' ELSE 'retry_wait' END,
+          available_at = ?, lease_owner = NULL, lease_token = NULL, leased_until = NULL,
+          completed_at = CASE WHEN attempt_count >= max_attempts THEN ? ELSE NULL END,
+          updated_at = ?, last_error_code = 'stale_lease', last_error_summary = 'Lease expired before settlement.'
+          WHERE status = 'leased' AND leased_until < ?`,
+                [now, now, now, now],
+              ),
+              statement(
+                this.db,
+                `UPDATE taxonomy_outbox SET lease_token = NULL, leased_until = NULL,
+          last_error = 'Dispatch lease expired.' WHERE dispatched_at IS NULL AND leased_until < ?`,
+                [now],
+              ),
+              statement(
+                this.db,
+                `UPDATE taxonomy_outbox SET dispatched_at = NULL, available_at = ?,
+          lease_token = NULL, leased_until = NULL, last_error = 'Runnable job queue delivery reconciled.'
+          WHERE job_id IN (SELECT id FROM taxonomy_jobs
+                            WHERE status IN ('pending', 'retry_wait')
+                            ORDER BY updated_at, id LIMIT 500)
+            AND dispatched_at IS NOT NULL AND dispatched_at <= ?`,
+                [now, now - 300],
+              ),
+              statement(
+                this.db,
+                `INSERT OR IGNORE INTO taxonomy_outbox
+          (id, job_id, payload, available_at, created_at)
+          SELECT 'outbox:' || id, id, json_object('jobId', id), available_at, ?
+          FROM taxonomy_jobs
+          WHERE status IN ('pending', 'retry_wait')
+          ORDER BY updated_at, id LIMIT 500`,
+                [now],
+              ),
+              statement(
+                this.db,
+                `UPDATE taxonomy_job_attempts SET raw_response = NULL, raw_response_expires_at = NULL
+          WHERE raw_response IS NOT NULL AND raw_response_expires_at <= ?`,
+                [now],
+              ),
+            ])
+            .then((batchResults) => ({
+              eligibleConceptsEnqueued: enqueuedConcepts,
+              results: batchResults,
+            })),
+      )
     return {
       staleJobs: results[0]?.meta.changes ?? 0,
       staleOutbox: results[1]?.meta.changes ?? 0,
@@ -2865,30 +2879,29 @@ export class TaxonomyRepository {
         Math.max(1, Math.min(limit, 100)),
       ],
     )
-    let enqueued = 0
-    for (const row of concepts) {
+    const results = await mapSeries(concepts, async (row) => {
       const concept = text(row, 'concept')
       const inputHash = await sha256Hex(stableJson({ concept }))
       const jobKey = `concept:${encodeURIComponent(concept)}:input:${inputHash}:taxonomy:${state.publishedVersion}:provider:${state.activeProviderConfigId ?? 0}`
       const id = `tax:${(await sha256Hex(jobKey)).slice(0, 40)}`
-      if (
-        await this.enqueueJob(
-          {
-            id,
-            jobKey,
-            kind: 'reassess_concept',
-            conceptKey: concept,
-            inputHash,
-            taxonomyVersion: state.publishedVersion,
-            providerConfigId: state.activeProviderConfigId,
-            policyConfigId: policy.id,
-            maxAttempts: Math.max(1, policy.retryBudget + 1),
-          },
-          now,
-        )
-      ) {
-        enqueued += 1
-      }
+      return this.enqueueJob(
+        {
+          id,
+          jobKey,
+          kind: 'reassess_concept',
+          conceptKey: concept,
+          inputHash,
+          taxonomyVersion: state.publishedVersion,
+          providerConfigId: state.activeProviderConfigId,
+          policyConfigId: policy.id,
+          maxAttempts: Math.max(1, policy.retryBudget + 1),
+        },
+        now,
+      )
+    })
+    let enqueued = 0
+    for (const inserted of results) {
+      if (inserted) enqueued += 1
     }
     return enqueued
   }

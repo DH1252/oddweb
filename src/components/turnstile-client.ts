@@ -1,5 +1,3 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
-
 import { turnstileActions } from '../lib/turnstile'
 import type { TurnstileAction } from '../lib/turnstile'
 
@@ -27,14 +25,16 @@ declare global {
   }
 }
 
+const noCleanup = () => undefined
+
 export function ensureTurnstileScript(
   sitekey: string,
   onReady?: () => void,
-): void {
-  if (typeof window === 'undefined' || !sitekey) return
+): () => void {
+  if (typeof window === 'undefined' || !sitekey) return noCleanup
   if (window.turnstile) {
     onReady?.()
-    return
+    return noCleanup
   }
   const existing = document.querySelector<HTMLScriptElement>(
     'script[data-oddweb-turnstile]',
@@ -48,9 +48,9 @@ export function ensureTurnstileScript(
     script.setAttribute('data-oddweb-turnstile', 'true')
     document.head.appendChild(script)
   }
-  if (onReady) {
-    script.addEventListener('load', onReady, { once: true })
-  }
+  if (!onReady) return noCleanup
+  script.addEventListener('load', onReady, { once: true })
+  return () => script.removeEventListener('load', onReady)
 }
 
 export function requestInvisibleTurnstileToken(
@@ -115,99 +115,4 @@ export function requestInvisibleTurnstileToken(
       }
     })
   })
-}
-
-type TurnstileProps = {
-  sitekey: string
-  action: TurnstileAction | (string & {})
-  disabled?: boolean
-  resetKey?: number
-  requestPending?: boolean
-  onToken: (token: string | null) => void
-}
-
-export function Turnstile({
-  sitekey,
-  action,
-  disabled = false,
-  resetKey = 0,
-  requestPending = false,
-  onToken,
-}: TurnstileProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const widgetIdRef = useRef<string | undefined>(undefined)
-  const previousResetKeyRef = useRef(resetKey)
-  const [ready, setReady] = useState(false)
-  const [error, setError] = useState(false)
-  const handleToken = useEffectEvent(onToken)
-
-  useEffect(() => {
-    if (!sitekey) return
-    ensureTurnstileScript(sitekey, () => setReady(true))
-  }, [sitekey])
-
-  useEffect(() => {
-    if (
-      !ready ||
-      !window.turnstile ||
-      !containerRef.current ||
-      widgetIdRef.current
-    )
-      return
-    widgetIdRef.current = window.turnstile.render(containerRef.current, {
-      sitekey,
-      action,
-      callback: (token) => {
-        setError(false)
-        handleToken(token)
-      },
-      'error-callback': () => {
-        setError(true)
-        handleToken(null)
-      },
-      'expired-callback': () => handleToken(null),
-      'timeout-callback': () => handleToken(null),
-    })
-    return () => {
-      if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current)
-      }
-      widgetIdRef.current = undefined
-    }
-  }, [action, ready, sitekey])
-
-  useEffect(() => {
-    if (previousResetKeyRef.current === resetKey) return
-    previousResetKeyRef.current = resetKey
-    if (!widgetIdRef.current || !window.turnstile) return
-    setError(false)
-    window.turnstile.reset(widgetIdRef.current)
-    handleToken(null)
-  }, [resetKey])
-
-  if (!sitekey) {
-    return (
-      <p
-        className="border border-danger bg-canvas px-2 py-1.5 font-mono text-xs text-danger"
-        role="alert"
-      >
-        Verification is not configured for this deployment.
-      </p>
-    )
-  }
-  return (
-    <div aria-busy={!ready || disabled || requestPending}>
-      <div ref={containerRef} />
-      {!ready ? (
-        <p className="mt-1 font-mono text-xs text-muted">
-          Loading verification...
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-1 font-mono text-xs text-danger" role="alert">
-          Verification could not load. Try again.
-        </p>
-      ) : null}
-    </div>
-  )
 }

@@ -519,24 +519,20 @@ function geminiInteractionsResult(body: unknown): RawProviderResult {
   }
   const record = body as Record<string, unknown>
   const steps = Array.isArray(record.steps) ? record.steps : []
-  const text = steps
-    .filter(
-      (step): step is Record<string, unknown> =>
-        Boolean(step) && typeof step === 'object',
-    )
-    .filter((step) => step.type === 'model_output')
-    .flatMap((step) => {
-      const content = Array.isArray(step.content) ? step.content : []
-      return content
-        .filter(
-          (part): part is Record<string, unknown> =>
-            Boolean(part) && typeof part === 'object',
-        )
-        .map((part) => part.text)
-        .filter((value) => typeof value === 'string')
-    })
-    .filter((value) => value.trim())
-    .join('\n')
+  const textParts: string[] = []
+  for (const step of steps) {
+    if (!step || typeof step !== 'object') continue
+    const output = step as Record<string, unknown>
+    if (output.type !== 'model_output' || !Array.isArray(output.content)) {
+      continue
+    }
+    for (const part of output.content) {
+      if (!part || typeof part !== 'object') continue
+      const value = (part as Record<string, unknown>).text
+      if (typeof value === 'string' && value.trim()) textParts.push(value)
+    }
+  }
+  const text = textParts.join('\n')
   const usage = (record.usage ?? {}) as Record<string, unknown>
   return {
     value: parseStructuredText(text),

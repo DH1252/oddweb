@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers'
 
 import {
   dispatchTaxonomyOutbox,
+  processTaxonomyQueueBatch,
   processTaxonomyMessage,
   runTaxonomyMaintenance,
 } from './taxonomy/processor'
@@ -45,7 +46,7 @@ export default {
     const invocation = await runWithReleaseInvocation(
       'queue',
       async () => {
-        for (const message of batch.messages) {
+        await processTaxonomyQueueBatch(batch.messages, async (message) => {
           try {
             if (
               typeof message.body !== 'object' ||
@@ -72,7 +73,7 @@ export default {
             })
             message.retry()
           }
-        }
+        })
       },
       { database: env.DB },
     )

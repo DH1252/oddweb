@@ -1,16 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
+import { isAdminPath } from './realtime-sync-path'
 import { parseRealtimeEvent } from '../realtime/events'
+import type { QueryClient } from '@tanstack/react-query'
 
-export function isAdminPath(pathname: string) {
-  return pathname === '/admin' || pathname.startsWith('/admin/')
-}
-
-export function RealtimeSync() {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
+function startRealtimeSync(queryClient: QueryClient) {
+  function createLifecycle() {
     let socket: WebSocket | undefined
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let taxonomyRefreshTimer: ReturnType<typeof setTimeout> | undefined
@@ -271,7 +267,8 @@ export function RealtimeSync() {
         if (heartbeatTimer) clearInterval(heartbeatTimer)
         heartbeatTimer = undefined
         if (stopped || document.visibilityState === 'hidden') return
-        const delay = Math.min(30_000, 1_000 * 2 ** attempts++)
+        const delay = Math.min(30_000, 1_000 * 2 ** attempts)
+        attempts += 1
         reconnectTimer = setTimeout(connect, delay)
       })
     }
@@ -311,7 +308,12 @@ export function RealtimeSync() {
       window.removeEventListener('online', handleActive)
       socket?.close(1000, 'Page closed')
     }
-  }, [queryClient])
+  }
+  return createLifecycle()
+}
 
+export function RealtimeSync() {
+  const queryClient = useQueryClient()
+  useEffect(() => startRealtimeSync(queryClient), [queryClient])
   return null
 }

@@ -13,7 +13,9 @@ import {
   listTaxonomyProviders,
   readTaxonomyDashboard,
 } from '../db/taxonomy-admin-repository'
-import { createTaxonomyService, dispatchTaxonomyOutbox } from '../taxonomy'
+import { dispatchTaxonomyOutbox } from '../taxonomy/runtime'
+import { createTaxonomyService } from '../taxonomy/service'
+import { mapSeries } from '../lib/async'
 import { adminAuthMiddleware } from './auth'
 import { publishRealtimeEvent } from './realtime'
 import {
@@ -166,6 +168,20 @@ async function publishTaxonomyChange(directoryChanged = false) {
   if (directoryChanged) {
     await publishRealtimeEvent({ type: 'directory.changed' })
   }
+}
+
+async function forceConceptReassessments(slugs: string[]) {
+  const taxonomyService = service()
+  const reassessments = await mapSeries(slugs, (slug) =>
+    taxonomyService.forceConceptReassessment(slug),
+  )
+  const uniqueJobIds = new Set<string>()
+  let skipped = 0
+  for (const jobId of reassessments) {
+    if (jobId) uniqueJobIds.add(jobId)
+    else skipped += 1
+  }
+  return { jobIds: [...uniqueJobIds], skipped }
 }
 
 export const getTaxonomyDashboard = createServerFn({ method: 'GET' })
@@ -384,16 +400,9 @@ export const forceUnmappedTagWrangling = createServerFn({ method: 'POST' })
          ORDER BY id LIMIT 25`,
       )
       .all<{ slug: string }>()
-    const jobIds: string[] = []
-    let skipped = 0
-    for (const row of rows.results) {
-      const jobId = await service().forceConceptReassessment(row.slug)
-      if (jobId) {
-        if (!jobIds.includes(jobId)) jobIds.push(jobId)
-      } else {
-        skipped += 1
-      }
-    }
+    const { jobIds, skipped } = await forceConceptReassessments(
+      rows.results.map((row) => row.slug),
+    )
     if (jobIds.length) await publishTaxonomyChange()
     return { enqueued: jobIds.length, skipped, jobIds }
   })
@@ -416,16 +425,9 @@ export const refreshTagAssociations = createServerFn({ method: 'POST' })
         )
         .first<number>('count(*)'),
     ])
-    const jobIds: string[] = []
-    let skipped = 0
-    for (const row of rows.results) {
-      const jobId = await service().forceConceptReassessment(row.slug)
-      if (jobId) {
-        if (!jobIds.includes(jobId)) jobIds.push(jobId)
-      } else {
-        skipped += 1
-      }
-    }
+    const { jobIds, skipped } = await forceConceptReassessments(
+      rows.results.map((row) => row.slug),
+    )
     if (jobIds.length) await publishTaxonomyChange()
     return {
       enqueued: jobIds.length,

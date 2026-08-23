@@ -122,12 +122,13 @@ export function Panel({
 export function SiteThumbnail({
   site,
   compact = false,
-  thumbnailKey = site.thumbnailKey,
+  thumbnailKey: thumbnailKeyOverride,
 }: {
   site: SiteEntry
   compact?: boolean
   thumbnailKey?: string
 }) {
+  const thumbnailKey = thumbnailKeyOverride ?? site.thumbnailKey
   const tagSummary = site.tags.length
     ? ` (${site.tags.slice(0, 3).join(', ')})`
     : ''
@@ -148,6 +149,26 @@ export function SiteThumbnail({
 
 export function ItemThumbnail({
   thumbnailKey,
+  ...props
+}: {
+  thumbnailKey?: string
+  alt: string
+  label: string
+  className?: string
+  fallbackClassName?: string
+  sizes?: string
+}) {
+  return (
+    <ItemThumbnailContent
+      key={thumbnailKey ?? 'thumbnail-fallback'}
+      thumbnailKey={thumbnailKey}
+      {...props}
+    />
+  )
+}
+
+function ItemThumbnailContent({
+  thumbnailKey,
   alt,
   label,
   className = 'aspect-4/3 w-full',
@@ -162,8 +183,6 @@ export function ItemThumbnail({
   sizes?: string
 }) {
   const [imageFailed, setImageFailed] = useState(false)
-
-  useEffect(() => setImageFailed(false), [thumbnailKey])
 
   const labelSizeClass =
     label.length > 36

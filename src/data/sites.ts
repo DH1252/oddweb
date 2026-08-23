@@ -294,17 +294,3 @@ export const recentFilings: RecentFiling[] = [
     date: 'Aug 1',
   },
 ]
-
-export function getSite(slug: string, entries = sites) {
-  return entries.find((site) => site.slug === slug)
-}
-
-export function getAdjacentSites(slug: string, entries = sites) {
-  const index = entries.findIndex((site) => site.slug === slug)
-  const safeIndex = index < 0 ? 0 : index
-
-  return {
-    previous: entries[(safeIndex - 1 + entries.length) % entries.length],
-    next: entries[(safeIndex + 1) % entries.length],
-  }
-}

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   myVotesQueryOptions,
@@ -39,15 +39,12 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
   const [challengeSlug, setChallengeSlug] = useState<string | null>(null)
   const [inFlightVote, setInFlightVote] = useState<InFlightVote | null>(null)
 
-  const updateNotice = useCallback(
-    (message: string, isError = false) => {
-      setLocalNotice(message)
-      setLocalNoticeError(isError)
-      options?.setNotice?.(message)
-      options?.setNoticeError?.(isError)
-    },
-    [options],
-  )
+  const updateNotice = (message: string, isError = false) => {
+    setLocalNotice(message)
+    setLocalNoticeError(isError)
+    options?.setNotice?.(message)
+    options?.setNoticeError?.(isError)
+  }
 
   const myVotesQuery = useQuery(myVotesQueryOptions())
   const myVotes = myVotesQuery.data?.slugs ?? []
@@ -197,77 +194,69 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
     },
   })
 
-  const isVoted = useCallback(
-    (slug: string) => {
-      const cached = queryClient.getQueryData<{ slugs: string[] }>([
-        'oddweb',
-        'public',
-        'my-votes',
-      ])
-      const activeSlugs = cached?.slugs ?? myVotes
-      return activeSlugs.includes(slug)
-    },
-    [myVotes, queryClient],
-  )
+  const isVoted = (slug: string) => {
+    const cached = queryClient.getQueryData<{ slugs: string[] }>([
+      'oddweb',
+      'public',
+      'my-votes',
+    ])
+    const activeSlugs = cached?.slugs ?? myVotes
+    return activeSlugs.includes(slug)
+  }
 
-  const toggleVote = useCallback(
-    (slug: string, currentVotes?: number, turnstileToken?: string) => {
-      if (inFlightVote) {
-        return
-      }
-      const initialVoted = isVoted(slug)
-      setInFlightVote({
-        slug,
-        initialVoted,
-        initialVotes: currentVotes ?? 0,
-      })
-      voteMutation.mutate({
-        slug,
+  const toggleVote = (
+    slug: string,
+    currentVotes?: number,
+    turnstileToken?: string,
+  ) => {
+    if (inFlightVote) {
+      return
+    }
+    const initialVoted = isVoted(slug)
+    setInFlightVote({
+      slug,
+      initialVoted,
+      initialVotes: currentVotes ?? 0,
+    })
+    voteMutation.mutate({
+      slug,
+      requestId: crypto.randomUUID(),
+      turnstileToken,
+    })
+  }
+
+  const isPendingFor = (slug: string) => inFlightVote?.slug === slug
+
+  const submitChallengeVote = async (turnstileToken: string) => {
+    if (!challengeSlug) return
+    const targetSlug = challengeSlug
+    setChallengeSlug(null)
+    const targetVoted = isVoted(targetSlug)
+    const cachedSite = queryClient.getQueryData<{ site: SiteEntry }>([
+      'oddweb',
+      'public',
+      'site',
+      targetSlug,
+    ])
+    setInFlightVote({
+      slug: targetSlug,
+      initialVoted: targetVoted,
+      initialVotes: cachedSite?.site.votes ?? 0,
+    })
+    try {
+      await voteMutation.mutateAsync({
+        slug: targetSlug,
         requestId: crypto.randomUUID(),
         turnstileToken,
       })
-    },
-    [inFlightVote, isVoted, voteMutation],
-  )
+    } catch {
+      setInFlightVote(null)
+    }
+  }
 
-  const isPendingFor = useCallback(
-    (slug: string) => inFlightVote?.slug === slug,
-    [inFlightVote?.slug],
-  )
-
-  const submitChallengeVote = useCallback(
-    async (turnstileToken: string) => {
-      if (!challengeSlug) return
-      const targetSlug = challengeSlug
-      setChallengeSlug(null)
-      const targetVoted = isVoted(targetSlug)
-      const cachedSite = queryClient.getQueryData<{ site: SiteEntry }>([
-        'oddweb',
-        'public',
-        'site',
-        targetSlug,
-      ])
-      setInFlightVote({
-        slug: targetSlug,
-        initialVoted: targetVoted,
-        initialVotes: cachedSite?.site.votes ?? 0,
-      })
-      try {
-        await voteMutation.mutateAsync({
-          slug: targetSlug,
-          requestId: crypto.randomUUID(),
-          turnstileToken,
-        })
-      } catch {
-        setInFlightVote(null)
-      }
-    },
-    [challengeSlug, isVoted, queryClient, voteMutation],
-  )
-
-  const clearChallenge = useCallback(() => {
+  const clearChallenge = () => {
     setChallengeSlug(null)
-  }, [])
+  }
 
   const challenge: VoteChallengeState | null = challengeSlug
     ? {
@@ -278,27 +267,24 @@ export function useSiteVote(options?: UseSiteVoteOptions) {
       }
     : null
 
-  const getOptimisticVoteState = useCallback(
-    (slug: string, serverVotes: number) => {
-      const serverVoted = isVoted(slug)
-      if (inFlightVote?.slug === slug) {
-        const nextVoted = !inFlightVote.initialVoted
-        const delta = inFlightVote.initialVoted ? -1 : 1
-        const optimisticVotes = Math.max(0, inFlightVote.initialVotes + delta)
-        return {
-          voted: nextVoted,
-          votes: optimisticVotes,
-          isPending: true,
-        }
-      }
+  const getOptimisticVoteState = (slug: string, serverVotes: number) => {
+    const serverVoted = isVoted(slug)
+    if (inFlightVote?.slug === slug) {
+      const nextVoted = !inFlightVote.initialVoted
+      const delta = inFlightVote.initialVoted ? -1 : 1
+      const optimisticVotes = Math.max(0, inFlightVote.initialVotes + delta)
       return {
-        voted: serverVoted,
-        votes: serverVotes,
-        isPending: false,
+        voted: nextVoted,
+        votes: optimisticVotes,
+        isPending: true,
       }
-    },
-    [inFlightVote, isVoted],
-  )
+    }
+    return {
+      voted: serverVoted,
+      votes: serverVotes,
+      isPending: false,
+    }
+  }
 
   return {
     toggleVote,

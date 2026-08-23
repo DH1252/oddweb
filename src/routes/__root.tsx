@@ -66,34 +66,6 @@ const contentSecurityPolicy = [
 ].join('; ')
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
-  headers: ({ matches }) => {
-    const privateOrError = matches.some(
-      (match) =>
-        /^\/(?:admin|health)(?:\/|$)/.test(match.pathname) ||
-        Boolean(
-          match.error &&
-          typeof match.error === 'object' &&
-          'isNotFound' in match.error,
-        ) ||
-        match.status === 'error' ||
-        match.status === 'notFound',
-    )
-    return {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Content-Security-Policy': contentSecurityPolicy,
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Resource-Policy': 'same-origin',
-      'Permissions-Policy':
-        'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      ...(!isProduction || privateOrError
-        ? { 'X-Robots-Tag': 'noindex, nofollow' }
-        : undefined),
-    }
-  },
   head: () => {
     const defaults = seoHead({
       title: "Oddweb - The web's odd corners",
@@ -124,6 +96,34 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
         { rel: 'stylesheet', href: appCss },
       ],
+    }
+  },
+  headers: ({ matches }) => {
+    const privateOrError = matches.some(
+      (match) =>
+        /^\/(?:admin|health)(?:\/|$)/.test(match.pathname) ||
+        Boolean(
+          match.error &&
+          typeof match.error === 'object' &&
+          'isNotFound' in match.error,
+        ) ||
+        match.status === 'error' ||
+        match.status === 'notFound',
+    )
+    return {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Content-Security-Policy': contentSecurityPolicy,
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Permissions-Policy':
+        'camera=(), geolocation=(), microphone=(), payment=(), usb=()',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      ...(!isProduction || privateOrError
+        ? { 'X-Robots-Tag': 'noindex, nofollow' }
+        : undefined),
     }
   },
   shellComponent: RootDocument,

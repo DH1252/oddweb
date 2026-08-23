@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { normalizeTag, tagInputMaxLength, tagsForForm } from '../data/tags'
 import { tagSuggestionsQueryOptions } from '../queries/oddweb'
+import type { CanonicalTag } from '../data/tags'
 
 const tagLookupErrorMessage =
   'Could not check tags. Your entered text is still available; try again.'
@@ -87,6 +88,15 @@ export function TagInput({
     onChange?.(next)
   }
 
+  function addToken(token: string) {
+    if (atLimit || selected.includes(token)) return
+    update([...selected, token])
+    setLookupError(undefined)
+    setQuery('')
+    setOpen(false)
+    setActiveIndex(0)
+  }
+
   function addTag(rawValue?: string) {
     if (atLimit) return
     const input = normalizeTag(rawValue ?? query)
@@ -100,15 +110,6 @@ export function TagInput({
     const token = canonical?.slug || (allowFreeform ? `~${input}` : undefined)
     if (!token) return
     addToken(token)
-  }
-
-  function addToken(token: string) {
-    if (atLimit || selected.includes(token)) return
-    update([...selected, token])
-    setLookupError(undefined)
-    setQuery('')
-    setOpen(false)
-    setActiveIndex(0)
   }
 
   async function commitEnteredTag() {
@@ -142,9 +143,9 @@ export function TagInput({
         ) || result.suggestions.at(0)
       if (suggestion) addToken(suggestion.slug)
       else addTag(input)
+      setResolvingTag(false)
     } catch {
       setLookupError({ query: input, message: tagLookupErrorMessage })
-    } finally {
       setResolvingTag(false)
     }
   }
@@ -169,37 +170,13 @@ export function TagInput({
         {label}
       </label>
       <div className="border border-brown bg-paper p-1.5 shadow-[inset_1px_1px_0_#d9aa7a]">
-        {selected.length ? (
-          <ul
-            className="mb-1 flex list-none flex-wrap gap-1 p-0"
-            aria-label={`${label} selected tags`}
-          >
-            {selected.map((token) => {
-              const freeform = token.startsWith('~')
-              return (
-                <li
-                  key={token}
-                  className={`inline-flex min-h-9 items-center border pl-2 font-mono text-xs ${chipClass}`}
-                >
-                  <span>{labelFor(token)}</span>
-                  {freeform ? (
-                    <span className="ml-1 text-[10px] uppercase opacity-70">
-                      unwrangled
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="ml-1 grid min-h-9 min-w-9 place-items-center border-0 bg-transparent text-current hover:bg-brown hover:text-paper"
-                    onClick={() => removeTag(token)}
-                    aria-label={`Remove ${labelFor(token)}`}
-                  >
-                    X
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        ) : null}
+        <TagChips
+          label={label}
+          selected={selected}
+          chipClass={chipClass}
+          labelFor={labelFor}
+          onRemove={removeTag}
+        />
         <div className="relative">
           <input
             id={`${id}-input`}
@@ -265,62 +242,14 @@ export function TagInput({
             disabled={atLimit || resolvingTag}
           />
           {open && suggestions.length ? (
-            <ul
-              id={`${id}-suggestions`}
-              role="listbox"
-              className="absolute top-full right-0 left-0 z-20 m-0 max-h-64 list-none overflow-y-auto border border-ink bg-paper p-0 shadow-[3px_3px_0_#2a1810]"
-            >
-              {suggestions.map((tag, index) => {
-                const matchingAlias = tag.aliases.find((alias) =>
-                  alias.includes(deferredQuery),
-                )
-                return (
-                  <li
-                    id={`${id}-option-${index}`}
-                    key={tag.slug}
-                    role="option"
-                    aria-selected={index === activeIndex}
-                  >
-                    <div
-                      className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${index === activeIndex ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => addToken(tag.slug)}
-                    >
-                      <span>
-                        <strong className="block font-mono text-xs">
-                          {tag.name}
-                        </strong>
-                        {matchingAlias &&
-                        normalizeTag(tag.name) !== deferredQuery ? (
-                          <small className="text-muted">
-                            {matchingAlias} is a synonym
-                          </small>
-                        ) : null}
-                      </span>
-                    </div>
-                  </li>
-                )
-              })}
-              <li
-                id={`${id}-option-${suggestions.length}`}
-                key={`${id}-input-option`}
-                role="option"
-                aria-selected={activeIndex === suggestions.length}
-              >
-                <div
-                  className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${activeIndex === suggestions.length ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => addTag()}
-                >
-                  <span>
-                    <strong className="block font-mono text-xs">
-                      {deferredQuery}
-                    </strong>
-                    <small className="text-muted">New tag</small>
-                  </span>
-                </div>
-              </li>
-            </ul>
+            <TagSuggestionList
+              id={id}
+              suggestions={suggestions}
+              activeIndex={activeIndex}
+              query={deferredQuery}
+              onAddToken={addToken}
+              onAddQuery={() => addTag()}
+            />
           ) : null}
         </div>
       </div>
@@ -383,5 +312,120 @@ export function TagInput({
               : 'Only canonical tags can be used in directory filters.'}
       </p>
     </div>
+  )
+}
+
+function TagChips({
+  label,
+  selected,
+  chipClass,
+  labelFor,
+  onRemove,
+}: {
+  label: string
+  selected: string[]
+  chipClass: string
+  labelFor: (token: string) => string
+  onRemove: (token: string) => void
+}) {
+  if (!selected.length) return null
+  return (
+    <ul
+      className="mb-1 flex list-none flex-wrap gap-1 p-0"
+      aria-label={`${label} selected tags`}
+    >
+      {selected.map((token) => {
+        const freeform = token.startsWith('~')
+        return (
+          <li
+            key={token}
+            className={`inline-flex min-h-9 items-center border pl-2 font-mono text-xs ${chipClass}`}
+          >
+            <span>{labelFor(token)}</span>
+            {freeform ? (
+              <span className="ml-1 text-[10px] uppercase opacity-70">
+                unwrangled
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="ml-1 grid min-h-9 min-w-9 place-items-center border-0 bg-transparent text-current hover:bg-brown hover:text-paper"
+              onClick={() => onRemove(token)}
+              aria-label={`Remove ${labelFor(token)}`}
+            >
+              X
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function TagSuggestionList({
+  id,
+  suggestions,
+  activeIndex,
+  query,
+  onAddToken,
+  onAddQuery,
+}: {
+  id: string
+  suggestions: CanonicalTag[]
+  activeIndex: number
+  query: string
+  onAddToken: (token: string) => void
+  onAddQuery: () => void
+}) {
+  return (
+    <ul
+      id={`${id}-suggestions`}
+      role="listbox"
+      className="absolute top-full right-0 left-0 z-20 m-0 max-h-64 list-none overflow-y-auto border border-ink bg-paper p-0 shadow-[3px_3px_0_#2a1810]"
+    >
+      {suggestions.map((tag, index) => {
+        const matchingAlias = tag.aliases.find((alias) => alias.includes(query))
+        return (
+          <li key={tag.slug} role="presentation">
+            <button
+              id={`${id}-option-${index}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={index === activeIndex}
+              className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-0 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${index === activeIndex ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onAddToken(tag.slug)}
+            >
+              <span>
+                <strong className="block font-mono text-xs">{tag.name}</strong>
+                {matchingAlias && normalizeTag(tag.name) !== query ? (
+                  <small className="text-muted">
+                    {matchingAlias} is a synonym
+                  </small>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        )
+      })}
+      <li role="presentation">
+        <button
+          id={`${id}-option-${suggestions.length}`}
+          type="button"
+          role="option"
+          tabIndex={-1}
+          aria-selected={activeIndex === suggestions.length}
+          className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 border-0 border-b border-dotted border-line px-2 py-1.5 text-left last:border-b-0 ${activeIndex === suggestions.length ? 'bg-canvas' : 'bg-paper hover:bg-canvas'}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onAddQuery}
+        >
+          <span>
+            <strong className="block font-mono text-xs">{query}</strong>
+            <small className="text-muted">New tag</small>
+          </span>
+        </button>
+      </li>
+    </ul>
   )
 }

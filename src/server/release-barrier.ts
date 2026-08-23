@@ -57,10 +57,6 @@ export function createReleaseWriteBarrierMiddleware() {
   })
 }
 
-export function releaseMaintenanceResponse() {
-  return releaseBarrierResponse()
-}
-
 function releaseBarrierResponse() {
   return new Response(
     'Writes are temporarily unavailable during maintenance.',

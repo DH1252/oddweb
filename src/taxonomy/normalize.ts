@@ -35,7 +35,12 @@ export function normalizeTaxonomySiteInput(
   input: TaxonomySiteInput,
 ): NormalizedTaxonomySiteInput {
   const tags = [
-    ...new Set(input.tags.map(normalizeTaxonomyTag).filter(Boolean)),
+    ...new Set(
+      input.tags.flatMap((tag) => {
+        const normalized = normalizeTaxonomyTag(tag)
+        return normalized ? [normalized] : []
+      }),
+    ),
   ].sort((left, right) => left.localeCompare(right, 'en-US'))
 
   const normalized: NormalizedTaxonomySiteInput = {

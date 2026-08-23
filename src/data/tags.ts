@@ -68,9 +68,9 @@ const canonicalSlugs = [...new Set(rawTags.map(seedResolveTagSlug))].sort(
 const tagsWithoutCounts = canonicalSlugs.map((slug) => ({
   slug,
   name: displayTagName(slug),
-  aliases: Object.entries(aliases)
-    .filter(([, canonical]) => canonical === slug)
-    .map(([alias]) => alias),
+  aliases: Object.entries(aliases).flatMap(([alias, canonical]) =>
+    canonical === slug ? [alias] : [],
+  ),
   parents: parentTags[slug] || [],
 }))
 
@@ -107,24 +107,6 @@ export function resolveTagSlug(value: string, catalog = canonicalTags) {
 
 export function getCanonicalTag(value: string, catalog = canonicalTags) {
   return catalog.find((tag) => tag.slug === resolveTagSlug(value, catalog))
-}
-
-export function canonicalizeTagList(value: unknown) {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? [value]
-      : []
-
-  return [
-    ...new Set(
-      values
-        .map((tag) =>
-          typeof tag === 'string' ? getCanonicalTag(tag)?.slug : undefined,
-        )
-        .filter((tag): tag is string => Boolean(tag)),
-    ),
-  ]
 }
 
 export function normalizeFilterTagList(value: unknown) {
@@ -174,10 +156,6 @@ export function publicFilterLoaderDeps(search: PublicFilterSearch) {
   }
 }
 
-export function siteFilterTags(site: SiteEntry) {
-  return expandedFilterTags(site.tags)
-}
-
 export function resolveFilterTagList(
   values: string[],
   catalog: CanonicalTag[],
@@ -223,12 +201,15 @@ function expandedFilterTags(tags: string[], catalog = canonicalTags) {
       tag.startsWith('~') ? tag : resolveTagSlug(tag, catalog),
     ),
   )
+  const parentsBySlug = new Map(
+    catalog.map((tag) => [tag.slug, tag.parents] as const),
+  )
   const pending = [...direct]
 
   while (pending.length) {
     const current = pending.pop()
     if (!current) continue
-    const parents = catalog.find((tag) => tag.slug === current)?.parents || []
+    const parents = parentsBySlug.get(current) || []
     for (const parent of parents) {
       if (!direct.has(parent)) {
         direct.add(parent)
@@ -238,18 +219,6 @@ function expandedFilterTags(tags: string[], catalog = canonicalTags) {
   }
 
   return direct
-}
-
-export function siteMatchesTag(site: SiteEntry, tag: string) {
-  return siteFilterTags(site).has(resolveTagSlug(tag))
-}
-
-export function siteMatchesFilterTag(
-  site: SiteEntry,
-  tag: string,
-  catalog = canonicalTags,
-) {
-  return tagsMatchFilter(site.tags, tag, catalog)
 }
 
 export function buildCanonicalTags(
@@ -262,13 +231,6 @@ export function buildCanonicalTags(
       tagsMatchFilter(site.tags, tag.slug, catalog),
     ).length,
   }))
-}
-
-export function tagLabel(value: string, catalog = canonicalTags) {
-  return (
-    getCanonicalTag(value.startsWith('~') ? value.slice(1) : value, catalog)
-      ?.name || normalizeTag(value.startsWith('~') ? value.slice(1) : value)
-  )
 }
 
 export function tagsForForm(values: string[]) {

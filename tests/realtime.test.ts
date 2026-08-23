@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { parseRealtimeEvent } from '../src/realtime/events'
-import { isAdminPath } from '../src/components/realtime-sync'
+import { isAdminPath } from '../src/components/realtime-sync-path'
 
 test('realtime events accept bounded public changes', () => {
   assert.deepEqual(parseRealtimeEvent({ type: 'guestbook.changed' }), {

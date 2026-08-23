@@ -57,7 +57,12 @@ export type SiteTaxonomyLifecycleInput = {
 }
 
 export function preserveRawTagHints(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+  const hints = new Set<string>()
+  for (const value of values) {
+    const hint = value.trim()
+    if (hint) hints.add(hint)
+  }
+  return [...hints]
 }
 
 export function normalizeSiteTaxonomyMetadata(input: SiteTaxonomyMetadata) {
@@ -66,21 +71,24 @@ export function normalizeSiteTaxonomyMetadata(input: SiteTaxonomyMetadata) {
     url: normalizeWebsiteUrl(input.url),
     description: normalizeTaxonomyText(input.description),
     summary: normalizeTaxonomyText(input.summary),
-    notes: input.notes.map(normalizeTaxonomyText).filter(Boolean),
-    factsText: input.facts
-      .map(({ label, value }) => {
-        const normalizedLabel = normalizeTaxonomyText(label)
-        const normalizedValue = normalizeTaxonomyText(value)
-        return normalizedLabel
-          ? `${normalizedLabel}: ${normalizedValue}`.trim()
-          : normalizedValue
-      })
-      .filter(Boolean),
+    notes: input.notes.flatMap((note) => {
+      const normalized = normalizeTaxonomyText(note)
+      return normalized ? [normalized] : []
+    }),
+    factsText: input.facts.flatMap(({ label, value }) => {
+      const normalizedLabel = normalizeTaxonomyText(label)
+      const normalizedValue = normalizeTaxonomyText(value)
+      const fact = normalizedLabel
+        ? `${normalizedLabel}: ${normalizedValue}`.trim()
+        : normalizedValue
+      return fact ? [fact] : []
+    }),
     rawHints: [
       ...new Set(
-        preserveRawTagHints(input.rawTagHints)
-          .map(normalizeHint)
-          .filter(Boolean),
+        preserveRawTagHints(input.rawTagHints).flatMap((hint) => {
+          const normalized = normalizeHint(hint)
+          return normalized ? [normalized] : []
+        }),
       ),
     ].sort((left, right) => left.localeCompare(right, 'en-US')),
   }
@@ -208,9 +216,9 @@ export async function prepareSiteTaxonomyLifecycle(
   )
   const novel = hints.filter((hint) => hint.novel)
   const noncanonicalTagIds = new Set(
-    tagRows.results
-      .filter((tag) => tag.status === 'active' && !tag.canonical)
-      .map((tag) => tag.id),
+    tagRows.results.flatMap((tag) =>
+      tag.status === 'active' && !tag.canonical ? [tag.id] : [],
+    ),
   )
   const evidenceHints = hints.filter(
     (hint) =>

@@ -165,6 +165,7 @@ export function AdminTextArea({
       <textarea
         id={id}
         name={name}
+        aria-label={label}
         defaultValue={defaultValue}
         maxLength={maxLength}
         required

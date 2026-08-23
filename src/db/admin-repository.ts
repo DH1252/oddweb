@@ -9,6 +9,12 @@ import type {
   GuestbookEntry,
 } from './repository'
 
+const shortDateFormatter = new Intl.DateTimeFormat('en', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+
 export const adminPageSize = 12
 
 export type AdminPage<T> = {
@@ -358,11 +364,7 @@ function escapeLike(value: string) {
 }
 
 function formatShortDate(seconds: number) {
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(seconds * 1000))
+  return shortDateFormatter.format(new Date(seconds * 1000))
 }
 
 function formatIsoDate(seconds: number) {

@@ -1,5 +1,5 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { useSuspenseQuery } from '@tanstack/react-query'
+import { useDeferredValue, useState } from 'react'
 
 import { adminTagsQueryOptions } from '../../queries/oddweb'
 import {
@@ -10,6 +10,7 @@ import {
 import { Panel, buttonClass, fieldClass } from '../oddweb'
 import { AdminPagination, Empty } from '../admin-ui'
 import { TagRow } from '../admin-cards'
+import { useAdminMutation } from '../use-admin-mutation'
 import type { AdminTagRecord } from '../../db/repository'
 
 export function TagCorrectionsSection({
@@ -30,30 +31,32 @@ export function TagCorrectionsSection({
   editorBusy: boolean
 }) {
   const [tagSearch, setTagSearch] = useState('')
-  const [tagPage, setTagPage] = useState(0)
+  const [tagPageState, setTagPageState] = useState({ resetToken, page: 0 })
+  const tagPage = tagPageState.resetToken === resetToken ? tagPageState.page : 0
+  function setTagPage(page: number) {
+    setTagPageState({ resetToken, page })
+  }
   const deferredTagSearch = useDeferredValue(tagSearch.trim())
   const { data: tagResults } = useSuspenseQuery(
     adminTagsQueryOptions(tagPage, deferredTagSearch),
   )
-  const forceInferenceMutation = useMutation({
+  const forceInferenceMutation = useAdminMutation({
     mutationFn: (input: { tagId: number }) =>
       forceTagRelationInference({ data: input }),
+    onSuccess: refresh,
   })
-  const forceUnmappedWranglingMutation = useMutation({
+  const forceUnmappedWranglingMutation = useAdminMutation({
     mutationFn: () => forceUnmappedTagWrangling({ data: {} }),
+    onSuccess: refresh,
   })
-  const refreshAssociationsMutation = useMutation({
+  const refreshAssociationsMutation = useAdminMutation({
     mutationFn: () => refreshTagAssociations({ data: {} }),
+    onSuccess: refresh,
   })
-
-  useEffect(() => {
-    setTagPage(0)
-  }, [resetToken])
 
   async function forceTagInference(tag: AdminTagRecord) {
     try {
       await forceInferenceMutation.mutateAsync({ tagId: tag.id })
-      await refresh()
       showStatus(`Relation inference queued for "${tag.name}".`, 'success')
     } catch (error) {
       showStatus(
@@ -66,7 +69,6 @@ export function TagCorrectionsSection({
   async function forceUnmappedWrangling() {
     try {
       const result = await forceUnmappedWranglingMutation.mutateAsync()
-      await refresh()
       showStatus(
         result.enqueued
           ? `Queued relation inference for ${result.enqueued} unmapped tag${
@@ -86,7 +88,6 @@ export function TagCorrectionsSection({
   async function refreshAllTagAssociations() {
     try {
       const result = await refreshAssociationsMutation.mutateAsync()
-      await refresh()
       showStatus(
         result.enqueued
           ? `Queued association refresh for ${result.enqueued} of ${result.total} tag${

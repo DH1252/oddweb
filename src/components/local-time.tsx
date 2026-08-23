@@ -1,6 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 type LocalTimeStyle = 'date' | 'dateTime'
+
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+})
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+const subscribeToHydration = () => () => undefined
+
+function formatLocalTime(date: Date, style: LocalTimeStyle) {
+  return style === 'date'
+    ? dateFormatter.format(date)
+    : dateTimeFormatter.format(date)
+}
+
+function useEffectSafeHydration() {
+  return useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  )
+}
 
 export function LocalTime({
   seconds,
@@ -11,20 +35,11 @@ export function LocalTime({
   fallback: string
   style?: LocalTimeStyle
 }) {
-  const [label, setLabel] = useState(fallback)
   const valid = Number.isFinite(seconds)
-
-  useEffect(() => {
-    if (!valid || seconds === undefined) return
-    setLabel(
-      new Intl.DateTimeFormat(undefined, {
-        ...(style === 'date'
-          ? { month: 'short', day: 'numeric' }
-          : { dateStyle: 'medium', timeStyle: 'short' }),
-      }).format(new Date(seconds * 1_000)),
-    )
-  }, [seconds, style, valid])
+  const hydrated = useEffectSafeHydration()
 
   if (!valid || seconds === undefined) return fallback
-  return <time dateTime={new Date(seconds * 1_000).toISOString()}>{label}</time>
+  const date = new Date(seconds * 1_000)
+  const label = hydrated ? formatLocalTime(date, style) : fallback
+  return <time dateTime={date.toISOString()}>{label}</time>
 }

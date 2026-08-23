@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import {
   getRequest,
   setResponseStatus,
-  useSession,
+  useSession as getServerSession,
 } from '@tanstack/react-start/server'
 
 import {
@@ -39,7 +39,9 @@ export async function getPublicIdentity(): Promise<PublicIdentity> {
     throw new Error('Public identity is unavailable until it is configured.')
   }
 
-  const session = await useSession<PublicSession>(publicSessionConfig(secret))
+  const session = await getServerSession<PublicSession>(
+    publicSessionConfig(secret),
+  )
   const existing = session.data
   const existingIssuedAt = existing.issuedAt
   if (

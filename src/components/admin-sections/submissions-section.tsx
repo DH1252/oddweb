@@ -1,4 +1,4 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { startTransition, useState } from 'react'
 
 import { adminSubmissionsQueryOptions } from '../../queries/oddweb'
@@ -6,6 +6,7 @@ import { reviewSubmission } from '../../server/data'
 import { Panel, fieldClass } from '../oddweb'
 import { AdminPagination, Empty } from '../admin-ui'
 import { SubmissionCard } from '../admin-cards'
+import { useAdminMutation } from '../use-admin-mutation'
 import type { ReviewStatus } from '../../lib/admin-types'
 import type { AdminSubmission } from '../../db/repository'
 
@@ -27,9 +28,14 @@ export function SubmissionsSection({
   const { data: submissionResults } = useSuspenseQuery(
     adminSubmissionsQueryOptions(submissionPage, reviewFilter),
   )
-  const reviewMutation = useMutation({
+  const reviewMutation = useAdminMutation({
     mutationFn: (input: { id: number; status: ReviewStatus }) =>
       reviewSubmission({ data: input }),
+    onSuccess: async () => {
+      setSubmissionPage(0)
+      onDirectoryChanged()
+      await refresh()
+    },
   })
 
   async function review(submission: AdminSubmission, nextStatus: ReviewStatus) {
@@ -46,9 +52,6 @@ export function SubmissionsSection({
         id: submission.id,
         status: nextStatus,
       })
-      setSubmissionPage(0)
-      onDirectoryChanged()
-      await refresh()
       showStatus(
         nextStatus === 'approved'
           ? `Approved "${submission.name}".`

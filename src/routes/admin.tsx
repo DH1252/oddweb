@@ -19,6 +19,8 @@ export const Route = createFileRoute('/admin')({
     }
     return { admin: session }
   },
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(adminOverviewQueryOptions()),
   head: () => ({
     meta: [
       { title: 'Oddweb Admin' },
@@ -26,7 +28,5 @@ export const Route = createFileRoute('/admin')({
       { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData(adminOverviewQueryOptions()),
   component: lazyRouteComponent(() => import('../components/admin-page')),
 })

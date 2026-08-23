@@ -3,7 +3,6 @@ import { env } from 'cloudflare:workers'
 import { thumbnailUrl } from '../lib/thumbnails'
 import {
   findReferencedThumbnailKeys,
-  isThumbnailReferenced,
   listReferencedThumbnailKeyBatch,
 } from '../db/repository'
 import {
@@ -27,6 +26,7 @@ const thumbnailTypes = {
   'image/png': 'png',
   'image/webp': 'webp',
 } as const
+const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
 export async function storeThumbnail(image: File): Promise<ThumbnailUpload> {
   if (!Object.hasOwn(thumbnailTypes, image.type)) {
@@ -102,12 +102,13 @@ async function reconcileR2Page(
   )
   const referenced = await findReferencedThumbnailKeys(keys)
   const cutoff = Date.now() - 24 * 60 * 60 * 1000
-  const orphanKeys = page.objects
-    .filter(
-      (object, index) =>
-        object.uploaded.getTime() < cutoff && !referenced.has(keys[index]),
-    )
-    .map((object) => object.key)
+  const orphanKeys: string[] = []
+  for (const object of page.objects) {
+    const key = object.key.slice('thumbnails/'.length)
+    if (object.uploaded.getTime() < cutoff && !referenced.has(key)) {
+      orphanKeys.push(object.key)
+    }
+  }
   const progress = mergeReconciliationProgress(state, {
     stored: page.objects.length,
     orphaned: orphanKeys.length,
@@ -136,9 +137,10 @@ async function reconcileD1Batch(
     key,
     exists: (await env.THUMBNAILS.head(`thumbnails/${key}`)) !== null,
   }))
-  const missingKeys = present
-    .filter((entry) => !entry.exists)
-    .map((entry) => entry.key)
+  const missingKeys: string[] = []
+  for (const entry of present) {
+    if (!entry.exists) missingKeys.push(entry.key)
+  }
   const progress = mergeReconciliationProgress(state, {
     referenced: batch.keys.length,
     missing: missingKeys.length,
@@ -193,36 +195,23 @@ async function mapConcurrent<T, TResult>(
 ) {
   const results = new Array<TResult>(values.length)
   let nextIndex = 0
+  const runNext = async (): Promise<void> => {
+    const index = nextIndex++
+    if (index >= values.length) return
+    results[index] = await callback(values[index])
+    return runNext()
+  }
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
-      while (nextIndex < values.length) {
-        const index = nextIndex++
-        results[index] = await callback(values[index])
-      }
-    }),
+    Array.from({ length: Math.min(concurrency, values.length) }, runNext),
   )
   return results
 }
 
-export async function cleanupArchivedThumbnail(key: string) {
-  try {
-    if (await isThumbnailReferenced(key)) return false
-    console.info({ event: 'archived_thumbnail_retained', key })
-    return false
-  } catch (error) {
-    console.error({
-      event: 'archived_thumbnail_check_failed',
-      key,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return false
-  }
-}
-
 function hasImageSignature(bytes: Uint8Array, contentType: string) {
   if (contentType === 'image/png') {
-    return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
-      (byte, index) => bytes[index] === byte,
+    return (
+      bytes.length >= pngSignature.length &&
+      pngSignature.every((byte, index) => bytes[index] === byte)
     )
   }
 

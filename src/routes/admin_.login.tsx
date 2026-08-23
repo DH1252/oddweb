@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
 
 import {
   FieldLabel,
@@ -45,14 +45,20 @@ export const Route = createFileRoute('/admin_/login')({
 function AdminLoginPage() {
   const { redirect: redirectTo = '/admin' } = Route.useSearch()
   const { configured } = Route.useRouteContext()
+  const queryClient = useQueryClient()
+  const submittingRef = useRef(false)
   const [error, setError] = useState('')
   const loginMutation = useMutation({
     mutationFn: (credentials: { username: string; password: string }) =>
       loginAdmin({ data: credentials }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['oddweb', 'admin'] }),
   })
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!configured || loginMutation.isPending || submittingRef.current) return
+    submittingRef.current = true
     setError('')
     const form = new FormData(event.currentTarget)
     try {
@@ -60,8 +66,10 @@ function AdminLoginPage() {
         username: String(form.get('username') || ''),
         password: String(form.get('password') || ''),
       })
+      submittingRef.current = false
       window.location.assign(redirectTo)
     } catch (loginError) {
+      submittingRef.current = false
       setError(
         loginError instanceof Error
           ? loginError.message
@@ -109,6 +117,7 @@ function AdminLoginPage() {
                 autoComplete="username"
                 required
                 maxLength={100}
+                aria-label="Username"
                 className={fieldClass}
                 disabled={!configured || loginMutation.isPending}
               />
@@ -122,6 +131,7 @@ function AdminLoginPage() {
                 autoComplete="current-password"
                 required
                 maxLength={500}
+                aria-label="Password"
                 className={fieldClass}
                 disabled={!configured || loginMutation.isPending}
               />

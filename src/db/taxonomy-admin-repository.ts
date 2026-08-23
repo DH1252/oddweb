@@ -1,4 +1,7 @@
-import { shadowSampleRequirement, TaxonomyRepository } from '../taxonomy'
+import {
+  shadowSampleRequirement,
+  TaxonomyRepository,
+} from '../taxonomy/repository'
 import type { RuntimePolicy, TaxonomyState } from '../taxonomy/runtime-types'
 
 type BindValue = ArrayBuffer | ArrayBufferView | null | number | string
@@ -66,6 +69,7 @@ export type TaxonomyCandidateAdminRecord = {
   createdAt: number
   decidedAt: number | null
   evidence: Array<{
+    id: string
     siteId: number
     snippet: string
     confidenceMicros: number
@@ -264,12 +268,13 @@ function candidateEvidence(value: JsonValue | null) {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => {
     if (!item || Array.isArray(item) || typeof item !== 'object') return []
-    const { siteId, snippet, confidenceMicros, source } = item
-    return typeof siteId === 'number' &&
+    const { id, siteId, snippet, confidenceMicros, source } = item
+    return typeof id === 'string' &&
+      typeof siteId === 'number' &&
       typeof snippet === 'string' &&
       typeof confidenceMicros === 'number' &&
       typeof source === 'string'
-      ? [{ siteId, snippet, confidenceMicros, source }]
+      ? [{ id, siteId, snippet, confidenceMicros, source }]
       : []
   })
 }
@@ -385,12 +390,10 @@ export async function listTaxonomyProviders(
   input: { page: number; pageSize: number },
   db: D1Database,
 ): Promise<TaxonomyAdminPage<TaxonomyProviderAdminRecord>> {
-  const state = await new TaxonomyRepository(db).loadState()
-  const total = await count(
-    'SELECT count(*) AS total FROM taxonomy_provider_configs',
-    [],
-    db,
-  )
+  const [state, total] = await Promise.all([
+    new TaxonomyRepository(db).loadState(),
+    count('SELECT count(*) AS total FROM taxonomy_provider_configs', [], db),
+  ])
   const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT id, name, revision, provider_kind AS providerKind, endpoint, model,
@@ -436,12 +439,10 @@ export async function listTaxonomyPolicies(
   input: { page: number; pageSize: number },
   db: D1Database,
 ): Promise<TaxonomyAdminPage<TaxonomyPolicyAdminRecord>> {
-  const state = await new TaxonomyRepository(db).loadState()
-  const total = await count(
-    'SELECT count(*) AS total FROM taxonomy_policy_configs',
-    [],
-    db,
-  )
+  const [state, total] = await Promise.all([
+    new TaxonomyRepository(db).loadState(),
+    count('SELECT count(*) AS total FROM taxonomy_policy_configs', [], db),
+  ])
   const page = safePage(total, input.page, input.pageSize)
   const result = await rows(
     `SELECT id, revision, assignment_limit AS assignmentLimit,
@@ -615,15 +616,16 @@ export async function listTaxonomyCandidates(
             c.proposed_name AS proposedName, c.proposed_slug AS proposedSlug,
             c.payload, c.confidence_micros AS confidenceMicros,
             c.margin_micros AS marginMicros, c.rank, c.status,
-            c.decision_reason AS decisionReason, c.created_at AS createdAt,
-            c.decided_at AS decidedAt,
-             coalesce((SELECT json_group_array(json_object(
+             c.decision_reason AS decisionReason, c.created_at AS createdAt,
+             c.decided_at AS decidedAt,
+              coalesce((SELECT json_group_array(json_object(
+              'id', e.id,
               'siteId', e.site_id,
               'snippet', e.evidence_snippet,
               'confidenceMicros', e.confidence_micros,
               'source', e.source
              )) FROM (
-               SELECT site_id, evidence_snippet, confidence_micros, source
+               SELECT id, site_id, evidence_snippet, confidence_micros, source
                FROM taxonomy_concept_evidence
                WHERE normalized_concept = c.normalized_concept
                ORDER BY observed_at DESC, id DESC LIMIT 8

@@ -1,6 +1,6 @@
-import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { useAdminMutation } from '../use-admin-mutation'
 import { createDirectorySite } from '../../server/data'
 import { FieldLabel, Panel, fieldClass, primaryButtonClass } from '../oddweb'
 import { AdminField } from '../admin-ui'
@@ -8,6 +8,11 @@ import { TagInput } from '../tag-input'
 import { isCreatedSite, removeEmptyFile } from '../../lib/admin-parsers'
 
 import type { FormEvent } from 'react'
+
+function requireCreatedSite(result: unknown) {
+  if (!isCreatedSite(result)) throw new Error('The site was not created.')
+  return result
+}
 
 export function AddSiteSection({
   refresh,
@@ -21,24 +26,25 @@ export function AddSiteSection({
   onDirectoryChanged: () => void
 }) {
   const [entryTagInputKey, setEntryTagInputKey] = useState(0)
-  const createMutation = useMutation({
-    mutationFn: (form: FormData) => createDirectorySite({ data: form }),
+  const createMutation = useAdminMutation({
+    mutationFn: async (form: FormData) =>
+      requireCreatedSite(await createDirectorySite({ data: form })),
+    onSuccess: async () => {
+      onDirectoryChanged()
+      await refresh()
+    },
   })
 
   async function addEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (createMutation.isPending) return
     const form = event.currentTarget
     const formData = new FormData(form)
     removeEmptyFile(formData, 'image')
     const name = String(formData.get('name') || '').trim()
     showStatus(`Adding "${name}"...`)
     try {
-      const result: unknown = await createMutation.mutateAsync(formData)
-      if (!isCreatedSite(result)) {
-        throw new Error('The site was not created.')
-      }
-      onDirectoryChanged()
-      await refresh()
+      await createMutation.mutateAsync(formData)
       form.reset()
       setEntryTagInputKey((key) => key + 1)
       showStatus(`Added "${name}".`, 'success')
@@ -76,6 +82,7 @@ export function AddSiteSection({
               name="image"
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              aria-label="Site preview image"
               className="w-full"
             />
             <small className="mt-1 block text-muted">
@@ -89,6 +96,7 @@ export function AddSiteSection({
             <textarea
               id="entry-description"
               name="description"
+              aria-label="Card description"
               maxLength={220}
               required
               className={`${fieldClass} min-h-24 resize-y`}

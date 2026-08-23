@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
@@ -126,13 +126,11 @@ export const Route = createFileRoute('/sites/$slug')({
 function SiteDetailPage() {
   const { slug } = Route.useParams()
   const { data } = useSuspenseQuery(siteDetailQueryOptions(slug))
-  const [imageFailed, setImageFailed] = useState(false)
+  const [failedImageIdentity, setFailedImageIdentity] = useState<string | null>(
+    null,
+  )
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
-  const visitMutation = useMutation({
-    mutationFn: (input: { slug: string; deviceSignature?: string }) =>
-      recordSiteVisit({ data: input }),
-  })
   const {
     toggleVote: triggerVote,
     getOptimisticVoteState,
@@ -143,14 +141,15 @@ function SiteDetailPage() {
   })
 
   const recordEntry = useEffectEvent((entrySlug: string) => {
-    visitMutation.mutate({
-      slug: entrySlug,
-      deviceSignature: resolveClientDeviceSignature(),
-    })
+    void recordSiteVisit({
+      data: {
+        slug: entrySlug,
+        deviceSignature: resolveClientDeviceSignature(),
+      },
+    }).catch(() => {})
   })
 
   useEffect(() => {
-    setImageFailed(false)
     recordEntry(slug)
   }, [slug])
 
@@ -158,6 +157,8 @@ function SiteDetailPage() {
 
   const { site } = data
   const { previous, next } = data
+  const imageIdentity = `${site.slug}:${site.thumbnailKey ?? ''}`
+  const imageFailed = failedImageIdentity === imageIdentity
   const toggleVote = () => triggerVote(site.slug, site.votes)
 
   const {
@@ -199,7 +200,7 @@ function SiteDetailPage() {
                   sizes="(max-width: 767px) 100vw, 50vw"
                   fetchPriority="high"
                   decoding="async"
-                  onError={() => setImageFailed(true)}
+                  onError={() => setFailedImageIdentity(imageIdentity)}
                 />
               </picture>
             ) : (

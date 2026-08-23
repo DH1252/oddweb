@@ -260,16 +260,18 @@ export async function createSite(input: {
   const summary = input.description
   const notes = [input.description]
   const facts = [{ label: 'Address', value: new URL(input.url).hostname }]
-  const metadataHash = await hashSiteTaxonomyMetadata({
-    name: input.name,
-    url: input.url,
-    description: input.description,
-    summary,
-    notes,
-    facts,
-    rawTagHints,
-  })
-  const expectedTaxonomyVersion = await taxonomyPublishedVersion()
+  const [metadataHash, expectedTaxonomyVersion] = await Promise.all([
+    hashSiteTaxonomyMetadata({
+      name: input.name,
+      url: input.url,
+      description: input.description,
+      summary,
+      notes,
+      facts,
+      rawTagHints,
+    }),
+    taxonomyPublishedVersion(),
+  ])
   const lifecycle = await prepareSiteTaxonomyLifecycle(env.DB, {
     target: { kind: 'slug', value: slug },
     expectedTaxonomyVersion,
@@ -626,12 +628,12 @@ export async function saveTagDefinition(input: {
 }
 
 export async function mergeTagAsAlias(sourceId: number, targetSlug: string) {
-  const { createTaxonomyService } = await import('../taxonomy')
-  const target = await env.DB.prepare(
-    'SELECT id FROM tags WHERE slug = ? AND canonical = 1',
-  )
-    .bind(targetSlug)
-    .first<{ id: number }>()
+  const [{ createTaxonomyService }, target] = await Promise.all([
+    import('../taxonomy/service'),
+    env.DB.prepare('SELECT id FROM tags WHERE slug = ? AND canonical = 1')
+      .bind(targetSlug)
+      .first<{ id: number }>(),
+  ])
   if (!target) throw new Error('Valid source and target tags are required.')
   return createTaxonomyService(env).correctMerge({
     sourceId,

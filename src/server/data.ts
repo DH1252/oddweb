@@ -26,7 +26,7 @@ import {
   isSiteUnderVelocitySpike,
   readVisitorVotedSlugs,
 } from '../db/vote-repository'
-import { createTaxonomyService } from '../taxonomy'
+import { createTaxonomyService } from '../taxonomy/service'
 import { adminAuthMiddleware } from './auth'
 import {
   reconcileThumbnails,
@@ -258,7 +258,7 @@ export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
 
 const voteInput = z.object({
   slug: z.string().min(1).max(100),
-  requestId: z.string().uuid().optional(),
+  requestId: z.uuid().optional(),
   turnstileToken: z.string().max(2048).optional(),
 })
 
@@ -270,13 +270,15 @@ export const toggleSiteVote = createServerFn({ method: 'POST' })
     const requestId = data.requestId ?? crypto.randomUUID()
     const keys = await publicScopeKeys('vote', identity, getRequest())
     const identityScheme = `cookie-v1:${keys.exactIp}`
-    const isRepeatIpVote = await hasOtherActiveVoteOnSite(
-      env.DB,
-      data.slug,
-      identityScheme,
-      keys.voteIdentity,
-    )
-    const isSpike = await isSiteUnderVelocitySpike(env.DB, data.slug)
+    const [isRepeatIpVote, isSpike] = await Promise.all([
+      hasOtherActiveVoteOnSite(
+        env.DB,
+        data.slug,
+        identityScheme,
+        keys.voteIdentity,
+      ),
+      isSiteUnderVelocitySpike(env.DB, data.slug),
+    ])
     const requiresChallenge = isRepeatIpVote || isSpike
     if (requiresChallenge && env.TURNSTILE_SECRET) {
       if (!data.turnstileToken) {

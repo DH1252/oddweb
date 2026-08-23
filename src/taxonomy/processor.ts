@@ -6,6 +6,8 @@ import {
   runTaxonomyMaintenance as maintain,
 } from './runtime'
 
+export { processTaxonomyQueueBatch } from './runtime'
+
 export function processTaxonomyMessage(jobId: string) {
   return process({ jobId }, env)
 }

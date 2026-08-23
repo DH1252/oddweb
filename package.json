@@ -47,7 +47,8 @@
     "db:execute": "wrangler d1 execute oddweb --local",
     "db:execute:remote": "wrangler d1 execute oddweb --remote",
     "auth:hash": "node scripts/hash-admin-password.mjs",
-    "cf-typegen": "wrangler types --env-file .dev.vars.example"
+    "cf-typegen": "wrangler types --env-file .dev.vars.example",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
@@ -78,6 +79,7 @@
     "drizzle-kit": "^0.31.9",
     "eslint": "^10.8.1",
     "prettier": "^3.8.1",
+    "react-doctor": "^0.9.12",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",

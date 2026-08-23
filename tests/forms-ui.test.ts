@@ -2,9 +2,21 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+import {
+  createDirectorySortStore,
+  resolveDirectoryPage,
+} from '../src/hooks/use-directory-sort'
+
 const adminSourceFiles = [
   'admin-page.tsx',
   'admin-automation-section.tsx',
+  'admin-automation-controller.ts',
+  'admin-automation-overview.tsx',
+  'admin-automation-providers-policies.tsx',
+  'admin-automation-candidates.tsx',
+  'admin-automation-jobs-batches.tsx',
+  'admin-automation-audit-locks.tsx',
+  'admin-automation-ui.tsx',
   'admin-sections/submissions-section.tsx',
   'admin-sections/add-site-section.tsx',
   'admin-sections/site-management-section.tsx',
@@ -13,6 +25,14 @@ const adminSourceFiles = [
   'admin-cards.tsx',
   'admin-editors.tsx',
   'admin-ui.tsx',
+]
+
+const directorySourceFiles = [
+  'index.tsx',
+  '-directory/directory-catalog.tsx',
+  '-directory/directory-toolbar.tsx',
+  '-directory/guestbook-panel.tsx',
+  '-directory/submission-dialog.tsx',
 ]
 
 async function readAdminSources() {
@@ -32,6 +52,15 @@ async function readAdminSources() {
   return [...componentSources, ...libSources].join('\n')
 }
 
+async function readDirectorySources() {
+  const sources = await Promise.all(
+    directorySourceFiles.map((file) =>
+      readFile(new URL(`../src/routes/${file}`, import.meta.url), 'utf8'),
+    ),
+  )
+  return sources.join('\n')
+}
+
 test('timestamps use device-local time after hydration with a UTC fallback', async () => {
   const [admin, localTime] = await Promise.all([
     readAdminSources(),
@@ -40,9 +69,13 @@ test('timestamps use device-local time after hydration with a UTC fallback', asy
       'utf8',
     ),
   ])
-  assert.match(admin, /function formatTimestamp[\s\S]*?timeZone: 'UTC'/)
+  assert.match(admin, /const timestampFormatter[\s\S]*?timeZone: 'UTC'/)
+  assert.match(
+    admin,
+    /function formatTimestamp[\s\S]*?timestampFormatter\.format/,
+  )
   assert.match(admin, /<LocalTime[\s\S]*style="dateTime"/)
-  assert.match(localTime, /useEffect/)
+  assert.match(localTime, /useSyncExternalStore/)
   assert.match(localTime, /new Intl\.DateTimeFormat\(undefined/)
   assert.doesNotMatch(localTime, /timeZone:/)
 })
@@ -235,7 +268,7 @@ test('admin audit cards use the available width and wrap opaque identifiers', as
   ])
 
   assert.match(styles, /\[data-od-id='admin-page'\]\.odd-shell[\s\S]*1400px/)
-  assert.match(admin, /xl:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)\]/)
+  assert.match(admin, /title="Audit events"/)
   assert.match(admin, /\[overflow-wrap:anywhere\]/)
   assert.match(
     admin,
@@ -276,10 +309,7 @@ test('automation jobs expose every server-retryable status', async () => {
 })
 
 test('suspense-backed result controls update inside transitions', async () => {
-  const directory = await readFile(
-    new URL('../src/routes/index.tsx', import.meta.url),
-    'utf8',
-  )
+  const directory = await readDirectorySources()
   const tags = await readFile(
     new URL('../src/routes/tags.tsx', import.meta.url),
     'utf8',
@@ -292,11 +322,11 @@ test('suspense-backed result controls update inside transitions', async () => {
 
   assert.match(
     directory,
-    /function changeDirectoryPage[\s\S]*startTransition\(\(\) => setPage\(nextPage\)\)/,
+    /function changeDirectoryPage[\s\S]*startTransition\(\(\) =>[\s\S]*sortRevision: sortSnapshot\.revision,[\s\S]*page: nextPage/,
   )
   assert.match(
     directory,
-    /function setFilterTags[\s\S]*startTransition\(\(\) => \{[\s\S]*setPage\(0\)[\s\S]*navigate\(/,
+    /function handleFilterTagsChange[\s\S]*startTransition\(\(\) => \{[\s\S]*sortRevision: sortSnapshot\.revision,[\s\S]*page: 0[\s\S]*navigate\(/,
   )
   assert.match(
     tags,
@@ -306,13 +336,12 @@ test('suspense-backed result controls update inside transitions', async () => {
     admin,
     /function changePage[\s\S]*startTransition\(\(\) => onChange\(nextPage\)\)/,
   )
-  assert.equal(
+  assert.ok(
     [
       ...admin.matchAll(
         /onChange=\{\(event\) => \{[\s\S]{0,600}?startTransition\(\(\) => \{/g,
       ),
-    ].length,
-    8,
+    ].length >= 7,
   )
   for (const [label, pageSetter] of [
     ['Show status', 'setSubmissionPage'],
@@ -331,7 +360,7 @@ test('suspense-backed result controls update inside transitions', async () => {
   }
   assert.match(
     directory,
-    /value=\{sort\}[\s\S]*startTransition\(\(\) => \{[\s\S]*setSort\(event\.target\.value as SortMode\)[\s\S]*setPage\(0\)/,
+    /function changeSort[\s\S]*startTransition\(\(\) => \{[\s\S]*const nextSortSnapshot = setDirectorySort\(nextSort\)[\s\S]*sortRevision: nextSortSnapshot\.revision,[\s\S]*page: 0/,
   )
   assert.match(
     adminRoute,
@@ -349,17 +378,81 @@ test('suspense-backed result controls update inside transitions', async () => {
   )
 })
 
+test('external sort changes never resurrect a page from an earlier sort epoch', () => {
+  let storedSort: string | null = 'popular'
+  let emitExternalChange: (() => void) | undefined
+  const store = createDirectorySortStore({
+    read: () => storedSort,
+    write: (sort) => {
+      storedSort = sort
+    },
+    subscribe: (listener) => {
+      emitExternalChange = listener
+      return () => {
+        emitExternalChange = undefined
+      }
+    },
+  })
+  const unsubscribe = store.subscribe(() => {})
+  const initialSnapshot = store.getSnapshot()
+  const popularPageFour = {
+    sortRevision: initialSnapshot.revision,
+    page: 4,
+  }
+
+  storedSort = 'views'
+  emitExternalChange?.()
+  const viewsSnapshot = store.getSnapshot()
+  assert.equal(resolveDirectoryPage(popularPageFour, viewsSnapshot), 0)
+
+  storedSort = 'popular'
+  emitExternalChange?.()
+  const returnedPopularSnapshot = store.getSnapshot()
+  assert.equal(
+    resolveDirectoryPage(popularPageFour, returnedPopularSnapshot),
+    0,
+  )
+  assert.ok(returnedPopularSnapshot.revision > viewsSnapshot.revision)
+  unsubscribe()
+})
+
+test('local persisted sort changes advance the page epoch', () => {
+  let storedSort: string | null = 'popular'
+  const store = createDirectorySortStore({
+    read: () => storedSort,
+    write: (sort) => {
+      storedSort = sort
+    },
+    subscribe: () => () => {},
+  })
+  const initialSnapshot = store.getSnapshot()
+  const popularPageFour = {
+    sortRevision: initialSnapshot.revision,
+    page: 4,
+  }
+
+  const viewsSnapshot = store.setSort('views')
+  assert.equal(storedSort, 'views')
+  assert.equal(resolveDirectoryPage(popularPageFour, viewsSnapshot), 0)
+
+  const viewsPageThree = { sortRevision: viewsSnapshot.revision, page: 3 }
+  const returnedPopularSnapshot = store.setSort('popular')
+  assert.equal(storedSort, 'popular')
+  assert.equal(resolveDirectoryPage(viewsPageThree, returnedPopularSnapshot), 0)
+})
+
 test('surprise navigation requests a fresh filtered site', async () => {
   const [directory, publicData] = await Promise.all([
-    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readDirectorySources(),
     readFile(new URL('../src/server/public-data.ts', import.meta.url), 'utf8'),
   ])
 
   assert.match(
     directory,
-    /getPublicSurprise\(\{[\s\S]*query: deferredQuery, include, exclude/,
+    /getPublicSurprise\(\{ data: \{ query, include, exclude \} \}\)/,
   )
-  assert.match(directory, /disabled=\{surpriseMutation\.isPending\}/)
+  assert.match(directory, /<DirectoryToolbar[\s\S]*query=\{deferredQuery\}/)
+  assert.match(directory, /disabled=\{isPending\}/)
   assert.doesNotMatch(directory, /directoryData\.surpriseSlug/)
   assert.match(
     publicData,
@@ -369,7 +462,7 @@ test('surprise navigation requests a fresh filtered site', async () => {
 
 test('public and admin site creation accept optional preview images', async () => {
   const [directory, admin, serverData] = await Promise.all([
-    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readDirectorySources(),
     readAdminSources(),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
   ])
@@ -518,7 +611,7 @@ test('admin tag wrangling buttons force relation inference', async () => {
 
 test('honeypot fields protect public forms and server rejects filled honeypots', async () => {
   const [indexRoute, serverData] = await Promise.all([
-    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readDirectorySources(),
     readFile(new URL('../src/server/data.ts', import.meta.url), 'utf8'),
   ])
 

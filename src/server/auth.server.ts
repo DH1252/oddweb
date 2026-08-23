@@ -2,7 +2,7 @@ import {
   getRequest,
   setResponseHeader,
   setResponseStatus,
-  useSession,
+  useSession as getServerSession,
 } from '@tanstack/react-start/server'
 import { pbkdf2, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
@@ -46,8 +46,10 @@ export async function authenticateAdmin(data: {
 }) {
   const config = getAuthConfig(true)
   await cleanupAuthRecords()
-  const limitKey = await loginLimitKey(config)
-  const globalLimitKey = await globalLoginLimitKey(config)
+  const [limitKey, globalLimitKey] = await Promise.all([
+    loginLimitKey(config),
+    globalLoginLimitKey(config),
+  ])
   const [ipLimit, globalLimit] = await Promise.all([
     consumeLoginLimit(limitKey, 8, loginWindowSeconds),
     consumeLoginLimit(globalLimitKey, 40, loginWindowSeconds),
@@ -65,7 +67,7 @@ export async function authenticateAdmin(data: {
   }
 
   await clearLoginLimits([limitKey, globalLimitKey])
-  const cookieSession = await useSession<AdminSession>(
+  const cookieSession = await getServerSession<AdminSession>(
     sessionConfig(config.sessionSecret),
   )
   if (cookieSession.data.sessionId) {
@@ -85,7 +87,7 @@ export async function authenticateAdmin(data: {
 export async function destroyAdminSession() {
   const config = getAuthConfig(false)
   if (config) {
-    const session = await useSession<AdminSession>(
+    const session = await getServerSession<AdminSession>(
       sessionConfig(config.sessionSecret),
     )
     if (session.data.sessionId) await revokeAdminSession(session.data.sessionId)
@@ -105,7 +107,7 @@ export async function requireAdmin() {
 }
 
 async function validAdminSession(config: AuthConfig) {
-  const cookieSession = await useSession<AdminSession>(
+  const cookieSession = await getServerSession<AdminSession>(
     sessionConfig(config.sessionSecret),
   )
   const sessionId = cookieSession.data.sessionId

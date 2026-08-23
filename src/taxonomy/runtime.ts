@@ -1,3 +1,4 @@
+import { mapSeries } from '../lib/async'
 import { siteDecisionSchema } from './contracts'
 import type { SiteTagDecision } from './contracts'
 import { decryptStoredProviderCredential } from './encryption'
@@ -38,6 +39,13 @@ Evidence must quote or closely identify supplied site content.`
 
 const defaultLeaseSeconds = 900
 const providerDeadlineMarginMs = 30_000
+
+export function processTaxonomyQueueBatch<T>(
+  messages: readonly T[],
+  process: (message: T) => Promise<void>,
+): Promise<void> {
+  return mapSeries(messages, process).then(() => undefined)
+}
 
 function unixSeconds(options: RuntimeOptions): number {
   return Math.floor((options.now?.() ?? Date.now()) / 1_000)
@@ -418,57 +426,67 @@ async function settleDecisions(input: {
   const settlements: Array<
     Parameters<TaxonomyRepository['applyAssignments']>[0][number]
   > = []
-  for (const [rank, decision] of validated.decisions.entries()) {
-    const tag = tagById.get(decision.tagId)
-    if (!tag) continue
-    const action = decision.decision === 'assign' ? 'add' : 'remove'
-    const locked =
-      tag.automationLocked ||
-      activeLocks.has(`site:${input.snapshot.site.id}:tag:${tag.id}`) ||
-      activeLocks.has(`tag:${tag.id}`)
-    const mayMutate =
-      validated.agreement &&
-      !locked &&
-      (await permitsMutation(
-        input.stateMode,
-        `${input.snapshot.site.id}:${input.job.inputHash}:${tag.id}:${action}`,
-        input.policy.rolloutBasisPoints,
-      ))
-    const outcome = locked
-      ? 'locked'
-      : !validated.agreement
-        ? 'conservative'
-        : mayMutate
-          ? 'applied'
-          : 'shadow'
-    const candidateKey = `existing:${tag.id}:${decision.decision}:attempt:${validated.provider.attemptId}`
-    const candidateId = `candidate:${(await sha256Hex(`${input.job.id}:${candidateKey}`)).slice(0, 40)}`
-    const suffix = (
-      await sha256Hex(`${input.job.id}:${candidateKey}:${outcome}:decision`)
-    ).slice(0, 40)
-    settlements.push({
-      job: input.job,
-      site: input.snapshot.site,
-      tag,
-      candidateId,
-      attemptId: validated.provider.attemptId,
-      candidateKey,
-      payload: decision,
-      marginMicros: Math.round(decision.margin * 1_000_000),
-      rank,
-      decisionId: `decision:${suffix}`,
-      batchId: `classification:${input.job.id}`,
-      eventId: `assignment-event:${suffix}`,
-      action,
-      outcome,
-      confidenceMicros: Math.round(decision.confidence * 1_000_000),
-      reason: decision.evidence,
-      providerConfigId: validated.provider.config.id,
-      providerModel: validated.provider.config.model,
-      policy: input.policy,
-      releaseSha: input.env.RELEASE_SHA,
-      now: input.now,
-    })
+  const jobId = input.job.id
+  const siteId = input.snapshot.site.id
+  const preparedSettlements = await Promise.all(
+    validated.decisions.map(async (decision, rank) => {
+      const tag = tagById.get(decision.tagId)
+      if (!tag) return null
+      const action: 'add' | 'remove' =
+        decision.decision === 'assign' ? 'add' : 'remove'
+      const locked =
+        tag.automationLocked ||
+        activeLocks.has(`site:${siteId}:tag:${tag.id}`) ||
+        activeLocks.has(`tag:${tag.id}`)
+      const candidateKey = `existing:${tag.id}:${decision.decision}:attempt:${validated.provider.attemptId}`
+      const [mayMutate, candidateHash] = await Promise.all([
+        validated.agreement && !locked
+          ? permitsMutation(
+              input.stateMode,
+              `${siteId}:${input.job.inputHash}:${tag.id}:${action}`,
+              input.policy.rolloutBasisPoints,
+            )
+          : Promise.resolve(false),
+        sha256Hex(`${jobId}:${candidateKey}`),
+      ])
+      const outcome: 'locked' | 'conservative' | 'applied' | 'shadow' = locked
+        ? 'locked'
+        : !validated.agreement
+          ? 'conservative'
+          : mayMutate
+            ? 'applied'
+            : 'shadow'
+      const candidateId = `candidate:${candidateHash.slice(0, 40)}`
+      const suffix = (
+        await sha256Hex(`${jobId}:${candidateKey}:${outcome}:decision`)
+      ).slice(0, 40)
+      return {
+        job: input.job,
+        site: input.snapshot.site,
+        tag,
+        candidateId,
+        attemptId: validated.provider.attemptId,
+        candidateKey,
+        payload: decision,
+        marginMicros: Math.round(decision.margin * 1_000_000),
+        rank,
+        decisionId: `decision:${suffix}`,
+        batchId: `classification:${input.job.id}`,
+        eventId: `assignment-event:${suffix}`,
+        action,
+        outcome,
+        confidenceMicros: Math.round(decision.confidence * 1_000_000),
+        reason: decision.evidence,
+        providerConfigId: validated.provider.config.id,
+        providerModel: validated.provider.config.model,
+        policy: input.policy,
+        releaseSha: input.env.RELEASE_SHA,
+        now: input.now,
+      }
+    }),
+  )
+  for (const settlement of preparedSettlements) {
+    if (settlement) settlements.push(settlement)
   }
   if (validated.agreement) {
     mutations = settlements.length
@@ -868,15 +886,19 @@ export async function dispatchTaxonomyOutbox(
     now,
     60,
   )
-  let dispatched = 0
-  for (const row of rows) {
+  const results = await mapSeries(rows, async (row) => {
     try {
       await env.TAXONOMY_QUEUE.send({ jobId: row.jobId })
       await repository.completeOutbox(row.id, row.token, now)
-      dispatched += 1
+      return true
     } catch (error) {
       await repository.failOutbox(row.id, row.token, now + 60, summary(error))
+      return false
     }
+  })
+  let dispatched = 0
+  for (const sent of results) {
+    if (sent) dispatched += 1
   }
   return dispatched
 }
@@ -887,8 +909,14 @@ export async function runTaxonomyMaintenance(
 ): Promise<MaintenanceResult> {
   const repository = new TaxonomyRepository(env.DB, env.TAXONOMY_QUEUE)
   const now = unixSeconds(options)
-  const maintenance = await repository.maintenance(now)
-  const state = await repository.loadState()
+  const { maintenance, state } = await repository
+    .maintenance(now)
+    .then((maintenanceResult) =>
+      repository.loadState().then((currentState) => ({
+        maintenance: maintenanceResult,
+        state: currentState,
+      })),
+    )
   const policy = await repository.loadPolicy(state.activePolicyConfigId)
   await evaluateCircuit(repository, policy, now)
   const outboxDispatched = await dispatchTaxonomyOutbox(env, {

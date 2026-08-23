@@ -1,4 +1,4 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { adminGuestbookQueryOptions } from '../../queries/oddweb'
@@ -6,6 +6,17 @@ import { setGuestbookEntryVisibility } from '../../server/data'
 import { Panel, buttonClass } from '../oddweb'
 import { AdminPagination, Empty } from '../admin-ui'
 import { LocalTime } from '../local-time'
+import { useAdminMutation } from '../use-admin-mutation'
+
+function requireGuestbookVisibility(
+  result: { id: number; hidden: boolean },
+  id: number,
+  hidden: boolean,
+) {
+  if (result.id !== id || result.hidden !== hidden) {
+    throw new Error('Guestbook visibility was not updated.')
+  }
+}
 
 export function GuestbookSection({
   refresh,
@@ -20,9 +31,16 @@ export function GuestbookSection({
   const { data: guestbookResults } = useSuspenseQuery(
     adminGuestbookQueryOptions(guestbookPage),
   )
-  const guestbookMutation = useMutation({
-    mutationFn: (input: { id: number; hidden: boolean }) =>
-      setGuestbookEntryVisibility({ data: input }),
+  const guestbookMutation = useAdminMutation({
+    mutationFn: async (input: { id: number; hidden: boolean }) => {
+      const result = await setGuestbookEntryVisibility({ data: input })
+      requireGuestbookVisibility(result, input.id, input.hidden)
+      return result
+    },
+    onSuccess: async () => {
+      setGuestbookPage(0)
+      await refresh()
+    },
   })
 
   async function changeGuestbookVisibility(id: number, hidden: boolean) {
@@ -33,12 +51,7 @@ export function GuestbookSection({
     )
       return
     try {
-      const result = await guestbookMutation.mutateAsync({ id, hidden })
-      if (result.id !== id || result.hidden !== hidden) {
-        throw new Error('Guestbook visibility was not updated.')
-      }
-      setGuestbookPage(0)
-      await refresh()
+      await guestbookMutation.mutateAsync({ id, hidden })
       showStatus(
         hidden ? 'Guestbook entry hidden.' : 'Guestbook entry restored.',
         'success',

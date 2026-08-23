@@ -159,6 +159,7 @@ export function SiteEditor({
               name="image"
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              aria-label="Replace thumbnail"
               className="w-full"
             />
             <small className="mt-1 block text-muted">
@@ -304,7 +305,7 @@ export function TagEditor({
   )
 }
 
-export const accentOptions = [
+const accentOptions = [
   ['from-[#63396d] to-[#d27a3e]', 'Purple / orange'],
   ['from-[#315c51] to-[#79a381]', 'Green'],
   ['from-[#38578d] to-[#eabc52]', 'Blue / gold'],

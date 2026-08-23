@@ -229,13 +229,6 @@ export function jsonLd(value: object) {
     .replaceAll('>', '\\u003e')
 }
 
-export function noindexMeta(follow = false) {
-  return {
-    name: 'robots',
-    content: `noindex, ${follow ? 'follow' : 'nofollow'}`,
-  } as const
-}
-
 export const notFoundHeaders = {
   'Cache-Control': 'no-store',
   'X-Robots-Tag': 'noindex, nofollow',

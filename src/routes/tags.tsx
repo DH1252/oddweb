@@ -31,6 +31,15 @@ export const Route = createFileRoute('/tags')({
   shouldReload: false,
   validateSearch: normalizePublicFilterSearch,
   loaderDeps: ({ search }) => publicFilterLoaderDeps(search),
+  loader: ({ context, deps }) =>
+    context.queryClient.fetchQuery(
+      tagPageQueryOptions({
+        query: '',
+        include: deps.include,
+        exclude: deps.exclude,
+        page: 0,
+      }),
+    ),
   head: ({ match }) => ({
     meta: [
       { title: tagsTitle },
@@ -53,15 +62,6 @@ export const Route = createFileRoute('/tags')({
     ],
     links: [{ rel: 'canonical', href: absoluteUrl('/tags') }],
   }),
-  loader: ({ context, deps }) =>
-    context.queryClient.fetchQuery(
-      tagPageQueryOptions({
-        query: '',
-        include: deps.include,
-        exclude: deps.exclude,
-        page: 0,
-      }),
-    ),
   component: TagsPage,
 })
 
@@ -70,7 +70,8 @@ function TagsPage() {
     Route.useSearch()
   const navigate = useNavigate({ from: '/tags' })
   const include = rawInclude
-  const exclude = rawExclude.filter((tag) => !include.includes(tag))
+  const includeSet = new Set(include)
+  const exclude = rawExclude.filter((tag) => !includeSet.has(tag))
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
   const [page, setPage] = useState(0)
@@ -84,20 +85,24 @@ function TagsPage() {
         page,
       }),
       placeholderData: keepPreviousData,
-    }).data ?? initialTagPage!
+    }).data ?? initialTagPage
   const visibleTags = tagPage.tags
   const pageCount = Math.max(1, Math.ceil(tagPage.total / tagPage.pageSize))
   const safePage = Math.min(page, pageCount - 1)
 
-  function setFilterTags(type: 'include' | 'exclude', nextTags: string[]) {
+  function handleFilterTagsChange(
+    type: 'include' | 'exclude',
+    nextTags: string[],
+  ) {
+    const nextTagSet = new Set(nextTags)
     const nextInclude =
       type === 'include'
         ? nextTags
-        : include.filter((tag) => !nextTags.includes(tag))
+        : include.filter((tag) => !nextTagSet.has(tag))
     const nextExclude =
       type === 'exclude'
         ? nextTags
-        : exclude.filter((tag) => !nextTags.includes(tag))
+        : exclude.filter((tag) => !nextTagSet.has(tag))
     startTransition(() => {
       setPage(0)
       navigate({
@@ -109,7 +114,7 @@ function TagsPage() {
     })
   }
 
-  function clearFilters() {
+  function handleClearFilters() {
     startTransition(() => {
       setPage(0)
       navigate({ search: {} })
@@ -157,14 +162,14 @@ function TagsPage() {
             <TagInput
               label="Tags to include"
               value={include}
-              onChange={(tags) => setFilterTags('include', tags)}
+              onChange={(tags) => handleFilterTagsChange('include', tags)}
               tone="include"
               placeholder="Include a tag..."
             />
             <TagInput
               label="Tags to exclude"
               value={exclude}
-              onChange={(tags) => setFilterTags('exclude', tags)}
+              onChange={(tags) => handleFilterTagsChange('exclude', tags)}
               tone="exclude"
               placeholder="Exclude a tag..."
             />
@@ -180,7 +185,7 @@ function TagsPage() {
                 <button
                   type="button"
                   className={buttonClass}
-                  onClick={clearFilters}
+                  onClick={handleClearFilters}
                 >
                   Clear filters
                 </button>
@@ -257,18 +262,18 @@ function TagsPage() {
                   <button
                     type="button"
                     className={`${buttonClass} max-w-full`}
-                    aria-pressed={include.includes(tag.slug)}
+                    aria-pressed={includeSet.has(tag.slug)}
                     onClick={() =>
-                      setFilterTags(
+                      handleFilterTagsChange(
                         'include',
-                        include.includes(tag.slug)
+                        includeSet.has(tag.slug)
                           ? include.filter((value) => value !== tag.slug)
                           : [...include, tag.slug],
                       )
                     }
                   >
                     <span className="truncate">
-                      {include.includes(tag.slug)
+                      {includeSet.has(tag.slug)
                         ? `Remove ${tag.name} filter`
                         : `Include ${tag.name}`}
                     </span>

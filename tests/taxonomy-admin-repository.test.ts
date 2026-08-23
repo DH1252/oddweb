@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  listTaxonomyCandidates,
   listTaxonomyPolicies,
   listTaxonomyProviders,
   readTaxonomyDashboard,
 } from '../src/db/taxonomy-admin-repository'
 import { TaxonomyService } from '../src/taxonomy'
-import { masterKey, migratedTaxonomyDb } from './taxonomy-test-db'
+import { insertSite, masterKey, migratedTaxonomyDb } from './taxonomy-test-db'
 
 const policy = {
   assignmentLimit: 12,
@@ -113,4 +114,51 @@ test('provider and policy admin records paginate and never expose credentials', 
   assert.equal(clampedProviders.items.length, 1)
   assert.equal(clampedPolicies.page, 1)
   assert.equal(clampedPolicies.items.length, 2)
+})
+
+test('candidate evidence exposes its stable database identity', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  const taxonomy = service(db)
+  await insertSite(db, 1)
+  const jobId = await taxonomy.forceConceptReassessment('shared evidence')
+  assert.ok(jobId)
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO taxonomy_candidates
+         (id, job_id, candidate_key, kind, normalized_concept, proposed_name,
+          proposed_slug, payload, confidence_micros, rank)
+         VALUES ('candidate-with-evidence', ?, 'concept:shared-evidence',
+                 'novel_concept', 'shared evidence', 'Shared Evidence',
+                 'shared-evidence', '{}', 950000, 0)`,
+      )
+      .bind(jobId),
+    db.prepare(
+      `INSERT INTO taxonomy_concept_evidence
+       (id, normalized_concept, site_id, input_hash, source_key, source,
+        evidence_hash, evidence_snippet, confidence_micros, accepted, observed_at)
+       VALUES ('evidence-a', 'shared evidence', 1, '${'a'.repeat(64)}',
+               'source-a', 'deterministic', '${'c'.repeat(64)}',
+               'Identical visible evidence', 900000, 1, 1000)`,
+    ),
+    db.prepare(
+      `INSERT INTO taxonomy_concept_evidence
+       (id, normalized_concept, site_id, input_hash, source_key, source,
+        evidence_hash, evidence_snippet, confidence_micros, accepted, observed_at)
+       VALUES ('evidence-b', 'shared evidence', 1, '${'b'.repeat(64)}',
+               'source-b', 'deterministic', '${'d'.repeat(64)}',
+               'Identical visible evidence', 900000, 1, 1000)`,
+    ),
+  ])
+
+  const candidates = await listTaxonomyCandidates(
+    { page: 0, pageSize: 10, status: null, kind: null },
+    db,
+  )
+
+  assert.deepEqual(
+    candidates.items[0]?.evidence.map((evidence) => evidence.id).sort(),
+    ['evidence-a', 'evidence-b'],
+  )
 })

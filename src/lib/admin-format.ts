@@ -1,6 +1,12 @@
 import type { TaxonomyMode } from './taxonomy-types'
 import { canTransitionMode } from './admin-parsers'
 
+const timestampFormatter = new Intl.DateTimeFormat('en', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'UTC',
+})
+
 export function optionalBasisPoints(value: number | null) {
   return value === null ? 'not configured' : basisPoints(value)
 }
@@ -67,11 +73,7 @@ export function basisPoints(value: number) {
 export function formatTimestamp(value: unknown) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return '-'
-  return new Intl.DateTimeFormat('en', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  }).format(new Date(numeric * 1_000))
+  return timestampFormatter.format(new Date(numeric * 1_000))
 }
 
 export function commaList(value: FormDataEntryValue | null) {

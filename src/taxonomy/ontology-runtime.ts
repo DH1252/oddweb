@@ -1,3 +1,4 @@
+import { mapSeries } from '../lib/async'
 import {
   ontologyProposalResponseSchema,
   ontologyProposalSchema,
@@ -561,13 +562,12 @@ export async function processOntologyJob(input: {
     }
   }
 
-  const context = await input.repository.ontologyContext(
-    input.job.conceptKey,
-    500,
-  )
-  const providers = await input.repository.loadProviderRoute(
-    input.job.providerConfigId ?? input.state.activeProviderConfigId,
-  )
+  const [context, providers] = await Promise.all([
+    input.repository.ontologyContext(input.job.conceptKey, 500),
+    input.repository.loadProviderRoute(
+      input.job.providerConfigId ?? input.state.activeProviderConfigId,
+    ),
+  ])
   const primary = providers.filter(
     ({ routingRole }) => routingRole !== 'consensus',
   )
@@ -689,12 +689,12 @@ export async function processOntologyJob(input: {
     )
     if (mutationPermitted) selected.push({ candidateId, proposal })
   }
-  for (const { candidateId } of selected.slice(1)) {
+  await mapSeries(selected.slice(1), async ({ candidateId }) => {
     await new TaxonomyService(
       input.env,
       input.options,
     ).enqueueOntologyCandidate(candidateId)
-  }
+  })
   for (const { candidateId, proposal } of selected.slice(0, 1)) {
     const service = new TaxonomyService(input.env, input.options)
     await service.publishOntology(
