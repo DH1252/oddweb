@@ -88,7 +88,7 @@
     "binding": "IMAGES",
   },
   "cache": {
-    "enabled": true,
+    "enabled": false,
   },
   "d1_databases": [
     {

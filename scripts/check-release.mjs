@@ -63,6 +63,14 @@ if (
 if (parsedWranglerConfig.workers_dev !== false) {
   failures.push('production workers_dev must be disabled')
 }
+if (
+  parsedWranglerConfig.cache?.enabled === true ||
+  parsedWranglerConfig.exports?.default?.cache?.enabled === true
+) {
+  failures.push(
+    'production default Worker cache must be disabled because it routes identity-dependent requests',
+  )
+}
 if (!parsedWranglerConfig.secrets?.required?.includes('TURNSTILE_SECRET')) {
   failures.push('TURNSTILE_SECRET must be declared as a required secret')
 }

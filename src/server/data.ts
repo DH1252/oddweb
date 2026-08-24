@@ -248,8 +248,10 @@ export const recordSiteVisit = createServerFn({ method: 'POST' })
     })
   })
 
-export const getMyVotedSlugs = createServerFn({ method: 'GET' }).handler(
+export const getMyVotedSlugs = createServerFn({ method: 'POST' }).handler(
   async () => {
+    setResponseHeader('Cache-Control', 'private, no-store, max-age=0')
+    setResponseHeader('Pragma', 'no-cache')
     const identity = await getPublicIdentity()
     const keys = await publicScopeKeys('vote', identity, getRequest())
     return { slugs: await readVisitorVotedSlugs(env.DB, keys.voteIdentity) }

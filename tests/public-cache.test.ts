@@ -1,7 +1,41 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { cachedPublicRead, publicCacheKey } from '../src/server/public-cache'
+
+test('the routing entrypoint cannot cache identity-dependent responses', async () => {
+  const source = await readFile(
+    new URL('../wrangler.jsonc', import.meta.url),
+    'utf8',
+  )
+  const config = JSON.parse(
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/,\s*([}\]])/g, '$1'),
+  ) as {
+    cache?: { enabled?: boolean }
+    exports?: { default?: { cache?: { enabled?: boolean } } }
+  }
+
+  assert.notEqual(config.cache?.enabled, true)
+  assert.notEqual(config.exports?.default?.cache?.enabled, true)
+})
+
+test('the voter identity read bypasses shared HTTP caches', async () => {
+  const source = await readFile(
+    new URL('../src/server/data.ts', import.meta.url),
+    'utf8',
+  )
+  const voterRead = source.slice(
+    source.indexOf('export const getMyVotedSlugs'),
+    source.indexOf('const voteInput'),
+  )
+
+  assert.match(voterRead, /createServerFn\(\{ method: 'POST' \}\)/)
+  assert.match(voterRead, /Cache-Control', 'private, no-store, max-age=0'/)
+})
 
 test('public read cache reuses a matching edge response', async () => {
   const entries = new Map<string, Response>()
