@@ -15,6 +15,7 @@ import {
 } from '../data/tags'
 import {
   directoryQueryOptions,
+  myVotesQueryOptions,
   popularQueryOptions,
   publicSupportQueryOptions,
   turnstileConfigQueryOptions,
@@ -62,6 +63,7 @@ export const Route = createFileRoute('/')({
       publicSupportQueryOptions(),
     )
     const popularSites = context.queryClient.fetchQuery(popularQueryOptions(0))
+    const myVotes = context.queryClient.fetchQuery(myVotesQueryOptions())
     const preference =
       typeof document === 'undefined'
         ? await getDirectorySortPreference()
@@ -78,6 +80,7 @@ export const Route = createFileRoute('/')({
       ),
       supportData,
       popularSites,
+      myVotes,
     ])
     return { directory, preference }
   },

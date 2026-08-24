@@ -71,7 +71,11 @@ test('detail navigation fetches an invalidated cached null before deciding 404',
   )
   assert.match(
     source,
-    /await context\.queryClient\.fetchQuery\([\s\S]*siteDetailQueryOptions/,
+    /Promise\.allSettled\(\[[\s\S]*fetchQuery\(siteDetailQueryOptions[\s\S]*fetchQuery\(myVotesQueryOptions/,
+  )
+  assert.match(
+    source,
+    /const data = detailResult\.value[\s\S]*if \(!data\) throw notFound[\s\S]*voterStateResult\.status === 'rejected'/,
   )
 })
 

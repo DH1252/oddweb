@@ -17,7 +17,7 @@ export function Pagination({
     onPageChange(nextPage)
     if (focusTargetId) {
       window.requestAnimationFrame(() =>
-        document.getElementById(focusTargetId)?.focus(),
+        document.getElementById(focusTargetId)?.focus({ preventScroll: true }),
       )
     }
   }

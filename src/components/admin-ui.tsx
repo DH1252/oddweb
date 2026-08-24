@@ -201,7 +201,9 @@ export function AdminPagination({
   ).sort((a, b) => a - b)
   function changePage(nextPage: number) {
     startTransition(() => onChange(nextPage))
-    requestAnimationFrame(() => document.getElementById(focusTargetId)?.focus())
+    requestAnimationFrame(() =>
+      document.getElementById(focusTargetId)?.focus({ preventScroll: true }),
+    )
   }
   if (pageCount === 1) return null
   return (

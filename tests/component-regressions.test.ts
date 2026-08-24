@@ -102,3 +102,28 @@ test('automation sections use grouped interfaces without a context locator', asy
     assert.match(controller, new RegExp(`${group}: \\{`))
   }
 })
+
+test('pagination focus preserves the current scroll position', async () => {
+  const [publicPagination, adminPagination] = await Promise.all([
+    readFile(
+      new URL('../src/routes/-directory/pagination.tsx', import.meta.url),
+      'utf8',
+    ),
+    componentSource('admin-ui.tsx'),
+  ])
+
+  assert.match(publicPagination, /\.focus\(\{ preventScroll: true \}\)/)
+  assert.match(adminPagination, /\.focus\(\{ preventScroll: true \}\)/)
+})
+
+test('vote routes hydrate voter state before rendering vote buttons', async () => {
+  const [directoryRoute, siteRoute] = await Promise.all([
+    readFile(new URL('../src/routes/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/sites.$slug.tsx', import.meta.url), 'utf8'),
+  ])
+
+  for (const route of [directoryRoute, siteRoute]) {
+    assert.match(route, /myVotesQueryOptions/)
+    assert.match(route, /queryClient\.fetchQuery\(myVotesQueryOptions\(\)\)/)
+  }
+})

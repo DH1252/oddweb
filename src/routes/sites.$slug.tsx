@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 
 import { PageShell, Panel, SiteFooter, SiteHeader } from '../components/oddweb'
 import { thumbnailSrcSet, thumbnailUrl } from '../lib/thumbnails'
-import { siteDetailQueryOptions } from '../queries/oddweb'
+import { myVotesQueryOptions, siteDetailQueryOptions } from '../queries/oddweb'
 import { recordSiteVisit } from '../server/data'
 import { useSiteVote } from '../hooks/use-site-vote'
 import { VoteChallengeDialog } from '../components/vote-challenge-dialog'
@@ -20,10 +20,14 @@ import {
 
 export const Route = createFileRoute('/sites/$slug')({
   loader: async ({ context, params }) => {
-    const data = await context.queryClient.fetchQuery(
-      siteDetailQueryOptions(params.slug),
-    )
+    const [detailResult, voterStateResult] = await Promise.allSettled([
+      context.queryClient.fetchQuery(siteDetailQueryOptions(params.slug)),
+      context.queryClient.fetchQuery(myVotesQueryOptions()),
+    ])
+    if (detailResult.status === 'rejected') throw detailResult.reason
+    const data = detailResult.value
     if (!data) throw notFound({ headers: notFoundHeaders })
+    if (voterStateResult.status === 'rejected') throw voterStateResult.reason
     return data
   },
   head: ({ loaderData }) => {
