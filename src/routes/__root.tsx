@@ -13,6 +13,7 @@ import {
   seoHead,
   websiteStructuredData,
 } from '../lib/seo'
+import { directorySortMigrationScript } from '../lib/directory-sort'
 
 import appCss from '../styles.css?url'
 
@@ -136,6 +137,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: directorySortMigrationScript() }}
+        />
         <HeadContent />
       </head>
       <body>

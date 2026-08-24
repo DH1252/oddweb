@@ -10,6 +10,10 @@ import {
   publicTagSearchMaxLength,
   tagInputMaxLength,
 } from '../data/tags'
+import {
+  directorySortModes,
+  readDirectorySortCookie,
+} from '../lib/directory-sort'
 
 import {
   readPublicDirectoryPage,
@@ -38,9 +42,7 @@ const directoryInput = z.object({
   query: z.string().max(publicDirectorySearchMaxLength).default(''),
   include: tagsInput,
   exclude: tagsInput,
-  sort: z
-    .enum(['popular', 'views', 'newest', 'oldest', 'tags', 'az', 'za'])
-    .default('popular'),
+  sort: z.enum(directorySortModes).default('popular'),
   page: z.number().int().min(0).max(10_000).default(0),
 })
 const tagPageInput = z.object({
@@ -59,6 +61,10 @@ const tagSuggestionInput = z.object({
   selected: tagsInput,
   limit: z.number().int().min(1).max(20).default(8),
 })
+
+export const getDirectorySortPreference = createServerFn({
+  method: 'GET',
+}).handler(() => readDirectorySortCookie(getRequest().headers.get('cookie')))
 
 export const getPublicDirectoryPage = createServerFn({ method: 'POST' })
   .validator((data) => directoryInput.parse(data))

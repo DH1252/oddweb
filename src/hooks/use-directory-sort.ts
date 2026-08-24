@@ -1,7 +1,18 @@
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 
-export type DirectorySortMode =
-  'popular' | 'views' | 'newest' | 'oldest' | 'tags' | 'az' | 'za'
+import {
+  directorySortStorageKey,
+  normalizeDirectorySort,
+  persistDirectorySort,
+  readBrowserDirectorySortPreference,
+} from '../lib/directory-sort'
+
+import type {
+  DirectorySortMode,
+  DirectorySortPreference,
+} from '../lib/directory-sort'
+
+export type { DirectorySortMode } from '../lib/directory-sort'
 
 export type DirectorySortSnapshot = Readonly<{
   sort: DirectorySortMode
@@ -21,35 +32,24 @@ type DirectorySortPersistence = {
 
 export type DirectorySortStore = {
   getSnapshot: () => DirectorySortSnapshot
+  getServerSnapshot: () => DirectorySortSnapshot
   setSort: (sort: DirectorySortMode) => DirectorySortSnapshot
   subscribe: (onStoreChange: () => void) => () => void
 }
 
-const sortStorageKey = 'oddweb-directory-sort'
-const serverSortSnapshot: DirectorySortSnapshot = Object.freeze({
-  sort: 'popular',
-  revision: 0,
-})
-const sortModes = new Set<DirectorySortMode>([
-  'popular',
-  'views',
-  'newest',
-  'oldest',
-  'tags',
-  'az',
-  'za',
-])
-
 function normalizeSort(storedSort: string | null): DirectorySortMode {
-  return sortModes.has(storedSort as DirectorySortMode)
-    ? (storedSort as DirectorySortMode)
-    : 'popular'
+  return normalizeDirectorySort(storedSort) ?? 'popular'
 }
 
 export function createDirectorySortStore(
   persistence: DirectorySortPersistence,
+  initialSort: DirectorySortMode = 'popular',
 ): DirectorySortStore {
-  let snapshot = serverSortSnapshot
+  const serverSnapshot: DirectorySortSnapshot = Object.freeze({
+    sort: initialSort,
+    revision: 0,
+  })
+  let snapshot = serverSnapshot
   let unsubscribeFromPersistence: (() => void) | undefined
   const listeners = new Set<() => void>()
 
@@ -70,6 +70,7 @@ export function createDirectorySortStore(
 
   return {
     getSnapshot: refreshSnapshot,
+    getServerSnapshot: () => serverSnapshot,
     setSort(sort) {
       const previousSnapshot = refreshSnapshot()
       persistence.write(sort)
@@ -95,26 +96,56 @@ export function createDirectorySortStore(
   }
 }
 
-const browserSortStore = createDirectorySortStore({
-  read: () => window.localStorage.getItem(sortStorageKey),
-  write: (sort) => window.localStorage.setItem(sortStorageKey, sort),
-  subscribe: (onStoredSortChange) => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === sortStorageKey || event.key === null) {
-        onStoredSortChange()
+function browserSortPersistence(preference: DirectorySortPreference) {
+  let currentSort = preference.sort
+  let pendingSort: DirectorySortMode | undefined
+  return {
+    read: () => {
+      if (pendingSort) return pendingSort
+      currentSort = readBrowserDirectorySortPreference().sort
+      return currentSort
+    },
+    write: (sort: DirectorySortMode) => {
+      currentSort = sort
+      pendingSort = sort
+      persistDirectorySort(sort)
+      const persisted = readBrowserDirectorySortPreference()
+      if (persisted.status === 'valid' && persisted.sort === sort) {
+        pendingSort = undefined
       }
-    }
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  },
-})
+    },
+    subscribe: (onStoredSortChange: () => void) => {
+      const initialSort = readBrowserDirectorySortPreference().sort
+      currentSort = initialSort
+      persistDirectorySort(initialSort)
+      const handleStorage = (event: StorageEvent) => {
+        if (event.key === directorySortStorageKey || event.key === null) {
+          pendingSort = undefined
+          currentSort = normalizeDirectorySort(event.newValue) ?? currentSort
+          onStoredSortChange()
+        }
+      }
+      window.addEventListener('storage', handleStorage)
+      return () => window.removeEventListener('storage', handleStorage)
+    },
+  }
+}
 
-export function useDirectorySortSnapshot(): DirectorySortSnapshot {
-  return useSyncExternalStore(
-    browserSortStore.subscribe,
-    browserSortStore.getSnapshot,
-    () => serverSortSnapshot,
+export function useDirectorySortPreference(
+  preference: DirectorySortPreference,
+) {
+  const [store] = useState(() =>
+    createDirectorySortStore(
+      browserSortPersistence(preference),
+      preference.sort,
+    ),
   )
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getServerSnapshot,
+  )
+  return { setSort: store.setSort, snapshot }
 }
 
 export function resolveDirectoryPage(
@@ -122,8 +153,4 @@ export function resolveDirectoryPage(
   sortSnapshot: DirectorySortSnapshot,
 ) {
   return pageState.sortRevision === sortSnapshot.revision ? pageState.page : 0
-}
-
-export function setDirectorySort(sort: DirectorySortMode) {
-  return browserSortStore.setSort(sort)
 }

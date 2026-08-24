@@ -360,7 +360,7 @@ test('suspense-backed result controls update inside transitions', async () => {
   }
   assert.match(
     directory,
-    /function changeSort[\s\S]*startTransition\(\(\) => \{[\s\S]*const nextSortSnapshot = setDirectorySort\(nextSort\)[\s\S]*sortRevision: nextSortSnapshot\.revision,[\s\S]*page: 0/,
+    /function changeSort[\s\S]*startTransition\(\(\) => \{[\s\S]*const nextSortSnapshot = setSort\(nextSort\)[\s\S]*sortRevision: nextSortSnapshot\.revision,[\s\S]*page: 0/,
   )
   assert.match(
     adminRoute,

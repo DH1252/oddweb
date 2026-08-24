@@ -22,9 +22,9 @@ import {
 import { useSiteVote } from '../hooks/use-site-vote'
 import {
   resolveDirectoryPage,
-  setDirectorySort,
-  useDirectorySortSnapshot,
+  useDirectorySortPreference,
 } from '../hooks/use-directory-sort'
+import { getDirectorySortPreference } from '../server/public-data'
 import {
   SITE_ORIGIN,
   absoluteUrl,
@@ -33,6 +33,7 @@ import {
   siteDetailUrl,
   socialMeta,
 } from '../lib/seo'
+import { readBrowserDirectorySortPreference } from '../lib/directory-sort'
 import { DirectoryCatalog } from './-directory/directory-catalog'
 import { DirectoryHero } from './-directory/directory-hero'
 import { DirectoryToolbar } from './-directory/directory-toolbar'
@@ -57,20 +58,28 @@ export const Route = createFileRoute('/')({
   validateSearch: normalizePublicFilterSearch,
   loaderDeps: ({ search }) => publicFilterLoaderDeps(search),
   loader: async ({ context, deps }) => {
+    const supportData = context.queryClient.fetchQuery(
+      publicSupportQueryOptions(),
+    )
+    const popularSites = context.queryClient.fetchQuery(popularQueryOptions(0))
+    const preference =
+      typeof document === 'undefined'
+        ? await getDirectorySortPreference()
+        : readBrowserDirectorySortPreference()
     const [directory] = await Promise.all([
       context.queryClient.fetchQuery(
         directoryQueryOptions({
           query: '',
           include: deps.include,
           exclude: deps.exclude,
-          sort: 'popular',
+          sort: preference.sort,
           page: 0,
         }),
       ),
-      context.queryClient.fetchQuery(publicSupportQueryOptions()),
-      context.queryClient.fetchQuery(popularQueryOptions(0)),
+      supportData,
+      popularSites,
     ])
-    return directory
+    return { directory, preference }
   },
   head: ({ loaderData, match }) => ({
     meta: [
@@ -108,13 +117,15 @@ export const Route = createFileRoute('/')({
               '@type': 'ItemList',
               '@id': `${SITE_ORIGIN}/#directory-list`,
               name: 'Websites on Oddweb',
-              numberOfItems: loaderData?.sites.length ?? 0,
-              itemListElement: (loaderData?.sites ?? []).map((site, index) => ({
-                '@type': 'ListItem',
-                position: index + 1,
-                name: site.name,
-                item: siteDetailUrl(site.slug),
-              })),
+              numberOfItems: loaderData?.directory.sites.length ?? 0,
+              itemListElement: (loaderData?.directory.sites ?? []).map(
+                (site, index) => ({
+                  '@type': 'ListItem',
+                  position: index + 1,
+                  name: site.name,
+                  item: siteDetailUrl(site.slug),
+                }),
+              ),
             },
           ],
         },
@@ -136,7 +147,10 @@ function DirectoryPage() {
   const exclude = rawExclude.filter((tag) => !includeSet.has(tag))
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
-  const sortSnapshot = useDirectorySortSnapshot()
+  const initialDirectory = Route.useLoaderData()
+  const { setSort, snapshot: sortSnapshot } = useDirectorySortPreference(
+    initialDirectory.preference,
+  )
   const { sort } = sortSnapshot
   const [directoryPageState, setDirectoryPageState] =
     useState<DirectoryPageState>({
@@ -149,7 +163,6 @@ function DirectoryPage() {
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
   const turnstileConfig = useQuery(turnstileConfigQueryOptions()).data
-  const initialDirectory = Route.useLoaderData()
   const directoryData =
     useQuery({
       ...directoryQueryOptions({
@@ -160,7 +173,7 @@ function DirectoryPage() {
         page,
       }),
       placeholderData: keepPreviousData,
-    }).data ?? initialDirectory
+    }).data ?? initialDirectory.directory
   const popularData = useQuery({
     ...popularQueryOptions(popularPage),
     placeholderData: keepPreviousData,
@@ -240,7 +253,7 @@ function DirectoryPage() {
 
   function changeSort(nextSort: DirectorySortMode) {
     startTransition(() => {
-      const nextSortSnapshot = setDirectorySort(nextSort)
+      const nextSortSnapshot = setSort(nextSort)
       setDirectoryPageState({
         sortRevision: nextSortSnapshot.revision,
         page: 0,
