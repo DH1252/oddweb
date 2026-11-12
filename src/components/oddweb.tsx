@@ -315,7 +315,7 @@ export function RouteError({
   error,
   reset,
 }: {
-  error: Error
+  error: unknown
   reset: () => void
 }) {
   return (
@@ -330,7 +330,7 @@ export function RouteError({
           </button>
         }
       >
-        {import.meta.env.DEV
+        {import.meta.env.DEV && error instanceof Error
           ? error.message ||
             'An unexpected runtime error interrupted this page.'
           : 'An unexpected runtime error interrupted this page.'}
