@@ -34,6 +34,8 @@ export function AutomationCandidates({
   model: AutomationCandidatesModel
 }) {
   const {
+    bulkCandidatesPending,
+    decideAllCandidates,
     candidateDecisionMutation,
     candidateKind,
     candidates,
@@ -43,6 +45,8 @@ export function AutomationCandidates({
     setCandidatePage,
     setCandidateStatus,
   } = model
+  const decisionPending =
+    bulkCandidatesPending || candidateDecisionMutation.isPending
 
   return (
     <div className="mt-2">
@@ -58,6 +62,7 @@ export function AutomationCandidates({
             <select
               className={fieldClass}
               value={candidateStatus ?? ''}
+              disabled={bulkCandidatesPending}
               onChange={(event) => {
                 startTransition(() => {
                   setCandidatePage(0)
@@ -80,6 +85,7 @@ export function AutomationCandidates({
             <select
               className={fieldClass}
               value={candidateKind ?? ''}
+              disabled={bulkCandidatesPending}
               onChange={(event) => {
                 startTransition(() => {
                   setCandidatePage(0)
@@ -96,6 +102,53 @@ export function AutomationCandidates({
             </select>
           </label>
         </div>
+        <form
+          className="mb-2 border border-line bg-paper p-2"
+          onSubmit={decideAllCandidates}
+        >
+          <label>
+            <span className="mb-1 block font-mono text-xs font-bold uppercase">
+              Blanket decision reason
+            </span>
+            <input
+              name="reason"
+              className={fieldClass}
+              placeholder="Required reason for every candidate"
+              maxLength={500}
+              required
+              disabled={decisionPending}
+            />
+          </label>
+          <p className="my-2 text-xs text-muted">
+            Applies to all proposed candidates matching the kind filter across
+            every page, regardless of the status filter. Accept skips
+            existing-tag assignments and queues guarded jobs, not immediate
+            publication.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              value="accepted"
+              className={buttonClass}
+              disabled={decisionPending || candidateKind === 'existing_tag'}
+            >
+              Accept all and queue
+            </button>
+            <button
+              type="submit"
+              value="rejected"
+              className={buttonClass}
+              disabled={decisionPending}
+            >
+              Reject all
+            </button>
+            {bulkCandidatesPending ? (
+              <span role="status" className="self-center text-xs">
+                Applying decisions...
+              </span>
+            ) : null}
+          </div>
+        </form>
         {candidates.items.length ? (
           <>
             <ul
@@ -239,7 +292,7 @@ export function AutomationCandidates({
                       <button
                         type="submit"
                         className={buttonClass}
-                        disabled={candidateDecisionMutation.isPending}
+                        disabled={decisionPending}
                       >
                         {candidateDecisionMutation.isPending
                           ? 'Saving...'

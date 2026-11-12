@@ -85,6 +85,28 @@ test('candidate evidence uses the backend evidence identity', async () => {
   assert.doesNotMatch(source, /key=\{`\$\{evidence\.siteId\}/)
 })
 
+test('bulk ontology decisions use a required blanket reason and snapshot all pages before mutations', async () => {
+  const [view, controller] = await Promise.all([
+    componentSource('admin-automation-candidates.tsx'),
+    componentSource('admin-automation-controller.ts'),
+  ])
+  assert.match(view, /Blanket decision reason/)
+  assert.match(view, /Accept all and queue/)
+  assert.match(view, /Reject all/)
+  assert.match(view, /name="reason"[\s\S]*?required/)
+  assert.match(view, /disabled=\{decisionPending\}/)
+  assert.match(controller, /getProposedTaxonomyCandidateIds/)
+  assert.match(controller, /after = result.next/)
+  assert.ok(
+    controller.indexOf('const ids = [...candidateIds]') <
+      controller.indexOf('await decideTaxonomyCandidates('),
+  )
+  assert.match(
+    controller,
+    /candidateIds: ids\.slice\(offset, offset \+ automationPageSize\)/,
+  )
+})
+
 test('automation sections use grouped interfaces without a context locator', async () => {
   const [section, controller] = await Promise.all([
     componentSource('admin-automation-section.tsx'),

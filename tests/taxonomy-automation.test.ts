@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { taxonomyCandidateBulkDecisionSchema } from '../src/server/taxonomy-admin-validation'
 
 import {
   dispatchTaxonomyOutbox,
@@ -648,6 +649,154 @@ test('failed provider test leaves a revision disabled without a false enable aud
       .first('count'),
     0,
   )
+})
+
+test('bulk candidate decisions require bounded IDs, accept/reject, and a shared reason', () => {
+  const input = {
+    candidateIds: ['candidate'],
+    decision: 'accepted',
+    reason: ' Shared review ',
+  }
+  assert.equal(
+    taxonomyCandidateBulkDecisionSchema.parse(input).reason,
+    'Shared review',
+  )
+  for (const invalid of [
+    { ...input, candidateIds: [] },
+    {
+      ...input,
+      candidateIds: Array.from({ length: 21 }, (_, index) => String(index)),
+    },
+    { ...input, candidateIds: [' '] },
+    { ...input, decision: 'deferred' },
+    { ...input, reason: ' ' },
+    { ...input, reason: 'x'.repeat(501) },
+  ])
+    assert.equal(
+      taxonomyCandidateBulkDecisionSchema.safeParse(invalid).success,
+      false,
+    )
+})
+
+test('bulk decisions preserve guarded enqueue, shared reasons, deduplication and partial results', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  await insertTag(db, 2)
+  const service = new TaxonomyService(serviceEnv(db), { now: () => 4_690_000 })
+  await db
+    .prepare(
+      `INSERT INTO taxonomy_jobs
+    (id, job_key, kind, concept_key, input_hash, taxonomy_version, policy_config_id, status, max_attempts, available_at, created_at, updated_at, completed_at)
+    VALUES ('bulk-source', 'bulk-source', 'reassess_concept', 'bulk concept', ?, 1, 1, 'settled', 1, 4690, 4690, 4690, 4690)`,
+    )
+    .bind('a'.repeat(64))
+    .run()
+  const kinds: Array<
+    'alias' | 'existing_tag' | 'novel_concept' | 'parent_edge'
+  > = ['alias', 'existing_tag', 'novel_concept', 'parent_edge']
+  for (const [index, kind] of kinds.entries()) {
+    await service.repository.saveCandidate({
+      id: `bulk-${index}`,
+      jobId: 'bulk-source',
+      attemptId: null,
+      candidateKey: `bulk-key-${index}`,
+      kind,
+      tagId: 1,
+      relatedTagId: 2,
+      normalizedConcept: `bulk concept ${index}`,
+      proposedName: `Bulk Concept ${index}`,
+      proposedSlug: `bulk-concept-${index}`,
+      payload: { kind },
+      confidenceMicros: 990_000,
+      rank: index,
+      now: 4690,
+    })
+  }
+  const accepted = await service.decideCandidates({
+    candidateIds: ['bulk-0', 'bulk-1', 'missing', 'bulk-2', 'bulk-0'],
+    decision: 'accepted',
+    reason: 'Blanket approval',
+    actorId: 'admin',
+  })
+  assert.deepEqual(accepted, { decided: 2, unchanged: 1, failed: 1 })
+  const jobs = await db
+    .prepare("SELECT id FROM taxonomy_jobs WHERE kind = 'apply_ontology'")
+    .all()
+  assert.equal(jobs.results.length, 2)
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM taxonomy_outbox').first('count(*)'),
+    2,
+  )
+  const approved = await db
+    .prepare(
+      "SELECT decision_reason FROM taxonomy_candidates WHERE status = 'accepted'",
+    )
+    .all<{ decision_reason: string }>()
+  assert.ok(
+    approved.results.every(
+      (row: { decision_reason: string }) =>
+        row.decision_reason === 'Blanket approval (approved by admin)',
+    ),
+  )
+  const rejected = await service.decideCandidates({
+    candidateIds: ['bulk-0', 'bulk-1', 'bulk-3'],
+    decision: 'rejected',
+    reason: 'Blanket rejection',
+    actorId: 'admin',
+  })
+  assert.deepEqual(rejected, { decided: 2, unchanged: 1, failed: 0 })
+  const reasons = await db
+    .prepare(
+      "SELECT decision_reason FROM taxonomy_candidates WHERE status = 'rejected'",
+    )
+    .all<{ decision_reason: string }>()
+  assert.equal(reasons.results.length, 2)
+  assert.ok(
+    reasons.results.every(
+      (row: { decision_reason: string }) =>
+        row.decision_reason === 'Blanket rejection',
+    ),
+  )
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_jobs WHERE kind = 'apply_ontology'",
+      )
+      .first('count(*)'),
+    2,
+  )
+  await db
+    .prepare(
+      `WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 201)
+    INSERT INTO taxonomy_candidates (id, job_id, candidate_key, kind, normalized_concept, proposed_name, proposed_slug, payload, confidence_micros, rank)
+    SELECT printf('scan-%03d', n), 'bulk-source', printf('scan-key-%03d', n), 'novel_concept', 'scan', 'Scan', 'scan', '{}', 990000, n FROM numbers`,
+    )
+    .run()
+  const first = await service.proposedCandidateIds({
+    after: null,
+    kind: 'novel_concept',
+    decision: 'accepted',
+  })
+  assert.equal(first.ids.length, 100)
+  assert.ok(first.next)
+  await service.decideCandidate({
+    candidateId: first.ids[0],
+    decision: 'rejected',
+    reason: 'Concurrent decision',
+    actorId: 'other-admin',
+  })
+  const second = await service.proposedCandidateIds({
+    after: first.next,
+    kind: 'novel_concept',
+    decision: 'accepted',
+  })
+  const third = await service.proposedCandidateIds({
+    after: second.next,
+    kind: 'novel_concept',
+    decision: 'accepted',
+  })
+  assert.equal(new Set([...first.ids, ...second.ids, ...third.ids]).size, 201)
+  assert.equal(third.next, null)
 })
 
 test('accepted ontology candidates are decided and queued through the guarded worker job', async (context) => {

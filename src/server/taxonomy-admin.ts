@@ -19,6 +19,8 @@ import { mapSeries } from '../lib/async'
 import { adminAuthMiddleware } from './auth'
 import { publishRealtimeEvent } from './realtime'
 import {
+  taxonomyCandidateBulkDecisionSchema,
+  taxonomyCandidateScanSchema,
   taxonomyPolicyRevisionSchema,
   taxonomyProviderCreateSchema,
   taxonomyProviderHostAllowlist,
@@ -457,6 +459,23 @@ export const decideTaxonomyCandidate = createServerFn({ method: 'POST' })
   .validator((data) => candidateDecisionInput.parse(data))
   .handler(async ({ data, context }) => {
     const result = await service().decideCandidate({
+      ...data,
+      actorId: context.admin.username,
+    })
+    if (result.decided) await publishTaxonomyChange()
+    return result
+  })
+
+export const getProposedTaxonomyCandidateIds = createServerFn({ method: 'GET' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => taxonomyCandidateScanSchema.parse(data))
+  .handler(({ data }) => service().proposedCandidateIds(data))
+
+export const decideTaxonomyCandidates = createServerFn({ method: 'POST' })
+  .middleware([adminAuthMiddleware])
+  .validator((data) => taxonomyCandidateBulkDecisionSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const result = await service().decideCandidates({
       ...data,
       actorId: context.admin.username,
     })

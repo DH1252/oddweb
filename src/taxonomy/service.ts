@@ -1145,6 +1145,45 @@ export class TaxonomyService {
     return inserted ? id : null
   }
 
+  async proposedCandidateIds(input: {
+    after: string | null
+    kind: string | null
+    decision: 'accepted' | 'rejected'
+  }) {
+    const rows = await this.repository.db
+      .prepare(
+        `SELECT id FROM taxonomy_candidates WHERE status = 'proposed'
+       AND (? IS NULL OR id > ?) AND (? IS NULL OR kind = ?)
+       AND (? <> 'accepted' OR kind <> 'existing_tag')
+       ORDER BY id LIMIT 100`,
+      )
+      .bind(input.after, input.after, input.kind, input.kind, input.decision)
+      .all<{ id: string }>()
+    const ids = rows.results.map((row) => row.id)
+    return { ids, next: ids.length === 100 ? ids[ids.length - 1] : null }
+  }
+
+  async decideCandidates(input: {
+    candidateIds: string[]
+    decision: 'accepted' | 'rejected'
+    reason: string
+    actorId: string
+  }) {
+    const candidateIds = [...new Set(input.candidateIds)]
+    const results = await mapSettledSeries(candidateIds, (candidateId) =>
+      this.decideCandidate({ ...input, candidateId }),
+    )
+    return {
+      decided: results.filter(
+        (result) => result.status === 'fulfilled' && result.value.decided,
+      ).length,
+      unchanged: results.filter(
+        (result) => result.status === 'fulfilled' && !result.value.decided,
+      ).length,
+      failed: results.filter((result) => result.status === 'rejected').length,
+    }
+  }
+
   async decideCandidate(input: {
     candidateId: string
     decision: 'accepted' | 'rejected' | 'deferred' | 'conflict'

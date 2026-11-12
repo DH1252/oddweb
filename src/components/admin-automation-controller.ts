@@ -21,6 +21,8 @@ import {
   createTaxonomyPolicy,
   createTaxonomyProvider,
   decideTaxonomyCandidate,
+  decideTaxonomyCandidates,
+  getProposedTaxonomyCandidateIds,
   deleteTaxonomyProvider,
   disableTaxonomyProvider,
   dispatchTaxonomyOutboxNow,
@@ -38,6 +40,7 @@ import {
   updateTaxonomyProvider,
 } from '../server/taxonomy-admin'
 import { humanize, modeLabel } from '../lib/admin-format'
+import { mapSeries } from '../lib/async'
 import {
   isCandidateDecision,
   isProviderKind,
@@ -116,6 +119,7 @@ export function useAutomationController({
   const [attemptPage, setAttemptPage] = useState(0)
   const [attemptJobId, setAttemptJobId] = useState('')
   const [candidatePage, setCandidatePage] = useState(0)
+  const [bulkCandidatesPending, setBulkCandidatesPending] = useState(false)
   const [candidateStatus, setCandidateStatus] =
     useState<TaxonomyCandidateStatus | null>('proposed')
   const [candidateKind, setCandidateKind] =
@@ -589,6 +593,7 @@ export function useAutomationController({
     candidateId: string,
   ) {
     event.preventDefault()
+    if (bulkCandidatesPending || candidateDecisionMutation.isPending) return
     const form = event.currentTarget
     const data = new FormData(form)
     const decision = String(data.get('decision'))
@@ -627,6 +632,99 @@ export function useAutomationController({
         'error',
       )
     }
+  }
+
+  async function decideAllCandidates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (bulkCandidatesPending || candidateDecisionMutation.isPending) return
+    const form = event.currentTarget
+    const submitter =
+      event.nativeEvent instanceof SubmitEvent
+        ? event.nativeEvent.submitter
+        : null
+    const decision =
+      submitter instanceof HTMLButtonElement ? submitter.value : ''
+    if (decision !== 'accepted' && decision !== 'rejected') return
+    const reason = String(new FormData(form).get('reason') || '').trim()
+    if (!reason) {
+      showStatus('Enter a shared decision reason.', 'error')
+      return
+    }
+    if (
+      !window.confirm(
+        `${decision === 'accepted' ? 'Accept and queue' : 'Reject'} all proposed ${candidateKind ? humanize(candidateKind) : 'ontology'} candidates across every page? The same reason applies to each candidate.${decision === 'accepted' ? ' Existing-tag assignment candidates are skipped; publication safety checks still apply.' : ''}`,
+      )
+    )
+      return
+    setBulkCandidatesPending(true)
+    const run = async () => {
+      const totals = { decided: 0, unchanged: 0, failed: 0 }
+      try {
+        // Collect IDs with a cursor so concurrent decisions cannot shift later pages.
+        const candidateIds = new Set<string>()
+        let after: string | null = null
+        let more = true
+        while (more) {
+          const result: { ids: string[]; next: string | null } =
+            await getProposedTaxonomyCandidateIds({
+              data: {
+                after,
+                decision,
+                kind: candidateKind,
+              },
+            })
+          for (const id of result.ids) candidateIds.add(id)
+          more = result.next !== null
+          after = result.next
+        }
+        const ids = [...candidateIds]
+        await mapSeries(
+          Array.from(
+            { length: Math.ceil(ids.length / automationPageSize) },
+            (_, index) => index * automationPageSize,
+          ),
+          async (offset) => {
+            const result = await decideTaxonomyCandidates({
+              data: {
+                candidateIds: ids.slice(offset, offset + automationPageSize),
+                decision,
+                reason,
+              },
+            })
+            totals.decided += result.decided
+            totals.unchanged += result.unchanged
+            totals.failed += result.failed
+          },
+        )
+        form.reset()
+        showStatus(
+          `${totals.decided} candidates ${decision === 'accepted' ? 'accepted and queued' : 'rejected'}; ${totals.unchanged} already decided; ${totals.failed} failed.`,
+          totals.failed ? 'error' : 'success',
+        )
+      } catch (error) {
+        showStatus(
+          `${totals.decided} decisions confirmed; some decisions may already be saved. ${await handleAdminError(error, 'Bulk decision interrupted. Refresh before retrying.')}`,
+          'error',
+        )
+      }
+      setCandidatePage(0)
+      if (decision === 'accepted') setJobPage(0)
+      await invalidateTaxonomy(
+        'candidates',
+        'jobs',
+        'dashboard',
+        'audit',
+      ).catch(async (error: unknown) => {
+        showStatus(
+          await handleAdminError(
+            error,
+            'Decisions may be saved, but refreshing candidates failed.',
+          ),
+          'error',
+        )
+      })
+    }
+    await run().finally(() => setBulkCandidatesPending(false))
   }
 
   async function activatePolicy(policyConfigId: number) {
@@ -912,6 +1010,8 @@ export function useAutomationController({
       submitProviderUpdate,
     },
     candidates: {
+      bulkCandidatesPending,
+      decideAllCandidates,
       candidateDecisionMutation,
       candidateKind,
       candidates,

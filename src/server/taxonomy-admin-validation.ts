@@ -2,6 +2,20 @@ import { z } from 'zod'
 
 import { validateProviderEndpoint } from '../taxonomy/endpoint'
 
+export const taxonomyCandidateBulkDecisionSchema = z.strictObject({
+  candidateIds: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
+  decision: z.enum(['accepted', 'rejected']),
+  reason: z.string().trim().min(1).max(500),
+})
+
+export const taxonomyCandidateScanSchema = z.strictObject({
+  decision: z.enum(['accepted', 'rejected']),
+  after: z.string().trim().min(1).max(200).nullable(),
+  kind: z
+    .enum(['existing_tag', 'novel_concept', 'alias', 'merge', 'parent_edge'])
+    .nullable(),
+})
+
 export const taxonomyProviderHostAllowlist = [
   'api.openai.com',
   'generativelanguage.googleapis.com',
