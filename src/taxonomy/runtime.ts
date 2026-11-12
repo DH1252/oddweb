@@ -58,11 +58,7 @@ function runtimeNow(options: RuntimeOptions): () => number {
 function summary(error: unknown): string {
   const message =
     error instanceof Error ? error.message : 'Unknown taxonomy error'
-  return (
-    message.includes('malformed JSON')
-      ? `${message.slice(0, 400)} (a taxonomy publication guard rejected the change)`
-      : message
-  ).slice(0, 500)
+  return message.slice(0, 500)
 }
 
 function providerInstance(

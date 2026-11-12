@@ -2737,6 +2737,184 @@ test('multi-proposal rollout retries idempotently after a later enqueue failure'
   )
 })
 
+test('publication guards explain stale versions and tag revisions without partial writes', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  await insertTag(db, 2)
+  const repository = new TaxonomyRepository(db)
+  const policy = await repository.loadPolicy(1)
+  const common = {
+    batchId: 'rejected-publication',
+    eventId: 'rejected-event',
+    expectedVersion: 0,
+    policy,
+    releaseSha: 'test',
+    actorId: 'test',
+    now: 15_090,
+  }
+  const publications = [
+    () =>
+      repository.publishCanonical({
+        ...common,
+        name: 'New Concept',
+        slug: 'new-concept',
+        normalizedConcept: 'new concept',
+        evidenceThreshold: 0,
+      }),
+    () =>
+      repository.publishAlias({
+        ...common,
+        targetTagId: 1,
+        expectedTagRevision: 1,
+        alias: 'new alias',
+      }),
+    () =>
+      repository.publishParent({
+        ...common,
+        childTagId: 1,
+        parentTagId: 2,
+        expectedTagRevision: 1,
+      }),
+    () =>
+      repository.publishMerge({
+        ...common,
+        sourceTagId: 1,
+        targetTagId: 2,
+        expectedTagRevision: 1,
+        expectedTargetRevision: 1,
+      }),
+  ]
+  for (const publish of publications) {
+    await assert.rejects(
+      publish(),
+      /publication rejected: taxonomy version changed/i,
+    )
+  }
+  common.expectedVersion = 1
+  await db.prepare('UPDATE tags SET revision = 2 WHERE id = 1').run()
+  for (const publish of publications.slice(1)) {
+    await assert.rejects(
+      publish(),
+      /publication rejected: (target|child|source) tag changed or locked/i,
+    )
+  }
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_change_batches WHERE id = 'rejected-publication'",
+      )
+      .first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_audit_events WHERE id = 'rejected-event'",
+      )
+      .first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_aliases').first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_parents').first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tags').first('count(*)'),
+    2,
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT published_version FROM taxonomy_state WHERE id = 1')
+      .first('published_version'),
+    1,
+  )
+})
+
+test('ontology publication reports a locked alias without an opaque JSON failure', async (context) => {
+  const db = await migratedTaxonomyDb(context)
+  await insertTag(db, 1)
+  const env = serviceEnv(db)
+  const service = new TaxonomyService(env, { now: () => 15_100_000 })
+  const providerId = await addProvider(service, {
+    name: 'locked-alias-provider',
+    credential: 'locked-alias-secret',
+    role: 'primary',
+    priority: 0,
+  })
+  await service.activateProvider(providerId)
+  await db
+    .prepare(
+      `UPDATE taxonomy_policy_configs SET ontology_provider_agreement = 1,
+       rollout_basis_points = 10000 WHERE id = 1`,
+    )
+    .run()
+  await db.prepare("UPDATE taxonomy_state SET mode = 'autonomous'").run()
+  await service.createLock({
+    scope: 'alias',
+    tagId: 1,
+    alias: 'locked alias',
+    reason: 'Preserve an audited alias correction',
+    actorId: 'admin',
+  })
+  const jobId = await service.enqueueConcept('locked alias evidence')
+  assert.ok(jobId)
+  await db
+    .prepare('UPDATE taxonomy_jobs SET max_attempts = 1 WHERE id = ?')
+    .bind(jobId)
+    .run()
+  const result = await processTaxonomyMessage(
+    { jobId },
+    { ...env, TAXONOMY_QUEUE: mockQueue() },
+    {
+      now: () => 15_101_000,
+      fetch: async () =>
+        Response.json({
+          output_text: JSON.stringify({
+            schemaVersion: 1,
+            proposals: [
+              {
+                kind: 'alias',
+                alias: 'locked alias',
+                targetTagId: '1',
+                confidence: 0.99,
+                evidence: 'Provider evidence cannot override a manual lock.',
+              },
+            ],
+          }),
+        }),
+    },
+  )
+  assert.equal(result.mutations, 0)
+  const failure = await db
+    .prepare('SELECT last_error_summary FROM taxonomy_jobs WHERE id = ?')
+    .bind(jobId)
+    .first<string>('last_error_summary')
+  assert.match(failure ?? '', /alias publication rejected: active manual lock/i)
+  assert.doesNotMatch(failure ?? '', /malformed JSON/)
+  assert.equal(
+    await db.prepare('SELECT count(*) FROM tag_aliases').first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db
+      .prepare(
+        "SELECT count(*) FROM taxonomy_change_batches WHERE summary = 'Published alias locked alias'",
+      )
+      .first('count(*)'),
+    0,
+  )
+  assert.equal(
+    await db
+      .prepare('SELECT published_version FROM taxonomy_state WHERE id = 1')
+      .first('published_version'),
+    1,
+  )
+})
+
 test('reassess filters provider proposals that collide with occupied tag slugs', async (context) => {
   const db = await migratedTaxonomyDb(context)
   await insertTag(db, 1, 'humor')

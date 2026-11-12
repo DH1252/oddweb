@@ -1342,29 +1342,37 @@ export class TaxonomyRepository {
     application?: OntologyApplication
   }): Promise<number> {
     const nextVersion = input.expectedVersion + 1
+    // Invalid JSON paths abort the D1 batch while preserving the rejection reason.
     const guard = statement(
       this.db,
-      `SELECT CASE WHEN
-       (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
-       AND (SELECT count(DISTINCT site_id) FROM taxonomy_concept_evidence
-            WHERE normalized_concept = ? AND accepted = 1) >= ?
-       AND (NOT EXISTS (SELECT 1 FROM tags WHERE slug = ?)
-            OR EXISTS (SELECT 1 FROM tags WHERE slug = ? AND status = 'active'
-                       AND canonical = 0 AND automation_locked = 0))
-       AND NOT EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ?)
-        AND NOT EXISTS (SELECT 1 FROM taxonomy_locks
+      `SELECT json_extract('{}', CASE
+       WHEN (SELECT published_version FROM taxonomy_state WHERE id = 1) IS NOT ?
+         THEN 'Canonical publication rejected: taxonomy version changed'
+       WHEN (SELECT count(DISTINCT site_id) FROM taxonomy_concept_evidence
+            WHERE normalized_concept = ? AND accepted = 1) < ?
+         THEN 'Canonical publication rejected: insufficient distinct-site evidence'
+       WHEN NOT (NOT EXISTS (SELECT 1 FROM tags WHERE slug = ?)
+             OR EXISTS (SELECT 1 FROM tags WHERE slug = ? AND status = 'active'
+                        AND canonical = 0 AND automation_locked = 0))
+         THEN 'Canonical publication rejected: tag slug occupied or locked'
+       WHEN EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ?)
+         THEN 'Canonical publication rejected: alias already exists'
+       WHEN EXISTS (SELECT 1 FROM taxonomy_locks
                         WHERE released_at IS NULL
                           AND scope <> 'site_assignment'
                           AND (resource_key = ? OR tag_id =
                                (SELECT id FROM tags WHERE slug = ?)))
-       AND NOT EXISTS (SELECT 1 FROM taxonomy_candidates
+         THEN 'Canonical publication rejected: active manual lock'
+       WHEN EXISTS (SELECT 1 FROM taxonomy_candidates
                        WHERE status = 'proposed' AND id <> coalesce(?, '')
                        AND (proposed_slug = ? OR normalized_concept = ?))
-        AND (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates
+         THEN 'Canonical publication rejected: conflicting proposed candidate'
+       WHEN NOT (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates
                                   WHERE id = ? AND status IN ('proposed','accepted'))
             AND EXISTS (SELECT 1 FROM taxonomy_jobs
                         WHERE id = ? AND status = 'leased' AND lease_token = ?)))
-       THEN 1 ELSE json_extract('taxonomy publication guard failed', '$') END`,
+         THEN 'Canonical publication rejected: candidate changed or job lease lost'
+       ELSE '$' END)`,
       [
         input.expectedVersion,
         input.normalizedConcept,
@@ -1479,18 +1487,24 @@ export class TaxonomyRepository {
     const statements = [
       statement(
         this.db,
-        `SELECT CASE WHEN
-         (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
-         AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active'
-                     AND canonical = 1 AND automation_locked = 0)
-         AND NOT EXISTS (SELECT 1 FROM tags WHERE slug = ?)
-         AND NOT EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ?)
-         AND (? <> 'applied' OR NOT EXISTS
-              (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
-               AND resource_key IN (?, ?)))
-         AND (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
-              AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
-         THEN 1 ELSE json_extract('taxonomy publication guard failed', '$') END`,
+        `SELECT json_extract('{}', CASE
+         WHEN (SELECT published_version FROM taxonomy_state WHERE id = 1) IS NOT ?
+           THEN 'Alias publication rejected: taxonomy version changed'
+         WHEN NOT EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active'
+                      AND canonical = 1 AND automation_locked = 0)
+           THEN 'Alias publication rejected: target tag changed or locked'
+         WHEN EXISTS (SELECT 1 FROM tags WHERE slug = ?)
+           THEN 'Alias publication rejected: tag slug already exists'
+         WHEN EXISTS (SELECT 1 FROM tag_aliases WHERE alias = ?)
+           THEN 'Alias publication rejected: alias already exists'
+         WHEN NOT (? <> 'applied' OR NOT EXISTS
+               (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
+                AND resource_key IN (?, ?)))
+           THEN 'Alias publication rejected: active manual lock'
+         WHEN NOT (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
+               AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
+           THEN 'Alias publication rejected: candidate changed or job lease lost'
+         ELSE '$' END)`,
         [
           input.expectedVersion,
           input.targetTagId,
@@ -1573,15 +1587,20 @@ export class TaxonomyRepository {
     const statements = [
       statement(
         this.db,
-        `SELECT CASE WHEN
-         (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
-         AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
-         AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
-         AND NOT EXISTS (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
-                         AND resource_key IN (?, ?, ?))
-         AND (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
-              AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
-         THEN 1 ELSE json_extract('taxonomy publication guard failed', '$') END`,
+        `SELECT json_extract('{}', CASE
+         WHEN (SELECT published_version FROM taxonomy_state WHERE id = 1) IS NOT ?
+           THEN 'Parent publication rejected: taxonomy version changed'
+         WHEN NOT EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
+           THEN 'Parent publication rejected: child tag changed or locked'
+         WHEN NOT EXISTS (SELECT 1 FROM tags WHERE id = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
+           THEN 'Parent publication rejected: parent tag changed or locked'
+         WHEN EXISTS (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
+                          AND resource_key IN (?, ?, ?))
+           THEN 'Parent publication rejected: active manual lock'
+         WHEN NOT (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
+               AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
+           THEN 'Parent publication rejected: candidate changed or job lease lost'
+         ELSE '$' END)`,
         [
           input.expectedVersion,
           input.childTagId,
@@ -1701,17 +1720,24 @@ export class TaxonomyRepository {
     const statements = [
       statement(
         this.db,
-        `SELECT CASE WHEN
-         (SELECT published_version FROM taxonomy_state WHERE id = 1) = ?
-         AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND automation_locked = 0)
-         AND EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
-         AND NOT EXISTS (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
-                         AND resource_key IN (?, ?, ?, ?))
-         AND (SELECT count(*) FROM site_tags WHERE tag_id IN (?, ?)) <= 1000
-         AND (SELECT count(*) FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?) <= 100
-         AND (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
-              AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
-         THEN 1 ELSE json_extract('taxonomy publication guard failed', '$') END`,
+        `SELECT json_extract('{}', CASE
+         WHEN (SELECT published_version FROM taxonomy_state WHERE id = 1) IS NOT ?
+           THEN 'Merge publication rejected: taxonomy version changed'
+         WHEN NOT EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND automation_locked = 0)
+           THEN 'Merge publication rejected: source tag changed or locked'
+         WHEN NOT EXISTS (SELECT 1 FROM tags WHERE id = ? AND revision = ? AND status = 'active' AND canonical = 1 AND automation_locked = 0)
+           THEN 'Merge publication rejected: target tag changed or locked'
+         WHEN EXISTS (SELECT 1 FROM taxonomy_locks WHERE released_at IS NULL
+                          AND resource_key IN (?, ?, ?, ?))
+           THEN 'Merge publication rejected: active manual lock'
+         WHEN (SELECT count(*) FROM site_tags WHERE tag_id IN (?, ?)) > 1000
+           THEN 'Merge publication rejected: assignment mutation limit exceeded'
+         WHEN (SELECT count(*) FROM tag_parents WHERE parent_tag_id = ? OR child_tag_id = ?) > 100
+           THEN 'Merge publication rejected: hierarchy mutation limit exceeded'
+         WHEN NOT (? IS NULL OR (EXISTS (SELECT 1 FROM taxonomy_candidates WHERE id = ? AND status IN ('proposed','accepted'))
+               AND EXISTS (SELECT 1 FROM taxonomy_jobs WHERE id = ? AND status = 'leased' AND lease_token = ?)))
+           THEN 'Merge publication rejected: candidate changed or job lease lost'
+         ELSE '$' END)`,
         [
           input.expectedVersion,
           input.sourceTagId,
